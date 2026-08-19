@@ -1,0 +1,41 @@
+{
+  "name": "singbox-web-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "api:generate": "openapi-typescript ../docs/api/openapi.management.yaml -o src/generated/management-api.ts",
+    "api:lint": "redocly lint ../docs/api/openapi.management.yaml",
+    "api:check": "npm run api:generate && git diff --exit-code -- src/generated/management-api.ts",
+    "test": "vitest",
+    "test:visual": "node ./scripts/visual-check.mjs",
+    "build": "tsc --noEmit && vite build",
+    "postbuild": "node ./scripts/sync-embed.mjs",
+    "smoke": "tsc --noEmit",
+    "preview": "vite preview --host 127.0.0.1"
+  },
+  "dependencies": {
+    "@ant-design/icons": "^5.5.2",
+    "@tanstack/react-query": "^5.62.7",
+    "antd": "^5.22.5",
+    "dayjs": "^1.11.21",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^7.1.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1",
+    "@redocly/cli": "^2.39.0",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "jsdom": "^29.1.1",
+    "openapi-typescript": "^7.13.0",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.7",
+    "vitest": "^4.1.10"
+  }
+}

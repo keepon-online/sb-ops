@@ -1,0 +1,2784 @@
+openapi: 3.1.0
+info:
+  title: Sing-box Ops Management API
+  version: 2.0.0
+  description: Management API for control-plane identity and managed resources.
+  license:
+    name: Proprietary
+    identifier: LicenseRef-Proprietary
+servers:
+  - url: http://127.0.0.1:8030
+    description: Local development
+tags:
+  - name: Health
+    description: Process liveness and control-plane readiness.
+  - name: Authentication
+    description: Session and password lifecycle.
+  - name: Users
+    description: Subscription user and credential lifecycle.
+  - name: Subscriptions
+    description: Public immutable subscription artifact distribution.
+  - name: Protocols
+    description: Typed inbound protocol management.
+  - name: Certificates
+    description: TLS certificate and encrypted private-key management.
+  - name: Policies
+    description: Ordered routing policies, rules, validation, and dry-run evaluation.
+  - name: SingBox
+    description: Managed sing-box server configuration, upstreams, and server-side routing rules.
+  - name: Overview
+    description: Control-plane resource and runtime summary.
+  - name: Monitor
+    description: Host-level server metrics (CPU, memory, disk, network) with recent trend history.
+  - name: Audit
+    description: Filtered security and resource audit trail.
+  - name: Traffic
+    description: Permanent traffic history, aggregation, archive, and explicit purge.
+  - name: Events
+    description: Authenticated resumable operations event stream.
+  - name: Alerts
+    description: Operational alerts and acknowledgement workflow.
+paths:
+  /health/live:
+    get:
+      tags: [Health]
+      operationId: getLiveness
+      summary: Check whether the process is running
+      security: []
+      responses:
+        '200': {description: Process is live, content: {application/json: {schema: {$ref: '#/components/schemas/LivenessResponse'}}}}
+        '400': {description: Invalid request, content: {application/json: {schema: {$ref: '#/components/schemas/ManagementErrorResponse'}}}}
+  /health/ready:
+    get:
+      tags: [Health]
+      operationId: getReadiness
+      summary: Check database, schema, aggregation, alerts, and background tasks
+      security: []
+      responses:
+        '200': {description: Control plane is ready, content: {application/json: {schema: {$ref: '#/components/schemas/ReadinessResponse'}}}}
+        '400': {description: Invalid request, content: {application/json: {schema: {$ref: '#/components/schemas/ManagementErrorResponse'}}}}
+        '503': {description: Control plane is not ready, content: {application/json: {schema: {$ref: '#/components/schemas/ReadinessErrorResponse'}}}}
+  /subscribe/{token}/{format}:
+    get:
+      tags: [Subscriptions]
+      operationId: downloadSubscription
+      summary: Download the current applied subscription artifact
+      security: []
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema: {type: string, minLength: 1}
+        - name: format
+          in: path
+          required: true
+          schema: {type: string, examples: [sbox.json, clash.yaml, clmi.yaml, jhsub.txt]}
+      responses:
+        '200':
+          description: Immutable artifact from the current successful runtime synchronization
+          headers:
+            Subscription-Userinfo:
+              schema: {type: string}
+            ETag:
+              schema: {type: string}
+          content:
+            application/json:
+              schema: {type: object, additionalProperties: true}
+            application/yaml:
+              schema: {type: string}
+            text/plain:
+              schema: {type: string}
+        '304': {description: Artifact has not changed}
+        '404': {description: 'Token, synchronized artifact, or format not found'}
+        '410': {description: 'User is disabled, expired, or over quota'}
+  /api/v1/setup/status:
+    get:
+      tags: [Setup]
+      operationId: getSetupStatus
+      summary: Determine whether the first administrator has been initialized
+      security: []
+      responses:
+        '200':
+          description: Setup status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SetupStatusResponse'
+        '500':
+          description: Setup status unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ManagementErrorResponse'
+  /api/v1/setup/admin:
+    post:
+      tags: [Setup]
+      operationId: initializeAdmin
+      summary: Create the first administrator
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetupAdminRequest'
+      responses:
+        '201':
+          description: Administrator created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentityAccount'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/v1/auth/login:
+    post:
+      tags: [Authentication]
+      operationId: login
+      summary: Create an authenticated session
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IdentityLoginRequest'
+      responses:
+        '200':
+          description: Session created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentityLoginResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/v1/auth/me:
+    get:
+      tags: [Authentication]
+      operationId: getCurrentPrincipal
+      summary: Get the current principal
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Current principal
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentityMeResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/v1/auth/change-password:
+    post:
+      tags: [Authentication]
+      operationId: changePassword
+      summary: Change the current account password
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IdentityChangePasswordRequest'
+      responses:
+        '200':
+          description: Updated account
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentityAccount'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/v1/auth/logout:
+    post:
+      tags: [Authentication]
+      operationId: logout
+      summary: Revoke the current session
+      security:
+        - BearerAuth: []
+      responses:
+        '204':
+          description: Session revoked
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/v1/users:
+    get:
+      tags: [Users]
+      operationId: listUsers
+      summary: List subscription users
+      security: [{BearerAuth: []}]
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+        - {name: query, in: query, schema: {type: string}}
+        - name: status
+          in: query
+          schema: {$ref: '#/components/schemas/ResourceUserStatus'}
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [createdAt:asc, createdAt:desc, name:asc, name:desc, usedBytes:asc, usedBytes:desc]
+      responses:
+        '200':
+          description: User page
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ResourceUsersPage'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+    post:
+      tags: [Users]
+      operationId: createUser
+      summary: Create a subscription user and issue credentials once
+      security: [{BearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ResourceCreateUserRequest'}
+      responses:
+        '201':
+          description: User created
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ResourceUserMutationResponse'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /api/v1/users/{id}:
+    get:
+      tags: [Users]
+      operationId: getUser
+      summary: Get a subscription user
+      security: [{BearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/UserId'}]
+      responses:
+        '200':
+          description: User detail
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ResourceUser'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+    patch:
+      tags: [Users]
+      operationId: updateUser
+      summary: Update a subscription user using optimistic locking
+      security: [{BearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/UserId'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ResourceUpdateUserRequest'}
+      responses:
+        '200':
+          description: User updated
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ResourceUser'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+    delete:
+      tags: [Users]
+      operationId: deleteUser
+      summary: Delete an unreferenced subscription user
+      security: [{BearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/UserId'}]
+      responses:
+        '204': {description: User deleted}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /api/v1/users/batch-status:
+    post:
+      tags: [Users]
+      operationId: batchUpdateUserStatus
+      summary: Enable or disable multiple users
+      security: [{BearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ResourceBatchUserStatusRequest'}
+      responses:
+        '204': {description: Status updated}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /api/v1/users/{id}/subscription/rotate:
+    post:
+      tags: [Users]
+      operationId: rotateUserSubscription
+      summary: Rotate the user-level subscription link (device credentials unaffected)
+      security: [{BearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/UserId'}]
+      responses:
+        '200':
+          description: Link rotated
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [subscriptionToken]
+                properties:
+                  subscriptionToken: {type: string, minLength: 32}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /api/v1/users/{id}/devices:
+    get:
+      tags: [Users]
+      operationId: listUserDevices
+      summary: List a user's devices with decrypted subscription tokens
+      security: [{BearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/UserId'}]
+      responses:
+        '200':
+          description: Device list
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ResourceDeviceList'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+    post:
+      tags: [Users]
+      operationId: createUserDevice
+      summary: Add a device with an independent credential and subscription link
+      security: [{BearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/UserId'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ResourceCreateDeviceRequest'}
+      responses:
+        '201':
+          description: Device created
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ResourceDeviceMutationResponse'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /api/v1/users/{id}/devices/{did}:
+    patch:
+      tags: [Users]
+      operationId: updateUserDevice
+      summary: Enable or disable a device
+      security: [{BearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/UserId'}, {$ref: '#/components/parameters/DeviceId'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ResourceDeviceUpdateRequest'}
+      responses:
+        '204': {description: Device updated}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+    delete:
+      tags: [Users]
+      operationId: deleteUserDevice
+      summary: Delete a device; its subscription token dies immediately
+      security: [{BearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/UserId'}, {$ref: '#/components/parameters/DeviceId'}]
+      responses:
+        '204': {description: Device deleted}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /api/v1/users/{id}/devices/{did}/credentials/rotate:
+    post:
+      tags: [Users]
+      operationId: rotateUserDevice
+      summary: Rotate a device's credential and return it once
+      security: [{BearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/UserId'}, {$ref: '#/components/parameters/DeviceId'}]
+      responses:
+        '200':
+          description: Device credential rotated
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ResourceDeviceMutationResponse'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /api/v1/users/{id}/traffic/reset:
+    post:
+      tags: [Users]
+      operationId: resetUserTraffic
+      summary: Reset used traffic to zero
+      security: [{BearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/UserId'}]
+      responses:
+        '200':
+          description: Traffic reset
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ResourceUser'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /api/v1/users/{id}/quota/adjust:
+    post:
+      tags: [Users]
+      operationId: adjustUserQuota
+      summary: Add to or set the traffic quota
+      security: [{BearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/UserId'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ResourceTrafficAdjustmentRequest'}
+      responses:
+        '200': {description: Updated user, content: {application/json: {schema: {allOf: [{$ref: '#/components/schemas/SuccessEnvelope'}, {properties: {data: {$ref: '#/components/schemas/ResourceUser'}}}]}}}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /api/v1/users/{id}/traffic/adjust:
+    post:
+      tags: [Users]
+      operationId: adjustUserTraffic
+      summary: Add to or set used traffic
+      security: [{BearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/UserId'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ResourceTrafficAdjustmentRequest'}
+      responses:
+        '200':
+          description: Traffic adjusted
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ResourceUser'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /api/v1/protocol-schemas/{type}:
+    get:
+      tags: [Protocols]
+      operationId: getProtocolSchema
+      summary: Get server-defined fields and defaults for a protocol type
+      security: [{BearerAuth: []}]
+      parameters:
+        - name: type
+          in: path
+          required: true
+          schema: {$ref: '#/components/schemas/ResourceProtocolType'}
+      responses:
+        '200':
+          description: Protocol schema
+          content: {application/json: {schema: {$ref: '#/components/schemas/ResourceProtocolSchema'}}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /api/v1/protocols/suggest-port:
+    post:
+      tags: [Protocols]
+      operationId: suggestProtocolPort
+      summary: Suggest an available listener port for a protocol transport
+      security: [{BearerAuth: []}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/ResourceProtocolPortSuggestionRequest'}}}
+      responses:
+        '200':
+          description: Suggested listener port
+          content: {application/json: {schema: {$ref: '#/components/schemas/ResourceProtocolPortSuggestion'}}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /api/v1/protocols:
+    get:
+      tags: [Protocols]
+      operationId: listProtocols
+      summary: List managed protocols
+      security: [{BearerAuth: []}]
+      responses:
+        '200':
+          description: Protocol list
+          content: {application/json: {schema: {$ref: '#/components/schemas/ResourceProtocolsResponse'}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+    post:
+      tags: [Protocols]
+      operationId: createProtocol
+      summary: Create a typed protocol
+      security: [{BearerAuth: []}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/ResourceCreateProtocolRequest'}}}
+      responses:
+        '201':
+          description: Protocol created
+          content: {application/json: {schema: {$ref: '#/components/schemas/ResourceProtocol'}}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /api/v1/protocols/{id}:
+    get:
+      tags: [Protocols]
+      operationId: getProtocol
+      summary: Get a managed protocol
+      security: [{BearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/ProtocolId'}]
+      responses:
+        '200':
+          description: Protocol detail with secrets masked
+          content: {application/json: {schema: {$ref: '#/components/schemas/ResourceProtocol'}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+    patch:
+      tags: [Protocols]
+      operationId: updateProtocol
+      summary: Update a managed protocol using optimistic locking
+      security: [{BearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/ProtocolId'}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/ResourceUpdateProtocolRequest'}}}
+      responses:
+        '200':
+          description: Protocol updated
+          content: {application/json: {schema: {$ref: '#/components/schemas/ResourceProtocol'}}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+    delete:
+      tags: [Protocols]
+      operationId: deleteProtocol
+      summary: Delete an unreferenced protocol
+      security: [{BearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/ProtocolId'}]
+      responses:
+        '204': {description: Protocol deleted}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /api/v1/protocols/{id}/clone:
+    post:
+      tags: [Protocols]
+      operationId: cloneProtocol
+      summary: Clone a protocol in disabled state
+      security: [{BearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/ProtocolId'}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/ResourceCloneProtocolRequest'}}}
+      responses:
+        '201':
+          description: Protocol cloned
+          content: {application/json: {schema: {$ref: '#/components/schemas/ResourceProtocol'}}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /api/v1/protocols/{id}/rotate-secret:
+    post:
+      tags: [Protocols]
+      operationId: rotateProtocolSecret
+      summary: Rotate and return a protocol server secret once
+      security: [{BearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/ProtocolId'}]
+      responses:
+        '200':
+          description: Secret rotated
+          content: {application/json: {schema: {$ref: '#/components/schemas/ResourceProtocolSecretRotation'}}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /api/v1/certificates/self-signed:
+    post:
+      tags: [Certificates]
+      operationId: createSelfSignedCertificate
+      summary: Generate and store a self-signed server certificate
+      security: [{BearerAuth: []}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/ResourceCreateSelfSignedCertificateRequest'}}}
+      responses:
+        '201':
+          description: Certificate created
+          content: {application/json: {schema: {$ref: '#/components/schemas/ResourceCertificate'}}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /api/v1/certificates/acme:
+    post:
+      tags: [Certificates]
+      operationId: createAcmeCertificate
+      summary: Issue a trusted certificate for a domain via Let's Encrypt DNS-01
+      security: [{BearerAuth: []}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/ResourceCreateAcmeCertificateRequest'}}}
+      responses:
+        '201':
+          description: Certificate issued
+          content: {application/json: {schema: {$ref: '#/components/schemas/ResourceCertificate'}}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /api/v1/certificates/{id}/renew:
+    post:
+      tags: [Certificates]
+      operationId: renewAcmeCertificate
+      summary: Renew an ACME certificate before expiry
+      security: [{BearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/CertificateId'}]
+      responses:
+        '200':
+          description: Certificate renewed
+          content: {application/json: {schema: {$ref: '#/components/schemas/ResourceCertificate'}}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /api/v1/certificates/{id}/regenerate:
+    post:
+      tags: [Certificates]
+      operationId: regenerateSelfSignedCertificate
+      summary: Regenerate a self-signed certificate while preserving its references
+      security: [{BearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/CertificateId'}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/ResourceRegenerateSelfSignedCertificateRequest'}}}
+      responses:
+        '200':
+          description: Certificate regenerated
+          content: {application/json: {schema: {$ref: '#/components/schemas/ResourceCertificate'}}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /api/v1/certificates:
+    get:
+      tags: [Certificates]
+      operationId: listCertificates
+      summary: List certificate metadata
+      security: [{BearerAuth: []}]
+      responses:
+        '200':
+          description: Certificate list
+          content: {application/json: {schema: {$ref: '#/components/schemas/ResourceCertificatesResponse'}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+    post:
+      tags: [Certificates]
+      operationId: createCertificate
+      summary: Parse and store a certificate with an encrypted private key
+      security: [{BearerAuth: []}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/ResourceCreateCertificateRequest'}}}
+      responses:
+        '201':
+          description: Certificate created
+          content: {application/json: {schema: {$ref: '#/components/schemas/ResourceCertificate'}}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /api/v1/certificates/{id}:
+    get:
+      tags: [Certificates]
+      operationId: getCertificate
+      summary: Get certificate metadata without private key material
+      security: [{BearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/CertificateId'}]
+      responses:
+        '200':
+          description: Certificate metadata
+          content: {application/json: {schema: {$ref: '#/components/schemas/ResourceCertificate'}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+    patch:
+      tags: [Certificates]
+      operationId: updateCertificate
+      summary: Replace certificate material using optimistic locking
+      security: [{BearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/CertificateId'}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/ResourceUpdateCertificateRequest'}}}
+      responses:
+        '200':
+          description: Certificate updated
+          content: {application/json: {schema: {$ref: '#/components/schemas/ResourceCertificate'}}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+    delete:
+      tags: [Certificates]
+      operationId: deleteCertificate
+      summary: Delete an unreferenced certificate
+      security: [{BearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/CertificateId'}]
+      responses:
+        '204': {description: Certificate deleted}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /api/v1/policies:
+    get:
+      tags: [Policies]
+      operationId: listPolicies
+      summary: List routing policies
+      security: [{BearerAuth: []}]
+      responses:
+        '200': {description: Policy list, content: {application/json: {schema: {allOf: [{$ref: '#/components/schemas/SuccessEnvelope'}, {properties: {data: {$ref: '#/components/schemas/ResourcePoliciesResponse'}}}]}}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+    post:
+      tags: [Policies]
+      operationId: createPolicy
+      summary: Create a routing policy
+      security: [{BearerAuth: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ResourceCreatePolicyRequest'}}}}
+      responses:
+        '201': {description: Policy created, content: {application/json: {schema: {allOf: [{$ref: '#/components/schemas/SuccessEnvelope'}, {properties: {data: {$ref: '#/components/schemas/ResourcePolicy'}}}]}}}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /api/v1/policies/rule-sets:
+    get:
+      tags: [Policies]
+      operationId: listPolicyRuleSets
+      summary: List available Clash rule-set names for subscription rules
+      security: [{BearerAuth: []}]
+      responses:
+        '200': {description: Rule-set catalog, content: {application/json: {schema: {allOf: [{$ref: '#/components/schemas/SuccessEnvelope'}, {properties: {data: {$ref: '#/components/schemas/PolicyRuleSetsResponse'}}}]}}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /api/v1/policies/{id}:
+    get:
+      tags: [Policies]
+      operationId: getPolicy
+      summary: Get a routing policy
+      security: [{BearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/PolicyId'}]
+      responses:
+        '200': {description: Policy detail, content: {application/json: {schema: {allOf: [{$ref: '#/components/schemas/SuccessEnvelope'}, {properties: {data: {$ref: '#/components/schemas/ResourcePolicy'}}}]}}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+    patch:
+      tags: [Policies]
+      operationId: updatePolicy
+      summary: Update a policy using optimistic locking
+      security: [{BearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/PolicyId'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ResourceUpdatePolicyRequest'}}}}
+      responses:
+        '200': {description: Policy updated, content: {application/json: {schema: {allOf: [{$ref: '#/components/schemas/SuccessEnvelope'}, {properties: {data: {$ref: '#/components/schemas/ResourcePolicy'}}}]}}}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+    delete:
+      tags: [Policies]
+      operationId: deletePolicy
+      summary: Delete an unreferenced policy and its rules
+      security: [{BearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/PolicyId'}]
+      responses:
+        '204': {description: Policy deleted}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /api/v1/policies/{id}/clone:
+    post:
+      tags: [Policies]
+      operationId: clonePolicy
+      summary: Clone a policy and its rules in disabled state
+      security: [{BearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/PolicyId'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ResourceClonePolicyRequest'}}}}
+      responses:
+        '201': {description: Policy cloned, content: {application/json: {schema: {allOf: [{$ref: '#/components/schemas/SuccessEnvelope'}, {properties: {data: {$ref: '#/components/schemas/ResourcePolicy'}}}]}}}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /api/v1/policies/{id}/rules:
+    get:
+      tags: [Policies]
+      operationId: listPolicyRules
+      summary: List policy rules in evaluation order
+      security: [{BearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/PolicyId'}]
+      responses:
+        '200': {description: Rule list, content: {application/json: {schema: {allOf: [{$ref: '#/components/schemas/SuccessEnvelope'}, {properties: {data: {$ref: '#/components/schemas/ResourcePolicyRulesResponse'}}}]}}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+    post:
+      tags: [Policies]
+      operationId: createPolicyRule
+      summary: Create a policy rule
+      security: [{BearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/PolicyId'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ResourceCreatePolicyRuleRequest'}}}}
+      responses:
+        '201': {description: Rule created, content: {application/json: {schema: {allOf: [{$ref: '#/components/schemas/SuccessEnvelope'}, {properties: {data: {$ref: '#/components/schemas/ResourcePolicyRule'}}}]}}}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /api/v1/policies/{id}/rules/{ruleId}:
+    patch:
+      tags: [Policies]
+      operationId: updatePolicyRule
+      summary: Update a policy rule using optimistic locking
+      security: [{BearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/PolicyId'}, {$ref: '#/components/parameters/RuleId'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ResourceUpdatePolicyRuleRequest'}}}}
+      responses:
+        '200': {description: Rule updated, content: {application/json: {schema: {allOf: [{$ref: '#/components/schemas/SuccessEnvelope'}, {properties: {data: {$ref: '#/components/schemas/ResourcePolicyRule'}}}]}}}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+    delete:
+      tags: [Policies]
+      operationId: deletePolicyRule
+      summary: Delete a policy rule
+      security: [{BearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/PolicyId'}, {$ref: '#/components/parameters/RuleId'}]
+      responses:
+        '204': {description: Rule deleted}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /api/v1/policies/{id}/rules/order:
+    put:
+      tags: [Policies]
+      operationId: orderPolicyRules
+      summary: Replace the complete policy rule order
+      security: [{BearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/PolicyId'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ResourceOrderPolicyRulesRequest'}}}}
+      responses:
+        '200': {description: Reordered rules, content: {application/json: {schema: {allOf: [{$ref: '#/components/schemas/SuccessEnvelope'}, {properties: {data: {$ref: '#/components/schemas/ResourcePolicyRulesResponse'}}}]}}}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /api/v1/policies/{id}/dry-run:
+    post:
+      tags: [Policies]
+      operationId: dryRunPolicy
+      summary: Evaluate an input against ordered policy rules
+      security: [{BearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/PolicyId'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ResourcePolicyDryRunRequest'}}}}
+      responses:
+        '200': {description: Evaluation trace, content: {application/json: {schema: {allOf: [{$ref: '#/components/schemas/SuccessEnvelope'}, {properties: {data: {$ref: '#/components/schemas/ResourcePolicyDryRunResult'}}}]}}}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /api/v1/policies/{id}/validate:
+    post:
+      tags: [Policies]
+      operationId: validatePolicy
+      summary: Detect conflicting and unreachable policy rules
+      security: [{BearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/PolicyId'}]
+      responses:
+        '200': {description: Validation result, content: {application/json: {schema: {allOf: [{$ref: '#/components/schemas/SuccessEnvelope'}, {properties: {data: {$ref: '#/components/schemas/ResourcePolicyValidationResult'}}}]}}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /api/v1/singbox:
+    get:
+      tags: [SingBox]
+      operationId: getSingBoxConfig
+      summary: Get managed sing-box server configuration
+      security: [{BearerAuth: []}]
+      responses:
+        '200': {description: Managed configuration, content: {application/json: {schema: {allOf: [{$ref: '#/components/schemas/SuccessEnvelope'}, {properties: {data: {$ref: '#/components/schemas/SingBoxConfig'}}}]}}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+    patch:
+      tags: [SingBox]
+      operationId: updateSingBoxConfig
+      summary: Update managed sing-box server configuration and synchronize it locally
+      security: [{BearerAuth: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/SingBoxConfigUpdateRequest'}}}}
+      responses:
+        '200': {description: Updated configuration, content: {application/json: {schema: {allOf: [{$ref: '#/components/schemas/SuccessEnvelope'}, {properties: {data: {$ref: '#/components/schemas/SingBoxConfig'}}}]}}}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /api/v1/singbox/runtime:
+    get:
+      tags: [SingBox]
+      operationId: getSingBoxRuntime
+      summary: Get local sing-box runtime status and capabilities
+      security: [{BearerAuth: []}]
+      responses:
+        '200': {description: Runtime status, content: {application/json: {schema: {allOf: [{$ref: '#/components/schemas/SuccessEnvelope'}, {properties: {data: {$ref: '#/components/schemas/SingBoxRuntimeStatus'}}}]}}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /api/v1/singbox/check:
+    post:
+      tags: [SingBox]
+      operationId: checkSingBoxRuntime
+      summary: Compile and check the managed configuration with the embedded core
+      security: [{BearerAuth: []}]
+      responses:
+        '200': {description: Check result, content: {application/json: {schema: {allOf: [{$ref: '#/components/schemas/SuccessEnvelope'}, {properties: {data: {$ref: '#/components/schemas/SingBoxCheckResult'}}}]}}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /api/v1/singbox/reconcile:
+    post:
+      tags: [SingBox]
+      operationId: reconcileSingBoxRuntime
+      summary: Compile and recreate the embedded sing-box runtime
+      security: [{BearerAuth: []}]
+      responses:
+        '200': {description: Applied runtime state, content: {application/json: {schema: {allOf: [{$ref: '#/components/schemas/SuccessEnvelope'}, {properties: {data: {$ref: '#/components/schemas/SingBoxSyncResult'}}}]}}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /api/v1/singbox/restart:
+    post:
+      tags: [SingBox]
+      operationId: restartSingBoxRuntime
+      summary: Recreate the embedded sing-box runtime from the last applied configuration
+      security: [{BearerAuth: []}]
+      responses:
+        '204': {description: Restarted}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /api/v1/singbox/connections:
+    get:
+      tags: [SingBox]
+      operationId: listSingBoxConnections
+      summary: List current local Clash API connections when supported
+      security: [{BearerAuth: []}]
+      responses:
+        '200': {description: Connection observation result, content: {application/json: {schema: {allOf: [{$ref: '#/components/schemas/SuccessEnvelope'}, {properties: {data: {$ref: '#/components/schemas/SingBoxConnectionsResult'}}}]}}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /api/v1/singbox/connections/{id}:
+    delete:
+      tags: [SingBox]
+      operationId: closeSingBoxConnection
+      summary: Close one observed Clash API connection
+      security: [{BearerAuth: []}]
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+      responses:
+        '204': {description: Closed}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /api/v1/singbox/outbounds:
+    get:
+      tags: [SingBox]
+      operationId: listSingBoxOutbounds
+      summary: List built-in and managed outbounds（SOCKS 与 WARP）
+      security: [{BearerAuth: []}]
+      responses:
+        '200': {description: Outbound list, content: {application/json: {schema: {allOf: [{$ref: '#/components/schemas/SuccessEnvelope'}, {properties: {data: {$ref: '#/components/schemas/SingBoxOutboundsResponse'}}}]}}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+    post:
+      tags: [SingBox]
+      operationId: createSingBoxOutbound
+      summary: Create a managed outbound（SOCKS 或 WARP）
+      security: [{BearerAuth: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/SingBoxCreateOutboundRequest'}}}}
+      responses:
+        '201': {description: Outbound created, content: {application/json: {schema: {allOf: [{$ref: '#/components/schemas/SuccessEnvelope'}, {properties: {data: {$ref: '#/components/schemas/SingBoxOutbound'}}}]}}}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /api/v1/singbox/outbounds/warp/register:
+    post:
+      tags: [SingBox]
+      operationId: registerSingBoxWarp
+      summary: 注册一个免费 WARP 账户并返回可保存的出站参数
+      security: [{BearerAuth: []}]
+      responses:
+        '200': {description: WARP account settings, content: {application/json: {schema: {allOf: [{$ref: '#/components/schemas/SuccessEnvelope'}, {properties: {data: {$ref: '#/components/schemas/WarpRegistrationResult'}}}]}}}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /api/v1/singbox/argos:
+    get:
+      tags: [SingBox]
+      operationId: listArgoTunnels
+      summary: List Argo tunnels
+      security: [{BearerAuth: []}]
+      responses:
+        '200': {description: Tunnel list, content: {application/json: {schema: {allOf: [{$ref: '#/components/schemas/SuccessEnvelope'}, {properties: {data: {$ref: '#/components/schemas/ArgoTunnelsResponse'}}}]}}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+    post:
+      tags: [SingBox]
+      operationId: createArgoTunnel
+      summary: Create an Argo tunnel
+      security: [{BearerAuth: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ArgoCreateTunnelRequest'}}}}
+      responses:
+        '201': {description: Tunnel created, content: {application/json: {schema: {allOf: [{$ref: '#/components/schemas/SuccessEnvelope'}, {properties: {data: {$ref: '#/components/schemas/ArgoTunnel'}}}]}}}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /api/v1/singbox/argos/{id}:
+    patch:
+      tags: [SingBox]
+      operationId: updateArgoTunnel
+      summary: Update an Argo tunnel
+      security: [{BearerAuth: []}]
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ArgoUpdateTunnelRequest'}}}}
+      responses:
+        '200': {description: Tunnel updated, content: {application/json: {schema: {allOf: [{$ref: '#/components/schemas/SuccessEnvelope'}, {properties: {data: {$ref: '#/components/schemas/ArgoTunnel'}}}]}}}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+    delete:
+      tags: [SingBox]
+      operationId: deleteArgoTunnel
+      summary: Delete an Argo tunnel
+      security: [{BearerAuth: []}]
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+      responses:
+        '204': {description: Tunnel deleted}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /api/v1/singbox/argos/{id}/restart:
+    post:
+      tags: [SingBox]
+      operationId: restartArgoTunnel
+      summary: Restart an Argo tunnel process
+      security: [{BearerAuth: []}]
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+      responses:
+        '204': {description: Restart scheduled}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /api/v1/singbox/route-rules/ai-template:
+    post:
+      tags: [SingBox]
+      operationId: applySingBoxAITemplate
+      summary: 一键创建/更新「AI 解锁」分流规则（openai/gemini/anthropic → 指定出站）
+      security: [{BearerAuth: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/SingBoxAITemplateRequest'}}}}
+      responses:
+        '200': {description: Template rule, content: {application/json: {schema: {allOf: [{$ref: '#/components/schemas/SuccessEnvelope'}, {properties: {data: {$ref: '#/components/schemas/SingBoxRouteRule'}}}]}}}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /api/v1/singbox/outbounds/{id}:
+    patch:
+      tags: [SingBox]
+      operationId: updateSingBoxOutbound
+      summary: Update a managed SOCKS outbound
+      security: [{BearerAuth: []}]
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/SingBoxUpdateOutboundRequest'}}}}
+      responses:
+        '200': {description: Outbound updated, content: {application/json: {schema: {allOf: [{$ref: '#/components/schemas/SuccessEnvelope'}, {properties: {data: {$ref: '#/components/schemas/SingBoxOutbound'}}}]}}}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+    delete:
+      tags: [SingBox]
+      operationId: deleteSingBoxOutbound
+      summary: Delete an unreferenced managed SOCKS outbound
+      security: [{BearerAuth: []}]
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+      responses:
+        '204': {description: Outbound deleted}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /api/v1/singbox/rule-sets:
+    get:
+      tags: [SingBox]
+      operationId: listSingBoxRuleSets
+      summary: List managed remote rule sets
+      security: [{BearerAuth: []}]
+      responses:
+        '200': {description: Rule set list, content: {application/json: {schema: {allOf: [{$ref: '#/components/schemas/SuccessEnvelope'}, {properties: {data: {$ref: '#/components/schemas/SingBoxRuleSetsResponse'}}}]}}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+    post:
+      tags: [SingBox]
+      operationId: createSingBoxRuleSet
+      summary: Create a remote rule set
+      security: [{BearerAuth: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/SingBoxCreateRuleSetRequest'}}}}
+      responses:
+        '201': {description: Rule set created, content: {application/json: {schema: {allOf: [{$ref: '#/components/schemas/SuccessEnvelope'}, {properties: {data: {$ref: '#/components/schemas/SingBoxRuleSet'}}}]}}}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /api/v1/singbox/rule-sets/{id}:
+    patch:
+      tags: [SingBox]
+      operationId: updateSingBoxRuleSet
+      summary: Update a remote rule set
+      security: [{BearerAuth: []}]
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/SingBoxUpdateRuleSetRequest'}}}}
+      responses:
+        '200': {description: Rule set updated, content: {application/json: {schema: {allOf: [{$ref: '#/components/schemas/SuccessEnvelope'}, {properties: {data: {$ref: '#/components/schemas/SingBoxRuleSet'}}}]}}}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+    delete:
+      tags: [SingBox]
+      operationId: deleteSingBoxRuleSet
+      summary: Delete an unreferenced rule set
+      security: [{BearerAuth: []}]
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+      responses:
+        '204': {description: Rule set deleted}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /api/v1/singbox/route-rules:
+    get:
+      tags: [SingBox]
+      operationId: listSingBoxRouteRules
+      summary: List ordered server-side route rules
+      security: [{BearerAuth: []}]
+      responses:
+        '200': {description: Route rule list, content: {application/json: {schema: {allOf: [{$ref: '#/components/schemas/SuccessEnvelope'}, {properties: {data: {$ref: '#/components/schemas/SingBoxRouteRulesResponse'}}}]}}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+    post:
+      tags: [SingBox]
+      operationId: createSingBoxRouteRule
+      summary: Create a server-side route rule
+      security: [{BearerAuth: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/SingBoxCreateRouteRuleRequest'}}}}
+      responses:
+        '201': {description: Route rule created, content: {application/json: {schema: {allOf: [{$ref: '#/components/schemas/SuccessEnvelope'}, {properties: {data: {$ref: '#/components/schemas/SingBoxRouteRule'}}}]}}}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /api/v1/singbox/route-rules/{id}:
+    patch:
+      tags: [SingBox]
+      operationId: updateSingBoxRouteRule
+      summary: Update a server-side route rule
+      security: [{BearerAuth: []}]
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/SingBoxUpdateRouteRuleRequest'}}}}
+      responses:
+        '200': {description: Route rule updated, content: {application/json: {schema: {allOf: [{$ref: '#/components/schemas/SuccessEnvelope'}, {properties: {data: {$ref: '#/components/schemas/SingBoxRouteRule'}}}]}}}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+    delete:
+      tags: [SingBox]
+      operationId: deleteSingBoxRouteRule
+      summary: Delete a server-side route rule
+      security: [{BearerAuth: []}]
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+      responses:
+        '204': {description: Route rule deleted}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /api/v1/singbox/route-rules/order:
+    put:
+      tags: [SingBox]
+      operationId: orderSingBoxRouteRules
+      summary: Replace server-side route rule order
+      security: [{BearerAuth: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/SingBoxOrderRouteRulesRequest'}}}}
+      responses:
+        '200': {description: Reordered rules, content: {application/json: {schema: {allOf: [{$ref: '#/components/schemas/SuccessEnvelope'}, {properties: {data: {$ref: '#/components/schemas/SingBoxRouteRulesResponse'}}}]}}}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /api/v1/singbox/route-rules/dry-run:
+    post:
+      tags: [SingBox]
+      operationId: dryRunSingBoxRoutes
+      summary: Evaluate traffic against server-side route rules
+      security: [{BearerAuth: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/SingBoxDryRunRequest'}}}}
+      responses:
+        '200': {description: Evaluation trace, content: {application/json: {schema: {allOf: [{$ref: '#/components/schemas/SuccessEnvelope'}, {properties: {data: {$ref: '#/components/schemas/SingBoxDryRunResult'}}}]}}}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /api/v1/singbox/validate:
+    post:
+      tags: [SingBox]
+      operationId: validateSingBox
+      summary: Validate managed sing-box configuration
+      security: [{BearerAuth: []}]
+      responses:
+        '200': {description: Validation result, content: {application/json: {schema: {allOf: [{$ref: '#/components/schemas/SuccessEnvelope'}, {properties: {data: {$ref: '#/components/schemas/SingBoxValidationResult'}}}]}}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /api/v1/overview:
+    get:
+      tags: [Overview]
+      operationId: getOverview
+      summary: Get resource and local sing-box runtime status
+      security: [{BearerAuth: []}]
+      responses:
+        '200': {description: Overview, content: {application/json: {schema: {allOf: [{$ref: '#/components/schemas/SuccessEnvelope'}, {properties: {data: {$ref: '#/components/schemas/ManagementOverview'}}}]}}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /api/v1/monitor:
+    get:
+      tags: [Monitor]
+      operationId: getMonitorStatus
+      summary: Get host-level server metrics snapshot with recent trend history
+      security: [{BearerAuth: []}]
+      responses:
+        '200': {description: Server metrics snapshot sampled every 5 seconds with the last 10 minutes of history, content: {application/json: {schema: {allOf: [{$ref: '#/components/schemas/SuccessEnvelope'}, {properties: {data: {$ref: '#/components/schemas/ManagementMonitorStatus'}}}]}}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /api/v1/audit-logs:
+    get:
+      tags: [Audit]
+      operationId: listAuditLogs
+      summary: Query audit logs with cursor pagination
+      security: [{BearerAuth: []}]
+      parameters:
+        - {$ref: '#/components/parameters/Cursor'}
+        - {$ref: '#/components/parameters/Limit'}
+        - {name: actor, in: query, schema: {type: string, format: uuid}}
+        - {name: resource, in: query, schema: {type: string}}
+        - {name: action, in: query, schema: {type: string}}
+        - {name: result, in: query, schema: {type: string}}
+        - {name: from, in: query, schema: {type: string, format: date-time}}
+        - {name: to, in: query, schema: {type: string, format: date-time}}
+      responses:
+        '200': {description: Audit page, content: {application/json: {schema: {allOf: [{$ref: '#/components/schemas/SuccessEnvelope'}, {properties: {data: {$ref: '#/components/schemas/ManagementAuditPage'}}}]}}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /api/v1/events:
+    get:
+      tags: [Events]
+      operationId: streamEvents
+      summary: Stream resumable permission-filtered operations events
+      security: [{BearerAuth: []}]
+      parameters:
+        - {name: Last-Event-ID, in: header, schema: {type: integer, format: int64}}
+      responses:
+        '200': {description: SSE stream, content: {text/event-stream: {schema: {type: string}}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /api/v1/traffic/series:
+    get:
+      tags: [Traffic]
+      operationId: getTrafficSeries
+      summary: Query hourly or daily traffic series
+      security: [{BearerAuth: []}]
+      parameters: &trafficFilters
+        - {name: from, in: query, required: true, schema: {type: string, format: date-time}}
+        - {name: to, in: query, required: true, schema: {type: string, format: date-time}}
+        - {name: interval, in: query, schema: {type: string, enum: [hour, day], default: hour}}
+        - {name: userId, in: query, schema: {type: string, format: uuid}}
+        - {name: protocolId, in: query, schema: {type: string, format: uuid}}
+      responses:
+        '200': {description: Traffic points, content: {application/json: {schema: {allOf: [{$ref: '#/components/schemas/SuccessEnvelope'}, {properties: {data: {$ref: '#/components/schemas/TrafficSeriesResponse'}}}]}}}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /api/v1/traffic/summary:
+    get:
+      tags: [Traffic]
+      operationId: getTrafficSummary
+      summary: Query traffic totals for a time range
+      security: [{BearerAuth: []}]
+      parameters: *trafficFilters
+      responses:
+        '200': {description: Traffic totals, content: {application/json: {schema: {allOf: [{$ref: '#/components/schemas/SuccessEnvelope'}, {properties: {data: {$ref: '#/components/schemas/TrafficSummary'}}}]}}}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /api/v1/traffic/rankings:
+    get:
+      tags: [Traffic]
+      operationId: getTrafficRankings
+      summary: Rank users or protocols by traffic
+      security: [{BearerAuth: []}]
+      parameters:
+        - {name: from, in: query, required: true, schema: {type: string, format: date-time}}
+        - {name: to, in: query, required: true, schema: {type: string, format: date-time}}
+        - {name: dimension, in: query, required: true, schema: {type: string, enum: [user, protocol]}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 10}}
+        - {name: userId, in: query, schema: {type: string, format: uuid}}
+        - {name: protocolId, in: query, schema: {type: string, format: uuid}}
+      responses:
+        '200': {description: Dimension rankings, content: {application/json: {schema: {allOf: [{$ref: '#/components/schemas/SuccessEnvelope'}, {properties: {data: {$ref: '#/components/schemas/TrafficRankingResponse'}}}]}}}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /api/v1/traffic/active-users:
+    get:
+      tags: [Traffic]
+      operationId: getTrafficActiveUsers
+      summary: Query the distinct active-user trend for a time range
+      security: [{BearerAuth: []}]
+      parameters: *trafficFilters
+      responses:
+        '200': {description: Active-user trend and range total, content: {application/json: {schema: {allOf: [{$ref: '#/components/schemas/SuccessEnvelope'}, {properties: {data: {$ref: '#/components/schemas/TrafficActiveUsersResponse'}}}]}}}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /api/v1/traffic/protocol-shares:
+    get:
+      tags: [Traffic]
+      operationId: getTrafficProtocolShares
+      summary: Query each protocol's share of inbound-attributed traffic
+      security: [{BearerAuth: []}]
+      parameters: *trafficFilters
+      responses:
+        '200': {description: Protocol traffic shares, content: {application/json: {schema: {allOf: [{$ref: '#/components/schemas/SuccessEnvelope'}, {properties: {data: {$ref: '#/components/schemas/TrafficProtocolShareResponse'}}}]}}}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /api/v1/alerts:
+    get:
+      tags: [Alerts]
+      operationId: listAlerts
+      summary: List operational alerts
+      security: [{BearerAuth: []}]
+      parameters:
+        - {name: status, in: query, schema: {type: string, enum: [open, resolved]}}
+        - {name: severity, in: query, schema: {type: string, enum: [warning, critical]}}
+        - {name: type, in: query, schema: {type: string}}
+      responses: {'200': {description: Alert list, content: {application/json: {schema: {$ref: '#/components/schemas/AlertPage'}}}}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}}
+  /api/v1/alerts/{id}/acknowledge:
+    post:
+      tags: [Alerts]
+      operationId: acknowledgeAlert
+      summary: Acknowledge an operational alert
+      security: [{BearerAuth: []}]
+      parameters: [{name: id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses: {'200': {description: Acknowledged alert, content: {application/json: {schema: {$ref: '#/components/schemas/Alert'}}}}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}, '404': {$ref: '#/components/responses/NotFound'}}
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ManagementErrorResponse'
+    Unauthorized:
+      description: Authentication required or invalid credentials
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ManagementErrorResponse'
+    Forbidden:
+      description: Password change or permission required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ManagementErrorResponse'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ManagementErrorResponse'
+    Conflict:
+      description: Revision, username, or last-admin conflict
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ManagementErrorResponse'
+    RateLimited:
+      description: Too many login attempts
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ManagementErrorResponse'
+  parameters:
+    UserId:
+      name: id
+      in: path
+      required: true
+      description: Subscription user UUID
+      schema: {type: string, format: uuid}
+    DeviceId:
+      name: did
+      in: path
+      required: true
+      description: Device UUID
+      schema: {type: string, format: uuid}
+    Cursor:
+      name: cursor
+      in: query
+      schema: {type: string}
+    Limit:
+      name: limit
+      in: query
+      schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+    ProtocolId:
+      name: id
+      in: path
+      required: true
+      description: Protocol UUID
+      schema: {type: string, format: uuid}
+    CertificateId:
+      name: id
+      in: path
+      required: true
+      description: Certificate UUID
+      schema: {type: string, format: uuid}
+    PolicyId:
+      name: id
+      in: path
+      required: true
+      description: Policy UUID
+      schema: {type: string, format: uuid}
+    RuleId:
+      name: ruleId
+      in: path
+      required: true
+      description: Rule UUID
+      schema: {type: string, format: uuid}
+  schemas:
+    SetupStatusResponse:
+      type: object
+      additionalProperties: false
+      required: [initialized]
+      properties:
+        initialized:
+          type: boolean
+    SetupAdminRequest:
+      type: object
+      additionalProperties: false
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          minLength: 1
+        password:
+          type: string
+          minLength: 10
+    IdentityAccount:
+      type: object
+      additionalProperties: false
+      required: [id, username, enabled, revision, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        username:
+          type: string
+        enabled:
+          type: boolean
+        revision:
+          type: integer
+          format: int64
+          minimum: 1
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    IdentityPrincipal:
+      type: object
+      additionalProperties: false
+      required: [id, username]
+      properties:
+        id:
+          type: string
+          format: uuid
+        username:
+          type: string
+    IdentityLoginRequest:
+      type: object
+      additionalProperties: false
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          minLength: 1
+        password:
+          type: string
+          minLength: 1
+    IdentityLoginResponse:
+      type: object
+      additionalProperties: false
+      required: [token, expiresAt, user]
+      properties:
+        token:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+        user:
+          $ref: '#/components/schemas/IdentityAccount'
+    IdentityMeResponse:
+      type: object
+      additionalProperties: false
+      required: [user]
+      properties:
+        user:
+          $ref: '#/components/schemas/IdentityPrincipal'
+    IdentityChangePasswordRequest:
+      type: object
+      additionalProperties: false
+      required: [currentPassword, newPassword]
+      properties:
+        currentPassword:
+          type: string
+          minLength: 1
+        newPassword:
+          type: string
+          minLength: 10
+    ResourceUserStatus:
+      type: string
+      enum: [active, disabled, expired, quotaExceeded]
+    ResourceIssuedCredential:
+      type: object
+      additionalProperties: false
+      required: [deviceId, token, uuid, password]
+      properties:
+        deviceId: {type: string, format: uuid}
+        token: {type: string, minLength: 32}
+        uuid: {type: string, format: uuid}
+        password: {type: string, minLength: 16}
+    ResourceDevice:
+      type: object
+      additionalProperties: false
+      required: [id, name, enabled, usedBytes, token, uuid, auto, platform, client, clientVersion, rotatedAt, createdAt]
+      description: One device = an independent credential and subscription link; inbound users are named by device id so V2Ray stats attribute traffic per device.
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string}
+        enabled: {type: boolean}
+        usedBytes: {type: integer, format: int64, minimum: 0}
+        token: {type: string, description: Decrypted subscription token for building the clash.yaml link.}
+        uuid: {type: string, format: uuid}
+        auto: {type: boolean, description: True when the device was auto-created from a subscription User-Agent fingerprint; the default device (user-level link) and manually added devices are false.}
+        platform: {type: string, enum: [windows, macos, linux, android, ios, unknown]}
+        client: {type: string, description: Latest observed subscription client name.}
+        clientVersion: {type: string, description: Latest observed subscription client version.}
+        lastSeenAt: {type: [string, 'null'], format: date-time, description: Latest observed subscription request time.}
+        rotatedAt: {type: string, format: date-time}
+        createdAt: {type: string, format: date-time}
+    ResourceDeviceList:
+      type: object
+      additionalProperties: false
+      required: [items, subscriptionToken]
+      properties:
+        items:
+          type: array
+          items: {$ref: '#/components/schemas/ResourceDevice'}
+        subscriptionToken: {type: string, description: The user-level subscription link token; devices are auto-discovered when clients import it.}
+    ResourceCreateDeviceRequest:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name: {type: string, minLength: 1}
+    ResourceDeviceUpdateRequest:
+      type: object
+      additionalProperties: false
+      required: [enabled]
+      properties:
+        enabled: {type: boolean}
+    ResourceDeviceMutationResponse:
+      type: object
+      additionalProperties: false
+      required: [device, credential]
+      properties:
+        device: {$ref: '#/components/schemas/ResourceDevice'}
+        credential: {$ref: '#/components/schemas/ResourceIssuedCredential'}
+    ResourceUser:
+      type: object
+      additionalProperties: false
+      required: [id, name, enabled, status, quotaBytes, usedBytes, resetIntervalDays, protocolIds, policyIds, deviceCount, revision, createdAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string}
+        enabled: {type: boolean}
+        status: {$ref: '#/components/schemas/ResourceUserStatus'}
+        quotaBytes: {type: integer, format: int64, minimum: 0}
+        usedBytes: {type: integer, format: int64, minimum: 0}
+        expiresAt:
+          type: [string, 'null']
+          format: date-time
+        resetIntervalDays: {type: integer, minimum: 0}
+        nextResetAt:
+          type: [string, 'null']
+          format: date-time
+        protocolIds:
+          type: array
+          uniqueItems: true
+          items: {type: string, format: uuid}
+        policyIds:
+          type: array
+          maxItems: 1
+          uniqueItems: true
+          items: {type: string, format: uuid}
+        deviceCount: {type: integer, minimum: 0, description: Number of devices (independent credentials) under this user.}
+        revision: {type: integer, format: int64, minimum: 1}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    ResourceCreateUserRequest:
+      type: object
+      additionalProperties: false
+      required: [name, enabled, quotaBytes, resetIntervalDays, protocolIds, policyIds]
+      properties:
+        name: {type: string, minLength: 1}
+        enabled: {type: boolean}
+        quotaBytes: {type: integer, format: int64, minimum: 0}
+        expiresAt:
+          type: [string, 'null']
+          format: date-time
+        resetIntervalDays: {type: integer, minimum: 0}
+        protocolIds:
+          type: array
+          uniqueItems: true
+          items: {type: string, format: uuid}
+        policyIds:
+          type: array
+          maxItems: 1
+          uniqueItems: true
+          items: {type: string, format: uuid}
+    ResourceUpdateUserRequest:
+      allOf:
+        - $ref: '#/components/schemas/ResourceCreateUserRequest'
+        - type: object
+          required: [revision]
+          properties:
+            revision: {type: integer, format: int64, minimum: 1}
+    ResourceUsersPage:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: {$ref: '#/components/schemas/ResourceUser'}
+        nextCursor: {type: string}
+    ResourceUserMutationResponse:
+      type: object
+      additionalProperties: false
+      required: [user, subscriptionToken]
+      description: Creating a user only issues the user-level subscription link; devices appear when clients import it.
+      properties:
+        user: {$ref: '#/components/schemas/ResourceUser'}
+        subscriptionToken: {type: string, minLength: 32}
+    ResourceBatchUserStatusRequest:
+      type: object
+      additionalProperties: false
+      required: [ids, enabled]
+      properties:
+        ids:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: {type: string, format: uuid}
+        enabled: {type: boolean}
+    ResourceTrafficAdjustmentRequest:
+      type: object
+      additionalProperties: false
+      required: [mode, bytes]
+      properties:
+        mode: {type: string, enum: [add, set]}
+        bytes: {type: integer, format: int64}
+    ResourceProtocolType:
+      type: string
+      enum: [vless, vmess, hysteria2, tuic, anytls, shadowsocks, trojan]
+    ResourceProtocolField:
+      type: object
+      additionalProperties: false
+      required: [name, label, kind, group, required, secret]
+      properties:
+        name: {type: string}
+        label: {type: string}
+        kind: {type: string, enum: [text, password, number, select, boolean]}
+        group: {type: string, enum: [basic, transport, tls, reality, security, advanced]}
+        required: {type: boolean}
+        secret: {type: boolean}
+        options:
+          type: array
+          items: {type: string}
+        hint: {type: string}
+    ResourceProtocolSchema:
+      type: object
+      additionalProperties: false
+      required: [type, fields, defaults, certificateRequired]
+      properties:
+        type: {$ref: '#/components/schemas/ResourceProtocolType'}
+        fields:
+          type: array
+          items: {$ref: '#/components/schemas/ResourceProtocolField'}
+        defaults:
+          type: object
+          additionalProperties: true
+        certificateRequired: {type: boolean}
+        certificateRequiredWhen:
+          type: object
+          additionalProperties:
+            type: array
+            items: {type: string}
+    ResourceProtocolPortSuggestionRequest:
+      type: object
+      additionalProperties: false
+      required: [type]
+      properties:
+        type: {$ref: '#/components/schemas/ResourceProtocolType'}
+    ResourceProtocolPortSuggestion:
+      type: object
+      additionalProperties: false
+      required: [listenPort]
+      properties:
+        listenPort: {type: integer, minimum: 1, maximum: 65535}
+    ResourceProtocol:
+      type: object
+      additionalProperties: false
+      required: [id, name, type, enabled, listen, listenPort, settings, revision, createdAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string}
+        type: {$ref: '#/components/schemas/ResourceProtocolType'}
+        enabled: {type: boolean}
+        listen: {type: string}
+        listenPort: {type: integer, minimum: 1, maximum: 65535}
+        settings:
+          type: object
+          additionalProperties: true
+        certificateId:
+          type: [string, 'null']
+          format: uuid
+        revision: {type: integer, format: int64, minimum: 1}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    ResourceCreateProtocolRequest:
+      type: object
+      additionalProperties: false
+      required: [name, type, enabled, listen, listenPort, settings]
+      properties:
+        name: {type: string, minLength: 1}
+        type: {$ref: '#/components/schemas/ResourceProtocolType'}
+        enabled: {type: boolean}
+        listen: {type: string, default: '::'}
+        listenPort: {type: integer, minimum: 1, maximum: 65535}
+        settings:
+          type: object
+          additionalProperties: true
+        certificateId:
+          type: [string, 'null']
+          format: uuid
+    ResourceUpdateProtocolRequest:
+      allOf:
+        - $ref: '#/components/schemas/ResourceCreateProtocolRequest'
+        - type: object
+          required: [revision]
+          properties:
+            revision: {type: integer, format: int64, minimum: 1}
+    ResourceCloneProtocolRequest:
+      type: object
+      additionalProperties: false
+      required: [name, listenPort]
+      properties:
+        name: {type: string, minLength: 1}
+        listenPort: {type: integer, minimum: 1, maximum: 65535}
+    ResourceProtocolSecretRotation:
+      type: object
+      additionalProperties: false
+      required: [protocol, field, value]
+      properties:
+        protocol: {$ref: '#/components/schemas/ResourceProtocol'}
+        field: {type: string}
+        value: {type: string}
+    ResourceProtocolsResponse:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: {$ref: '#/components/schemas/ResourceProtocol'}
+    ResourceCertificate:
+      type: object
+      additionalProperties: false
+      required: [id, name, source, fingerprint, notBefore, notAfter, revision, createdAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string}
+        source: {type: string, enum: [self_signed, manual, acme]}
+        domain: {type: string}
+        fingerprint: {type: string, pattern: '^[0-9a-f]{64}$'}
+        notBefore: {type: string, format: date-time}
+        notAfter: {type: string, format: date-time}
+        revision: {type: integer, format: int64, minimum: 1}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    ResourceCreateAcmeCertificateRequest:
+      type: object
+      additionalProperties: false
+      required: [name, domain]
+      properties:
+        name: {type: string, minLength: 1}
+        domain: {type: string, minLength: 1}
+    ResourceCreateCertificateRequest:
+      type: object
+      additionalProperties: false
+      required: [name, certificatePem, privateKeyPem]
+      properties:
+        name: {type: string, minLength: 1}
+        certificatePem: {type: string, minLength: 1}
+        privateKeyPem: {type: string, minLength: 1}
+    ResourceCreateSelfSignedCertificateRequest:
+      type: object
+      additionalProperties: false
+      required: [name, serverName]
+      properties:
+        name: {type: string, minLength: 1}
+        serverName: {type: string, minLength: 1}
+    ResourceRegenerateSelfSignedCertificateRequest:
+      type: object
+      additionalProperties: false
+      required: [revision, serverName]
+      properties:
+        revision: {type: integer, format: int64, minimum: 1}
+        serverName: {type: string, minLength: 1}
+    ResourceUpdateCertificateRequest:
+      allOf:
+        - $ref: '#/components/schemas/ResourceCreateCertificateRequest'
+        - type: object
+          required: [revision]
+          properties:
+            revision: {type: integer, format: int64, minimum: 1}
+    ResourceCertificatesResponse:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: {$ref: '#/components/schemas/ResourceCertificate'}
+    ResourcePolicy:
+      type: object
+      additionalProperties: false
+      required: [id, name, description, enabled, defaultAction, revision, createdAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string}
+        description: {type: string}
+        enabled: {type: boolean}
+        defaultAction: {type: string}
+        revision: {type: integer, format: int64, minimum: 1}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    ResourceCreatePolicyRequest:
+      type: object
+      additionalProperties: false
+      required: [name, description, enabled, defaultAction]
+      properties:
+        name: {type: string, minLength: 1}
+        description: {type: string}
+        enabled: {type: boolean}
+        defaultAction: {type: string, minLength: 1}
+    ResourceUpdatePolicyRequest:
+      allOf:
+        - $ref: '#/components/schemas/ResourceCreatePolicyRequest'
+        - type: object
+          required: [revision]
+          properties:
+            revision: {type: integer, format: int64, minimum: 1}
+    ResourceClonePolicyRequest:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name: {type: string, minLength: 1}
+    ResourcePoliciesResponse:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/ResourcePolicy'}}
+    PolicyRuleSetOption:
+      type: object
+      additionalProperties: false
+      required: [name, behavior]
+      properties:
+        name: {type: string}
+        behavior: {type: string, enum: [domain, ipcidr, classical]}
+    PolicyRuleSetsResponse:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/PolicyRuleSetOption'}}
+    ResourcePolicyConditions:
+      type: object
+      additionalProperties: false
+      properties:
+        domains: {type: array, uniqueItems: true, items: {type: string}}
+        domainSuffixes: {type: array, uniqueItems: true, items: {type: string}}
+        ipCidrs: {type: array, uniqueItems: true, items: {type: string}}
+        ruleSets: {type: array, uniqueItems: true, items: {type: string}}
+        ports: {type: array, uniqueItems: true, items: {type: integer, minimum: 1, maximum: 65535}}
+        networks: {type: array, uniqueItems: true, items: {type: string, enum: [tcp, udp]}}
+        protocols: {type: array, uniqueItems: true, items: {type: string}}
+    ResourcePolicyRule:
+      type: object
+      additionalProperties: false
+      required: [id, policyId, name, enabled, priority, conditions, action, noResolve, revision, createdAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid}
+        policyId: {type: string, format: uuid}
+        name: {type: string}
+        enabled: {type: boolean}
+        priority: {type: integer, minimum: 0}
+        conditions: {$ref: '#/components/schemas/ResourcePolicyConditions'}
+        action: {type: string}
+        noResolve: {type: boolean}
+        revision: {type: integer, format: int64, minimum: 1}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    ResourceCreatePolicyRuleRequest:
+      type: object
+      additionalProperties: false
+      required: [name, enabled, priority, conditions, action, noResolve]
+      properties:
+        name: {type: string, minLength: 1}
+        enabled: {type: boolean}
+        priority: {type: integer, minimum: 0}
+        conditions: {$ref: '#/components/schemas/ResourcePolicyConditions'}
+        action: {type: string, minLength: 1}
+        noResolve: {type: boolean}
+    ResourceUpdatePolicyRuleRequest:
+      allOf:
+        - $ref: '#/components/schemas/ResourceCreatePolicyRuleRequest'
+        - type: object
+          required: [revision]
+          properties:
+            revision: {type: integer, format: int64, minimum: 1}
+    ResourcePolicyRulesResponse:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/ResourcePolicyRule'}}
+    ResourceOrderPolicyRulesRequest:
+      type: object
+      additionalProperties: false
+      required: [ids]
+      properties:
+        ids: {type: array, uniqueItems: true, items: {type: string, format: uuid}}
+    ResourcePolicyDryRunRequest:
+      type: object
+      additionalProperties: false
+      required: [host, port, network, protocol]
+      properties:
+        host: {type: string, minLength: 1}
+        port: {type: integer, minimum: 0, maximum: 65535}
+        network: {type: string}
+        protocol: {type: string}
+    ResourcePolicyEvaluation:
+      type: object
+      additionalProperties: false
+      required: [ruleId, name, matched, status, reason]
+      properties:
+        ruleId: {type: string, format: uuid}
+        name: {type: string}
+        matched: {type: boolean}
+        status: {type: string, enum: [match, miss, skipped, client]}
+        reason: {type: string}
+        action: {type: string}
+    ResourcePolicyDryRunResult:
+      type: object
+      additionalProperties: false
+      required: [trace, action, determined]
+      properties:
+        trace: {type: array, items: {$ref: '#/components/schemas/ResourcePolicyEvaluation'}}
+        matchedRule: {$ref: '#/components/schemas/ResourcePolicyRule'}
+        action: {type: string}
+        determined: {type: boolean}
+    ResourcePolicyValidationIssue:
+      type: object
+      additionalProperties: false
+      required: [level, message]
+      properties:
+        level: {type: string, enum: [warning, error]}
+        ruleId: {type: string, format: uuid}
+        message: {type: string}
+    ResourcePolicyValidationResult:
+      type: object
+      additionalProperties: false
+      required: [valid, issues]
+      properties:
+        valid: {type: boolean}
+        issues: {type: array, items: {$ref: '#/components/schemas/ResourcePolicyValidationIssue'}}
+    SingBoxRuntimeStatus:
+      type: object
+      additionalProperties: false
+      required: [configStatus, kernelStatus, runtimeMode, canCheck, canRestart, canObserveConnections]
+      properties:
+        configStatus: {type: string, enum: [not_configured, pending, applied, not_checked]}
+        kernelStatus: {type: string, enum: [running, unhealthy, not_checked]}
+        reason: {type: string}
+        configDigest: {type: string}
+        lastAppliedAt: {type: string, format: date-time}
+        lastFailedAt: {type: string, format: date-time}
+        failureReason: {type: string}
+        version: {type: string}
+        startedAt: {type: string, format: date-time}
+        runtimeMode: {type: string, enum: [embedded]}
+        canCheck: {type: boolean}
+        canRestart: {type: boolean}
+        canObserveConnections: {type: boolean}
+    SingBoxCheckResult:
+      type: object
+      additionalProperties: false
+      required: [valid, message]
+      properties:
+        valid: {type: boolean}
+        message: {type: string}
+    SingBoxSyncResult:
+      type: object
+      additionalProperties: false
+      required: [configDigest, artifactCount, appliedAt]
+      properties:
+        configDigest: {type: string}
+        artifactCount: {type: integer, minimum: 0}
+        appliedAt: {type: string, format: date-time}
+    SingBoxConnection:
+      type: object
+      additionalProperties: false
+      required: [id, startedAt, uploadBytes, downloadBytes]
+      properties:
+        id: {type: string}
+        startedAt: {type: string, format: date-time}
+        inbound: {type: string}
+        rule: {type: string}
+        outbound: {type: string}
+        host: {type: string}
+        port: {type: integer, minimum: 0, maximum: 65535}
+        network: {type: string}
+        uploadBytes: {type: integer, format: int64, minimum: 0}
+        downloadBytes: {type: integer, format: int64, minimum: 0}
+    SingBoxConnectionsResult:
+      type: object
+      additionalProperties: false
+      required: [available, items]
+      properties:
+        available: {type: boolean}
+        items: {type: array, items: {$ref: '#/components/schemas/SingBoxConnection'}}
+        reason: {type: string}
+    SingBoxDNSServer:
+      type: object
+      additionalProperties: false
+      required: [tag, address]
+      properties:
+        tag: {type: string, minLength: 1}
+        address: {type: string, minLength: 1}
+        detour: {type: string}
+    SingBoxConfig:
+      type: object
+      additionalProperties: false
+      required: [logLevel, logTimestamp, dnsServers, clashApiEnabled, clashApiListen, clashApiSecretSet, v2rayApiEnabled, v2rayApiListen, defaultOutboundTag, revision, updatedAt]
+      properties:
+        logLevel: {type: string, enum: [trace, debug, info, warn, error, fatal, panic]}
+        logTimestamp: {type: boolean}
+        dnsServers: {type: array, items: {$ref: '#/components/schemas/SingBoxDNSServer'}}
+        dnsFinal: {type: string}
+        clashApiEnabled: {type: boolean}
+        clashApiListen: {type: string}
+        clashApiSecretSet: {type: boolean}
+        v2rayApiEnabled: {type: boolean}
+        v2rayApiListen: {type: string}
+        defaultOutboundTag: {type: string, minLength: 1}
+        revision: {type: integer, format: int64, minimum: 1}
+        updatedAt: {type: string, format: date-time}
+    SingBoxConfigUpdateRequest:
+      type: object
+      additionalProperties: false
+      required: [revision, logLevel, logTimestamp, dnsServers, clashApiEnabled, clashApiListen, v2rayApiEnabled, v2rayApiListen, defaultOutboundTag]
+      properties:
+        revision: {type: integer, format: int64, minimum: 1}
+        logLevel: {type: string, enum: [trace, debug, info, warn, error, fatal, panic]}
+        logTimestamp: {type: boolean}
+        dnsServers: {type: array, items: {$ref: '#/components/schemas/SingBoxDNSServer'}}
+        dnsFinal: {type: string}
+        clashApiEnabled: {type: boolean}
+        clashApiListen: {type: string}
+        clashApiSecret: {type: string, writeOnly: true}
+        v2rayApiEnabled: {type: boolean}
+        v2rayApiListen: {type: string}
+        defaultOutboundTag: {type: string, minLength: 1}
+    SingBoxOutbound:
+      type: object
+      additionalProperties: false
+      required: [id, tag, type, hasPassword, revision]
+      properties:
+        id: {type: string}
+        tag: {type: string}
+        type: {type: string, enum: [direct, block, socks, warp]}
+        server: {type: string}
+        serverPort: {type: integer, minimum: 0, maximum: 65535}
+        username: {type: string}
+        hasPassword: {type: boolean}
+        warp: {$ref: '#/components/schemas/WarpOutboundSettings'}
+        revision: {type: integer, format: int64, minimum: 1}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    WarpOutboundSettings:
+      type: object
+      additionalProperties: false
+      description: WARP（wireguard）出站参数；privateKey 只写，读取时以 privateKeySet 标记代替。
+      properties:
+        endpoint: {type: string, description: 'host:port，默认 engage.cloudflareclient.com:2408'}
+        publicKey: {type: string}
+        privateKey: {type: string, writeOnly: true}
+        privateKeySet: {type: boolean, readOnly: true}
+        ipv4: {type: string, example: 172.16.0.2/32}
+        ipv6: {type: string}
+        reserved: {type: array, minItems: 3, maxItems: 3, items: {type: integer, minimum: 0, maximum: 255}}
+        mtu: {type: integer, minimum: 512, maximum: 65535}
+    WarpRegistrationResult:
+      type: object
+      additionalProperties: false
+      description: 免费注册的 WARP 账户参数（不落库，随出站保存时提交）。
+      required: [endpoint, publicKey, privateKey, ipv4]
+      properties:
+        endpoint: {type: string}
+        publicKey: {type: string}
+        privateKey: {type: string}
+        ipv4: {type: string}
+        ipv6: {type: string}
+        reserved: {type: array, minItems: 3, maxItems: 3, items: {type: integer, minimum: 0, maximum: 255}}
+        mtu: {type: integer}
+    SingBoxCreateOutboundRequest:
+      type: object
+      additionalProperties: false
+      required: [tag]
+      properties:
+        type: {type: string, enum: [socks, warp], default: socks}
+        tag: {type: string, minLength: 1}
+        server: {type: string, description: SOCKS 出站必填}
+        serverPort: {type: integer, minimum: 1, maximum: 65535, description: SOCKS 出站必填}
+        username: {type: string}
+        password: {type: string, writeOnly: true}
+        warp: {$ref: '#/components/schemas/WarpOutboundSettings'}
+    SingBoxUpdateOutboundRequest:
+      allOf:
+        - $ref: '#/components/schemas/SingBoxCreateOutboundRequest'
+        - type: object
+          required: [revision]
+          properties:
+            revision: {type: integer, format: int64, minimum: 1}
+    SingBoxOutboundsResponse:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/SingBoxOutbound'}}
+    ArgoTunnel:
+      type: object
+      additionalProperties: false
+      required: [id, name, enabled, mode, protocolId, status, revision, createdAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string}
+        enabled: {type: boolean}
+        mode: {type: string, enum: [temporary, token]}
+        fixedDomain: {type: string, description: token 模式的固定域名}
+        preferredAddress: {type: string, description: 优选 CDN 地址（可选），留空用隧道域名}
+        protocolId: {type: string, format: uuid, description: 承载的 vmess 协议}
+        token: {type: string, writeOnly: true}
+        tokenSet: {type: boolean, readOnly: true}
+        assignedDomain: {type: string, readOnly: true, description: 运行时分配/确认的域名}
+        status: {type: string, readOnly: true, enum: [stopped, starting, running, error]}
+        lastError: {type: string, readOnly: true}
+        startedAt: {type: string, format: date-time, readOnly: true}
+        revision: {type: integer, format: int64, minimum: 1}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    ArgoCreateTunnelRequest:
+      type: object
+      additionalProperties: false
+      required: [name, enabled, mode, protocolId]
+      properties:
+        name: {type: string, minLength: 1}
+        enabled: {type: boolean}
+        mode: {type: string, enum: [temporary, token]}
+        fixedDomain: {type: string}
+        preferredAddress: {type: string}
+        protocolId: {type: string, format: uuid}
+        token: {type: string, writeOnly: true}
+    ArgoUpdateTunnelRequest:
+      allOf:
+        - $ref: '#/components/schemas/ArgoCreateTunnelRequest'
+        - type: object
+          required: [revision]
+          properties:
+            revision: {type: integer, format: int64, minimum: 1}
+    ArgoTunnelsResponse:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/ArgoTunnel'}}
+    SingBoxAITemplateRequest:
+      type: object
+      additionalProperties: false
+      required: [outboundTag]
+      properties:
+        outboundTag: {type: string, minLength: 1}
+    SingBoxRouteConditions:
+      type: object
+      additionalProperties: false
+      properties:
+        domains: {type: array, uniqueItems: true, items: {type: string}}
+        domainSuffixes: {type: array, uniqueItems: true, items: {type: string}}
+        ipCidrs: {type: array, uniqueItems: true, items: {type: string}}
+        ports: {type: array, uniqueItems: true, items: {type: integer, minimum: 1, maximum: 65535}}
+        networks: {type: array, uniqueItems: true, items: {type: string, enum: [tcp, udp]}}
+        inboundTags: {type: array, uniqueItems: true, items: {type: string}}
+        geoip: {type: array, uniqueItems: true, items: {type: string}}
+        geosite: {type: array, uniqueItems: true, items: {type: string}}
+        ruleSets: {type: array, uniqueItems: true, items: {type: string}}
+    SingBoxRouteRule:
+      type: object
+      additionalProperties: false
+      required: [id, name, enabled, priority, conditions, outboundTag, revision, createdAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string}
+        enabled: {type: boolean}
+        priority: {type: integer, minimum: 0}
+        conditions: {$ref: '#/components/schemas/SingBoxRouteConditions'}
+        outboundTag: {type: string}
+        revision: {type: integer, format: int64, minimum: 1}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    SingBoxCreateRouteRuleRequest:
+      type: object
+      additionalProperties: false
+      required: [name, enabled, priority, conditions, outboundTag]
+      properties:
+        name: {type: string, minLength: 1}
+        enabled: {type: boolean}
+        priority: {type: integer, minimum: 0}
+        conditions: {$ref: '#/components/schemas/SingBoxRouteConditions'}
+        outboundTag: {type: string, minLength: 1}
+    SingBoxUpdateRouteRuleRequest:
+      allOf:
+        - $ref: '#/components/schemas/SingBoxCreateRouteRuleRequest'
+        - type: object
+          required: [revision]
+          properties:
+            revision: {type: integer, format: int64, minimum: 1}
+    SingBoxRouteRulesResponse:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/SingBoxRouteRule'}}
+    SingBoxRuleSet:
+      type: object
+      additionalProperties: false
+      required: [id, tag, format, url, revision, createdAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid}
+        tag: {type: string}
+        format: {type: string, enum: [source, binary]}
+        url: {type: string}
+        downloadDetour: {type: string}
+        revision: {type: integer, format: int64, minimum: 1}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    SingBoxRuleSetsResponse:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/SingBoxRuleSet'}}
+    SingBoxCreateRuleSetRequest:
+      type: object
+      additionalProperties: false
+      required: [tag, format, url]
+      properties:
+        tag: {type: string, minLength: 1}
+        format: {type: string, enum: [source, binary]}
+        url: {type: string, minLength: 1}
+        downloadDetour: {type: string}
+    SingBoxUpdateRuleSetRequest:
+      allOf:
+        - $ref: '#/components/schemas/SingBoxCreateRuleSetRequest'
+        - type: object
+          required: [revision]
+          properties:
+            revision: {type: integer, format: int64, minimum: 1}
+    SingBoxOrderRouteRulesRequest:
+      type: object
+      additionalProperties: false
+      required: [ids]
+      properties:
+        ids: {type: array, uniqueItems: true, items: {type: string, format: uuid}}
+    SingBoxDryRunRequest:
+      type: object
+      additionalProperties: false
+      required: [host]
+      properties:
+        host: {type: string, minLength: 1}
+        port: {type: integer, minimum: 0, maximum: 65535}
+        network: {type: string, enum: [tcp, udp]}
+        inboundTag: {type: string}
+    SingBoxRouteEvaluation:
+      type: object
+      additionalProperties: false
+      required: [ruleId, name, matched, status, reason]
+      properties:
+        ruleId: {type: string, format: uuid}
+        name: {type: string}
+        matched: {type: boolean}
+        status: {type: string, enum: [match, miss, skipped]}
+        reason: {type: string}
+        outboundTag: {type: string}
+    SingBoxDryRunResult:
+      type: object
+      additionalProperties: false
+      required: [trace, outboundTag]
+      properties:
+        trace: {type: array, items: {$ref: '#/components/schemas/SingBoxRouteEvaluation'}}
+        matchedRule: {$ref: '#/components/schemas/SingBoxRouteRule'}
+        outboundTag: {type: string}
+    SingBoxValidationIssue:
+      type: object
+      additionalProperties: false
+      required: [level, message]
+      properties:
+        level: {type: string, enum: [warning, error]}
+        ruleId: {type: string, format: uuid}
+        message: {type: string}
+    SingBoxValidationResult:
+      type: object
+      additionalProperties: false
+      required: [valid, issues]
+      properties:
+        valid: {type: boolean}
+        issues: {type: array, items: {$ref: '#/components/schemas/SingBoxValidationIssue'}}
+    ManagementOverviewTask:
+      type: object
+      additionalProperties: false
+      required: [key, title, completed]
+      properties:
+        key: {type: string}
+        title: {type: string}
+        completed: {type: boolean}
+        action: {type: string}
+    ManagementOverviewConnections:
+      type: object
+      additionalProperties: false
+      required: [available, count]
+      properties:
+        available: {type: boolean}
+        count: {type: integer, minimum: 0}
+        reason: {type: string}
+    ManagementOverview:
+      type: object
+      additionalProperties: false
+      required: [counts, devices, runtimeStatus, configStatus, kernelStatus, tasks, artifactCount, connections, traffic24h, topUsers]
+      properties:
+        counts: {type: object, additionalProperties: {type: integer}}
+        devices: {$ref: '#/components/schemas/ManagementOverviewDevices'}
+        runtimeStatus: {type: string, enum: [running, unhealthy, not_configured]}
+        configStatus: {type: string, enum: [not_configured, pending, applied, not_checked]}
+        kernelStatus: {type: string, enum: [running, unhealthy, not_checked]}
+        runtimeReason: {type: string}
+        tasks: {type: array, items: {$ref: '#/components/schemas/ManagementOverviewTask'}}
+        configDigest: {type: string}
+        lastAppliedAt: {type: string, format: date-time}
+        lastFailedAt: {type: string, format: date-time}
+        failureReason: {type: string}
+        artifactCount: {type: integer, minimum: 0}
+        connections: {$ref: '#/components/schemas/ManagementOverviewConnections'}
+        traffic24h: {$ref: '#/components/schemas/TrafficSummary'}
+        topUsers: {type: array, items: {$ref: '#/components/schemas/TrafficRanking'}}
+        lastTrafficCollectedAt:
+          type: string
+          format: date-time
+          description: When the traffic collection loop last completed a successful cycle; absent before the first successful collection.
+    ManagementOverviewDevices:
+      type: object
+      additionalProperties: false
+      required: [total, auto, activeDay, platforms]
+      description: Fleet-wide device stats; activeDay counts devices whose subscription was fetched in the last 24 hours.
+      properties:
+        total: {type: integer, minimum: 0}
+        auto: {type: integer, minimum: 0, description: Devices auto-discovered from subscription User-Agent fingerprints.}
+        activeDay: {type: integer, minimum: 0, description: Devices seen in the last 24 hours.}
+        platforms:
+          type: object
+          description: Device count per platform (windows/macos/linux/android/ios/unknown).
+          additionalProperties: {type: integer, minimum: 0}
+    ManagementMonitorStatus:
+      type: object
+      additionalProperties: false
+      required: [ready, sampledAt, host, cpu, memory, disk, network, history]
+      properties:
+        ready: {type: boolean, description: False until the first sample completes after process start.}
+        sampledAt: {type: string, format: date-time}
+        host: {$ref: '#/components/schemas/MonitorHost'}
+        cpu: {$ref: '#/components/schemas/MonitorCPU'}
+        memory: {$ref: '#/components/schemas/MonitorMemory'}
+        disk: {$ref: '#/components/schemas/MonitorDisk'}
+        network: {$ref: '#/components/schemas/MonitorNetwork'}
+        history:
+          type: array
+          description: Recent trend points oldest-first (5-second interval, last 10 minutes).
+          items: {$ref: '#/components/schemas/MonitorPoint'}
+    MonitorHost:
+      type: object
+      additionalProperties: false
+      required: [hostname, os, platform, platformVersion, kernelVersion, kernelArch, virtualizationSystem, bootTime, uptimeSeconds]
+      properties:
+        hostname: {type: string}
+        os: {type: string}
+        platform: {type: string}
+        platformVersion: {type: string}
+        kernelVersion: {type: string}
+        kernelArch: {type: string}
+        virtualizationSystem: {type: string}
+        bootTime: {type: integer, format: int64, description: Unix seconds.}
+        uptimeSeconds: {type: integer, format: int64, minimum: 0}
+    MonitorCPU:
+      type: object
+      additionalProperties: false
+      required: [logicalCores, physicalCores, modelName, usagePercent, perCore, load1, load5, load15]
+      properties:
+        logicalCores: {type: integer, minimum: 0}
+        physicalCores: {type: integer, minimum: 0}
+        modelName: {type: string}
+        usagePercent: {type: number, format: double, minimum: 0, maximum: 100}
+        perCore: {type: array, items: {type: number, format: double, minimum: 0, maximum: 100}}
+        load1: {type: number, format: double, minimum: 0}
+        load5: {type: number, format: double, minimum: 0}
+        load15: {type: number, format: double, minimum: 0}
+    MonitorMemory:
+      type: object
+      additionalProperties: false
+      required: [total, used, available, usedPercent, swapTotal, swapUsed, swapPercent]
+      properties:
+        total: {type: integer, format: int64, minimum: 0}
+        used: {type: integer, format: int64, minimum: 0}
+        available: {type: integer, format: int64, minimum: 0}
+        usedPercent: {type: number, format: double, minimum: 0, maximum: 100}
+        swapTotal: {type: integer, format: int64, minimum: 0}
+        swapUsed: {type: integer, format: int64, minimum: 0}
+        swapPercent: {type: number, format: double, minimum: 0, maximum: 100}
+    MonitorDisk:
+      type: object
+      additionalProperties: false
+      required: [path, total, used, free, usedPercent]
+      properties:
+        path: {type: string}
+        total: {type: integer, format: int64, minimum: 0}
+        used: {type: integer, format: int64, minimum: 0}
+        free: {type: integer, format: int64, minimum: 0}
+        usedPercent: {type: number, format: double, minimum: 0, maximum: 100}
+    MonitorNetwork:
+      type: object
+      additionalProperties: false
+      required: [sendRate, recvRate, interfaces]
+      properties:
+        sendRate: {type: number, format: double, minimum: 0, description: 'Aggregate upload rate across non-loopback interfaces, bytes per second.'}
+        recvRate: {type: number, format: double, minimum: 0, description: 'Aggregate download rate across non-loopback interfaces, bytes per second.'}
+        interfaces: {type: array, items: {$ref: '#/components/schemas/MonitorInterface'}}
+    MonitorInterface:
+      type: object
+      additionalProperties: false
+      required: [name, bytesSent, bytesRecv, packetsSent, packetsRecv, sendRate, recvRate]
+      properties:
+        name: {type: string}
+        bytesSent: {type: integer, format: int64, minimum: 0}
+        bytesRecv: {type: integer, format: int64, minimum: 0}
+        packetsSent: {type: integer, format: int64, minimum: 0}
+        packetsRecv: {type: integer, format: int64, minimum: 0}
+        sendRate: {type: number, format: double, minimum: 0, description: Bytes per second since the previous sample.}
+        recvRate: {type: number, format: double, minimum: 0, description: Bytes per second since the previous sample.}
+    MonitorPoint:
+      type: object
+      additionalProperties: false
+      required: [time, cpuPercent, memoryPercent, netSendRate, netRecvRate]
+      properties:
+        time: {type: string, format: date-time}
+        cpuPercent: {type: number, format: double, minimum: 0, maximum: 100}
+        memoryPercent: {type: number, format: double, minimum: 0, maximum: 100}
+        netSendRate: {type: number, format: double, minimum: 0}
+        netRecvRate: {type: number, format: double, minimum: 0}
+    ManagementAuditEntry:
+      type: object
+      additionalProperties: false
+      required: [id, action, resourceType, resourceId, result, requestId, clientIp, details, createdAt]
+      properties:
+        id: {type: string, format: uuid}
+        actorId: {type: string, format: uuid}
+        action: {type: string}
+        resourceType: {type: string}
+        resourceId: {type: string}
+        result: {type: string}
+        requestId: {type: string}
+        clientIp: {type: string}
+        details: {}
+        createdAt: {type: string, format: date-time}
+    ManagementAuditPage:
+      type: object
+      additionalProperties: false
+      required: [items, total]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/ManagementAuditEntry'}}
+        nextCursor: {type: string}
+        total: {type: integer, format: int64}
+    TrafficPoint:
+      type: object
+      additionalProperties: false
+      required: [bucket, upBytes, downBytes, totalBytes]
+      properties:
+        bucket: {type: string, format: date-time}
+        upBytes: {type: integer, format: int64}
+        downBytes: {type: integer, format: int64}
+        totalBytes: {type: integer, format: int64}
+    TrafficSeriesResponse:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties: {items: {type: array, items: {$ref: '#/components/schemas/TrafficPoint'}}}
+    TrafficSummary:
+      type: object
+      additionalProperties: false
+      required: [upBytes, downBytes, totalBytes, samples]
+      properties:
+        upBytes: {type: integer, format: int64}
+        downBytes: {type: integer, format: int64}
+        totalBytes: {type: integer, format: int64}
+        samples: {type: integer, format: int64}
+    TrafficRanking:
+      type: object
+      additionalProperties: false
+      required: [id, name, upBytes, downBytes, totalBytes]
+      properties:
+        id: {type: string}
+        name: {type: string}
+        upBytes: {type: integer, format: int64}
+        downBytes: {type: integer, format: int64}
+        totalBytes: {type: integer, format: int64}
+    TrafficRankingResponse:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties: {items: {type: array, items: {$ref: '#/components/schemas/TrafficRanking'}}}
+    TrafficActiveUserPoint:
+      type: object
+      additionalProperties: false
+      required: [bucket, users]
+      properties:
+        bucket: {type: string, format: date-time}
+        users: {type: integer, format: int64}
+    TrafficActiveUsersResponse:
+      type: object
+      additionalProperties: false
+      required: [items, totalUsers]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/TrafficActiveUserPoint'}}
+        totalUsers: {type: integer, format: int64}
+    TrafficProtocolShare:
+      type: object
+      additionalProperties: false
+      required: [id, name, upBytes, downBytes, totalBytes]
+      properties:
+        id: {type: string}
+        name: {type: string}
+        upBytes: {type: integer, format: int64}
+        downBytes: {type: integer, format: int64}
+        totalBytes: {type: integer, format: int64}
+    TrafficProtocolShareResponse:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties: {items: {type: array, items: {$ref: '#/components/schemas/TrafficProtocolShare'}}}
+    Alert:
+      type: object
+      additionalProperties: false
+      required: [id, fingerprint, type, severity, resourceType, resourceId, message, status, firstSeenAt, lastSeenAt]
+      properties:
+        id: {type: string, format: uuid}
+        fingerprint: {type: string}
+        type: {type: string}
+        severity: {type: string, enum: [warning, critical]}
+        resourceType: {type: string}
+        resourceId: {type: string}
+        message: {type: string}
+        status: {type: string, enum: [open, resolved]}
+        firstSeenAt: {type: string, format: date-time}
+        lastSeenAt: {type: string, format: date-time}
+        acknowledgedAt: {type: string, format: date-time}
+        acknowledgedBy: {type: string, format: uuid}
+        resolvedAt: {type: string, format: date-time}
+    AlertPage:
+      type: object
+      additionalProperties: false
+      required: [items, notifications]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/Alert'}}
+        notifications: {$ref: '#/components/schemas/NotificationStats'}
+    NotificationStats:
+      type: object
+      additionalProperties: false
+      required: [pending, failed]
+      properties:
+        pending: {type: integer, format: int64, minimum: 0}
+        failed: {type: integer, format: int64, minimum: 0}
+    LivenessResponse:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status: {type: string, const: ok}
+    ReadinessCheck:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status: {type: string, enum: [ok, failed]}
+        lastSuccessAt: {type: string, format: date-time}
+    ReadinessResponse:
+      type: object
+      additionalProperties: false
+      required: [status, checks]
+      properties:
+        status: {type: string, enum: [ready, not_ready]}
+        checks: {type: object, additionalProperties: {$ref: '#/components/schemas/ReadinessCheck'}}
+    ReadinessErrorResponse:
+      type: object
+      additionalProperties: false
+      required: [code, message, requestId, status]
+      properties:
+        code: {type: string, const: NOT_READY}
+        message: {type: string}
+        requestId: {type: string, format: uuid}
+        status: {type: string, const: not_ready}
+      description: 未就绪响应不携带组件明细（checks 仅出现在 200 就绪响应中，避免向未认证方泄露运营侦察信息）。
+    SuccessEnvelope:
+      type: object
+      additionalProperties: false
+      required: [code, message, data, requestId]
+      description: 管理 API 统一成功响应信封；各端点通过 allOf 覆盖 data 的具体类型。
+      properties:
+        code: {type: integer, const: 0, description: 业务状态码，0 表示成功}
+        message: {type: string, example: success}
+        data: {description: 业务数据，类型由具体端点决定}
+        requestId: {type: string, format: uuid}
+    ManagementErrorResponse:
+      type: object
+      additionalProperties: false
+      required: [code, message, data, requestId]
+      description: 管理 API 统一错误响应信封；HTTP 状态码保持 REST 语义，code 为数字业务码。
+      properties:
+        code:
+          type: integer
+          description: |
+            业务状态码（注册表见后端 internal/httpx/codes.go，发布后只增不改）：
+            1001 参数校验失败、1002 内部服务器错误、1003 资源不存在、1004 流量查询参数无效、
+            2001 未登录或会话失效、2002 用户名或密码错误、2003 密码不符合要求、2004 登录尝试过于频繁、
+            2005 管理员已初始化、2006 用户名已存在、3001 资源已被修改、3002 资源正在被引用、
+            3003 名称已存在、3004 凭据需先轮换、5001 sing-box 运行时尚未配置、
+            5002 sing-box 运行时操作失败、5003 sing-box 配置同步失败。
+          enum: [1001, 1002, 1003, 1004, 2001, 2002, 2003, 2004, 2005, 2006, 3001, 3002, 3003, 3004, 5001, 5002, 5003]
+        message:
+          type: string
+        data: {type: 'null'}
+        fieldErrors:
+          description: 字段级中文校验消息；键为请求体的 JSON 字段名。仅在 code 为 1001 且绑定 tag 校验未通过时返回，请求体格式错误时不出现。
+          type: object
+          additionalProperties:
+            type: string
+        requestId:
+          type: string

@@ -1,0 +1,25 @@
+singbox-web.db
+singbox-web.db-*
+data/
+*.test
+cache.db
+sb
+dist/
+frontend/node_modules/
+frontend/.npm-cache/
+frontend/dist/
+.tmp-gocache/
+config.local.yaml
+.idea
+.worktrees/
+*.exe
+
+.zed
+.claude
+*.db
+
+# graphify 代码图谱生成产物（可由工具重新生成）
+graphify-out/
+.superpowers/
+.logs/
+.zcode

@@ -1,0 +1,51 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+      - run: make test
+      - run: make vet
+      - run: go build -tags=with_quic,with_utls,with_clash_api,with_v2ray_api,with_wireguard,with_gvisor -ldflags=-checklinkname=0 .
+      - uses: golangci/golangci-lint-action@v7
+        with:
+          # golangci-lint v2 binary 需要 action v7+ 才能识别（v6 会拒绝 v2 版本号）。
+          # 项目用 v2 是因为 go 1.25 模块需要 v2 构建的 binary。
+          version: v2.4.0
+          args: --timeout=5m
+          # 禁用跨 run 的内部分析缓存（~/.cache/golangci-lint 的恢复/保存）：
+          # 该缓存有已知 bug——「cache and facts」污染会让 staticcheck SA5011 在
+          # 测试文件里随机误报且重跑无效（golangci/golangci-lint#5979，2026-08
+          # 曾致 master 连续假红，本地干净缓存可证 0 issues）。同一次 job 内
+          # go build 缓存已被前面的 make test/vet 暖热，跳过几乎无代价。
+          skip-cache: true
+      - run: test -z "$(gofmt -l ./*.go ./api ./internal)"
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run api:lint
+      - run: npm run api:check
+      - run: npm test -- --run
+      - run: npm run build

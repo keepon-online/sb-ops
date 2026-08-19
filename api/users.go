@@ -1,0 +1,165 @@
+package api
+
+import (
+	"errors"
+	"net/http"
+	"strconv"
+	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/keepon-online/sb-ops/internal/httpx"
+	"github.com/keepon-online/sb-ops/internal/service/common"
+	serviceuser "github.com/keepon-online/sb-ops/internal/service/user"
+)
+
+type userWriteRequest struct {
+	Revision          int64      `json:"revision"`
+	Name              string     `json:"name" binding:"required"`
+	Enabled           *bool      `json:"enabled" binding:"required"`
+	QuotaBytes        int64      `json:"quotaBytes"`
+	ExpiresAt         *time.Time `json:"expiresAt"`
+	ResetIntervalDays int        `json:"resetIntervalDays"`
+	ProtocolIDs       []string   `json:"protocolIds"`
+	PolicyIDs         []string   `json:"policyIds"`
+}
+
+// userMutationResponse 建号只回用户级订阅 token；设备凭据由设备接口返回。
+type userMutationResponse struct {
+	User         serviceuser.User `json:"user"`
+	Subscription *string          `json:"subscriptionToken,omitempty"`
+}
+
+type batchStatusRequest struct {
+	IDs     []string `json:"ids" binding:"required"`
+	Enabled *bool    `json:"enabled" binding:"required"`
+}
+
+func (h *handler) listUsers(c *gin.Context) {
+	limit, _ := strconv.Atoi(c.Query("limit"))
+	page, err := h.users.List(c.Request.Context(), serviceuser.ListInput{
+		Cursor: c.Query("cursor"), Limit: limit, Query: c.Query("query"),
+		Status: serviceuser.Status(c.Query("status")), Sort: c.Query("sort"),
+	})
+	if err != nil {
+		writeResourceError(c, err)
+		return
+	}
+	httpx.OK(c, page)
+}
+
+func (h *handler) createUser(c *gin.Context) {
+	var request userWriteRequest
+	if !httpx.BindJSON(c, &request, "用户信息无效") {
+		return
+	}
+	value, token, err := h.users.Create(c.Request.Context(), serviceuser.CreateInput{
+		Name: request.Name, Enabled: *request.Enabled, QuotaBytes: request.QuotaBytes,
+		ExpiresAt: request.ExpiresAt, ResetIntervalDays: request.ResetIntervalDays,
+		ProtocolIDs: request.ProtocolIDs, PolicyIDs: request.PolicyIDs,
+	})
+	if !h.mutate(c, err, actionUserCreate, resourceUser, "", value.ID) {
+		return
+	}
+	httpx.Created(c, userMutationResponse{User: value, Subscription: &token})
+}
+
+func (h *handler) getUser(c *gin.Context) {
+	value, err := h.users.Get(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		writeResourceError(c, err)
+		return
+	}
+	httpx.OK(c, value)
+}
+
+func (h *handler) updateUser(c *gin.Context) {
+	var request userWriteRequest
+	if !httpx.BindJSON(c, &request, "用户信息无效") {
+		return
+	}
+	value, err := h.users.Update(c.Request.Context(), serviceuser.UpdateInput{
+		ID: c.Param("id"), Revision: request.Revision, Name: request.Name, Enabled: *request.Enabled,
+		QuotaBytes: request.QuotaBytes, ExpiresAt: request.ExpiresAt,
+		ResetIntervalDays: request.ResetIntervalDays, ProtocolIDs: request.ProtocolIDs, PolicyIDs: request.PolicyIDs,
+	})
+	if !h.mutate(c, err, actionUserUpdate, resourceUser, c.Param("id"), value.ID) {
+		return
+	}
+	httpx.OK(c, value)
+}
+
+func (h *handler) deleteUser(c *gin.Context) {
+	err := h.users.Delete(c.Request.Context(), c.Param("id"))
+	if !h.mutate(c, err, actionUserDelete, resourceUser, c.Param("id"), c.Param("id")) {
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+func (h *handler) batchUserStatus(c *gin.Context) {
+	var request batchStatusRequest
+	if !httpx.BindJSON(c, &request, "请选择用户并指定状态") {
+		return
+	}
+	err := h.users.BatchStatus(c.Request.Context(), request.IDs, *request.Enabled)
+	if !h.mutate(c, err, actionUserBatchStatus, resourceUser, "", "") {
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+func (h *handler) resetUserTraffic(c *gin.Context) {
+	value, err := h.users.ResetTraffic(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		writeResourceError(c, err)
+		return
+	}
+	h.audit(c, actionUserTrafficReset, resourceUser, value.ID, resultSuccess)
+	httpx.OK(c, value)
+}
+
+func (h *handler) adjustUserTraffic(c *gin.Context) {
+	var request serviceuser.TrafficInput
+	if !httpx.BindJSON(c, &request, "请选择方式并填写字节数") {
+		return
+	}
+	value, err := h.users.AdjustTraffic(c.Request.Context(), c.Param("id"), request)
+	if err != nil {
+		writeResourceError(c, err)
+		return
+	}
+	h.audit(c, actionUserTrafficAdjust, resourceUser, value.ID, resultSuccess)
+	httpx.OK(c, value)
+}
+
+func (h *handler) adjustUserQuota(c *gin.Context) {
+	var request serviceuser.TrafficInput
+	if !httpx.BindJSON(c, &request, "请选择方式并填写字节数") {
+		return
+	}
+	value, err := h.users.AdjustQuota(c.Request.Context(), c.Param("id"), request)
+	if err != nil {
+		writeResourceError(c, err)
+		return
+	}
+	h.audit(c, actionUserQuotaAdjust, resourceUser, value.ID, resultSuccess)
+	httpx.OK(c, value)
+}
+
+func writeResourceError(c *gin.Context, err error) {
+	var validation *common.ValidationError
+	switch {
+	case errors.As(err, &validation):
+		httpx.Error(c, http.StatusBadRequest, httpx.CodeValidationFailed, "资源校验失败", validation.Fields)
+	case errors.Is(err, common.ErrNotFound):
+		httpx.Error(c, http.StatusNotFound, httpx.CodeNotFound, "资源不存在", nil)
+	case errors.Is(err, common.ErrRevisionConflict):
+		httpx.Error(c, http.StatusConflict, httpx.CodeRevisionConflict, "资源已被修改", nil)
+	case errors.Is(err, common.ErrReferenced):
+		httpx.Error(c, http.StatusConflict, httpx.CodeResourceReferenced, "资源正在被引用", nil)
+	case errors.Is(err, common.ErrDuplicate):
+		httpx.Error(c, http.StatusConflict, httpx.CodeNameConflict, "名称已存在", map[string]string{"name": "已存在"})
+	default:
+		writeInternalError(c, "内部服务器错误")
+	}
+}

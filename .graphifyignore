@@ -1,0 +1,32 @@
+# graphify 排除规则 — 保持图谱只反映真实源码
+# 语法同 .gitignore（支持 ! 反向包含）
+
+# 前端构建产物（嵌入到二进制里的打包后 JS/CSS，是 minified 代码）
+internal/http/embedded/
+
+# legacy 归档脚本（已迁移到 Go，保留仅供溯源）
+legacy/
+
+# 测试代码 —— 聚焦"纯生产架构图谱"，避免 test helper 虚高入度、污染社区聚类
+*_test.go
+*_test.{ts,tsx,js,jsx,py}
+
+# 依赖与本地缓存
+frontend/node_modules/
+frontend/.npm-cache/
+frontend/dist/
+.tmp-gocache/
+
+# 本地运行产物
+data/
+*.test
+cache.db
+singbox-web.db
+singbox-web.db-*
+
+# 编辑器/系统
+.idea/
+.zed/
+.claude/
+.worktrees/
+*.exe

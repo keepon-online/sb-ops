@@ -1,0 +1,1 @@
+import{m as t}from"./index-TGcOizEh.js";const n={overview:()=>t("/api/v1/overview"),audit:a=>{const r=new URLSearchParams;return Object.entries(a).forEach(([i,e])=>{e!==void 0&&e!==""&&r.set(i,String(e))}),t(`/api/v1/audit-logs?${r}`)}};export{n as c};

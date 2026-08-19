@@ -1,0 +1,22 @@
+# 仅保留与默认值不同的配置;其余键及默认值见 internal/config/runtime.go。
+# 可选段(未配置时自动禁用/使用默认):notifications(告警外发)、acme(证书签发)、
+# traffic.retention_days(默认 90,0 为永久保留)。
+server:
+  listen: ":8030"
+  # 默认在 data_dir(./data)下建库;这里显式放在仓库根。
+  db_path: "./singbox-web.db"
+
+# 日志:控制台固定彩色文本;level 同时作用于控制台与文件。
+# file_format 为文件落盘格式——text(无颜色可读文本,默认)/json。
+logging:
+  level: "info"
+  file_format: "text"
+
+deployment:
+  # 客户端拨打的地址,用于订阅与证书生成。
+  public_address: "192.168.1.17"
+
+development:
+  # 开发模式:允许把内网/回环 IP(如 192.168.x.x、127.0.0.1)作为 public_address,
+  # 用于本机/局域网测试。正式对外部署请删除(默认 false)。
+  allow_private_address: true

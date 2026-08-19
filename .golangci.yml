@@ -1,0 +1,57 @@
+# golangci-lint v2 配置
+#
+# 设计原则：
+#   1. 生产代码开启 errcheck，但排除 defer Close/Rollback 这类
+#      Go 社区公认无法有意义处理的良性错误（errcheck 的主要噪音源）。
+#   2. 测试文件整体放宽 errcheck（测试夹具常忽略返回值）。
+#   3. 启用 staticcheck 全套快速检查（QF/SA/ST）捕获真实缺陷。
+#   4. 超时给足 5m，避免大仓库首次分析超时。
+
+version: "2"
+
+run:
+  timeout: 5m
+  # 与 Makefile SINGBOX_TAGS 一致;缺失 tags 时 buildtags.go（根目录） 会让
+  # 编译类检查直接失败,lint 必须带同一组 tags 跑。
+  build-tags: [with_quic, with_utls, with_clash_api, with_v2ray_api, with_wireguard, with_gvisor]
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+
+  settings:
+    errcheck:
+      # 排除「返回值无法有意义处理」的调用。这些是 Go 社区惯用写法：
+      #   defer file.Close()        —— 资源释放，错误无法在 defer 里传播
+      #   defer tx.Rollback()       —— 事务回滚，常作为兜底
+      #   fmt.Fprintf(w, ...)       —— 写 SSE/ResponseWriter，后续写会暴露失败
+      exclude-functions:
+        - (io.Closer).Close
+        - (database/sql.Rows).Close
+        - (*database/sql.Rows).Close
+        - (*database/sql.Stmt).Close
+        - (*database/sql.Tx).Rollback
+        - (*database/sql.DB).Close
+        - (*os.File).Close
+        - (*github.com/keepon-online/sb-ops/internal/app.App).Close
+        - (github.com/keepon-online/sb-ops/internal/logging.Closer).Close
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+
+  exclusions:
+    # 测试代码放宽 errcheck：测试夹具里 SetSetting/AppendTaskLog/Scan 等
+    # 返回值常被忽略，要求逐个检查会让测试可读性严重下降。
+    rules:
+      - path: _test\.go
+        linters:
+          - errcheck
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
