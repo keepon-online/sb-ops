@@ -141,6 +141,7 @@ func RegisterRoutes(router *gin.Engine, dependencies Dependencies) {
 		resourceRead := authenticated.Group("")
 		resourceRead.GET("/protocol-schemas/:type", h.protocolSchema)
 		resourceRead.GET("/protocols", h.listProtocols)
+		resourceRead.GET("/protocols/runtime-status", h.protocolRuntimeStatus)
 		resourceRead.GET("/protocols/:id", h.getProtocol)
 		resourceRead.GET("/certificates", h.listCertificates)
 		resourceRead.GET("/certificates/:id", h.getCertificate)

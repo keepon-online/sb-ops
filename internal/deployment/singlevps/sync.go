@@ -65,6 +65,11 @@ type SyncService struct {
 	runtime *runtimebox.Manager
 	now     func() time.Time
 	mu      sync.Mutex
+	// Optional probe overrides wired by tests; nil falls back to the real
+	// implementations in protocol_status.go.
+	ListenSnapshot  func(ctx context.Context) (ListenSnapshot, error)
+	PortHopSnapshot func(ctx context.Context) (string, error)
+	KernelState     func() runtimebox.Status
 }
 
 func NewSyncService(db *sql.DB, apply ApplyConfig, logSinks ...runtimebox.LogSink) *SyncService {

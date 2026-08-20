@@ -7,6 +7,8 @@ export type ResourceProtocolSchema = components['schemas']['ResourceProtocolSche
 export type ResourceProtocolWrite = components['schemas']['ResourceCreateProtocolRequest'];
 export type ResourceCertificate = components['schemas']['ResourceCertificate'];
 export type ResourceCertificateWrite = components['schemas']['ResourceCreateCertificateRequest'];
+export type ProtocolRuntimeStatus = components['schemas']['ProtocolRuntimeStatusResult'];
+export type ProtocolRuntimeItem = components['schemas']['ProtocolRuntimeStatusItem'];
 
 const resourcePath = (resource: string, id: string, suffix = '') => `/api/v1/${resource}/${encodeURIComponent(id)}${suffix}`;
 
@@ -14,6 +16,7 @@ export const protocolsApi = {
   schema: (type: ResourceProtocolType) => managementRequest<ResourceProtocolSchema>(`/api/v1/protocol-schemas/${type}`),
   suggestPort: (type: ResourceProtocolType) => managementRequest<components['schemas']['ResourceProtocolPortSuggestion']>('/api/v1/protocols/suggest-port', { method: 'POST', body: JSON.stringify({ type }) }),
   list: () => managementRequest<components['schemas']['ResourceProtocolsResponse']>('/api/v1/protocols'),
+  runtimeStatus: () => managementRequest<ProtocolRuntimeStatus>('/api/v1/protocols/runtime-status'),
   create: (input: ResourceProtocolWrite) => managementRequest<ResourceProtocol>('/api/v1/protocols', { method: 'POST', body: JSON.stringify(input) }),
   update: (id: string, input: components['schemas']['ResourceUpdateProtocolRequest']) => managementRequest<ResourceProtocol>(resourcePath('protocols', id), { method: 'PATCH', body: JSON.stringify(input) }),
   remove: (id: string) => managementRequest<void>(resourcePath('protocols', id), { method: 'DELETE' }),

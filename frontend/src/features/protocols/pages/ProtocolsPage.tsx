@@ -41,8 +41,7 @@ import {
   type ResourceProtocol,
   type ResourceProtocolType,
   type ResourceProtocolWrite
-} from '../../../services/protocols';
-import { queryClient } from '../../../services/queryClient';
+} from '../../../services/protocols';import { queryClient } from '../../../services/queryClient';
 
 type SettingValue = string | number | boolean | undefined;
 type ProtocolFormValues = Omit<ResourceProtocolWrite, 'settings'> & { settings: Record<string, SettingValue> };
@@ -70,6 +69,20 @@ const protocolOptions = [
   { value: 'trojan', label: '经典：Trojan - 兼容多种客户端' }
 ];
 
+const runtimeStatusLabels: Record<string, string> = {
+  listening: '监听中', not_listening: '未监听', kernel_down: '内核未运行', disabled: '已停用', unknown: '未知'
+};
+
+const runtimeStatusColors: Record<string, string> = {
+  listening: 'success', not_listening: 'error', kernel_down: 'warning', disabled: 'default', unknown: 'default'
+};
+
+const portHopRuleLabels: Record<string, string> = {
+  missing: '端口跳跃 iptables 规则缺失，跳跃端口外部不可达；重新保存协议或手动触发同步可重建。',
+  mismatched: '端口跳跃规则与当前配置不一致（改过跳跃范围后未同步）；重新保存协议可重建。',
+  unknown: '无法检查端口跳跃规则（iptables 不可用）。'
+};
+
 export function ProtocolsPage() {
   const { message, notification } = AntApp.useApp();
   const screens = Grid.useBreakpoint();
@@ -88,6 +101,7 @@ export function ProtocolsPage() {
   const [acmeForm] = Form.useForm<AcmeFormValues>();
   const [cloneForm] = Form.useForm<CloneFormValues>();
   const protocols = useQuery({ queryKey: ['resources', 'protocols'], queryFn: protocolsApi.list, retry: false });
+  const runtime = useQuery({ queryKey: ['resources', 'protocols-runtime'], queryFn: protocolsApi.runtimeStatus, enabled: tab === 'protocols', retry: false, refetchInterval: 15000 });
   const certificates = useQuery({ queryKey: ['resources', 'certificates'], queryFn: certificatesApi.list, retry: false });
   const schema = useQuery({ queryKey: ['resources', 'protocol-schema', protocolType], queryFn: () => protocolsApi.schema(protocolType), enabled: protocolDrawer, retry: false });
   const suggestedPortQuery = useQuery({ queryKey: ['resources', 'protocol-port', protocolType], queryFn: () => protocolsApi.suggestPort(protocolType), enabled: protocolDrawer && !editingProtocol, retry: false });
@@ -96,7 +110,8 @@ export function ProtocolsPage() {
   const refreshProtocols = async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['resources', 'protocols'] }),
-      queryClient.invalidateQueries({ queryKey: ['resources', 'protocol-port'] })
+      queryClient.invalidateQueries({ queryKey: ['resources', 'protocol-port'] }),
+      queryClient.invalidateQueries({ queryKey: ['resources', 'protocols-runtime'] })
     ]);
   };
   const refreshCertificates = () => queryClient.invalidateQueries({ queryKey: ['resources', 'certificates'] });
@@ -240,6 +255,24 @@ export function ProtocolsPage() {
     { title: '类型', dataIndex: 'type', width: 150, render: (value: ResourceProtocolType) => <Tag color="blue">{protocolLabels[value]}</Tag> },
     { title: '监听', width: 180, render: (_, value) => <Typography.Text code>{value.listen}:{value.listenPort}</Typography.Text> },
     { title: '状态', dataIndex: 'enabled', width: 90, render: (value: boolean) => <Tag color={value ? 'success' : 'default'}>{value ? '启用' : '停用'}</Tag> },
+    {
+      title: '运行状态', width: 150,
+      render: (_, value) => {
+        const item = runtime.data?.items.find((entry) => entry.id === value.id);
+        if (!item) return '-';
+        const tooltip = item.portHop && item.portHop.rule !== 'ok'
+          ? portHopRuleLabels[item.portHop.rule]
+          : item.status === 'not_listening'
+            ? '端口未在监听：检查内核是否已同步该协议，或端口是否被其他进程占用。'
+            : item.status === 'unknown' ? runtime.data?.listeningReason : undefined;
+        return (
+          <Space size={4}>
+            <Tooltip title={tooltip}><Tag color={runtimeStatusColors[item.status]}>{runtimeStatusLabels[item.status] || item.status}</Tag></Tooltip>
+            {item.activeConnections != null ? <Typography.Text type="secondary">{item.activeConnections} 连接</Typography.Text> : null}
+          </Space>
+        );
+      }
+    },
     { title: '证书', dataIndex: 'certificateId', width: 160, responsive: ['lg'], render: (id?: string | null) => certificates.data?.items.find((item) => item.id === id)?.name || '-' },
     {
       title: '操作', width: 168, fixed: screens.md ? 'right' : undefined,
@@ -275,7 +308,7 @@ export function ProtocolsPage() {
       <Tabs activeKey={tab} onChange={setTab} items={[
         { key: 'protocols', label: '协议', children: <>
           <div className="page-toolbar"><Typography.Text type="secondary">服务器对外提供的连接方式，保存后自动同步到本机 sing-box。</Typography.Text><Button type="primary" icon={<PlusOutlined />} onClick={openCreateProtocol}>添加接入协议</Button></div>
-          <Table rowKey="id" loading={protocols.isLoading} dataSource={protocols.data?.items || []} columns={protocolColumns} pagination={false} scroll={{ x: screens.md ? 930 : 430 }} />
+          <Table rowKey="id" loading={protocols.isLoading} dataSource={protocols.data?.items || []} columns={protocolColumns} pagination={false} scroll={{ x: screens.md ? 1080 : 430 }} />
         </> },
         { key: 'certificates', label: '证书', children: <>
           <div className="page-toolbar"><Typography.Text type="secondary">{certificates.data?.items.length || 0} 个证书</Typography.Text><Space><Button icon={<SafetyCertificateOutlined />} onClick={() => { acmeForm.resetFields(); setAcmeDrawer(true); }}>申请 ACME 证书</Button><Button type="primary" icon={<SafetyCertificateOutlined />} onClick={openCreateCertificate}>生成自签名证书</Button></Space></div>

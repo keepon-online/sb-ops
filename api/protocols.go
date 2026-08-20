@@ -1,6 +1,7 @@
 package api
 
 import (
+	"log/slog"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -56,6 +57,20 @@ func (h *handler) listProtocols(c *gin.Context) {
 		return
 	}
 	httpx.OK(c, protocolsResponse{Items: values})
+}
+
+func (h *handler) protocolRuntimeStatus(c *gin.Context) {
+	if h.sync == nil {
+		writeRuntimeUnavailable(c)
+		return
+	}
+	value, err := h.sync.ProtocolRuntimeStatus(c.Request.Context())
+	if err != nil {
+		slog.Error("获取协议运行状态失败", "error", err)
+		writeRuntimeFailed(c, "获取协议运行状态失败")
+		return
+	}
+	httpx.OK(c, value)
 }
 
 func (h *handler) createProtocol(c *gin.Context) {

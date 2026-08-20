@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### 新增
+
+- **协议运行状态监控**：协议列表新增「运行状态」列——按协议本地探测监听端口是否在监听（TCP 查 LISTEN、UDP 查绑定、端口跳跃协议额外核对 iptables 规则），并展示按入站聚合的活跃连接数（Clash API）；`GET /api/v1/protocols/runtime-status` 提供同源数据，探测失败逐项降级不报错。
+
 ### 修复
 
 - **Clash 连接入站标签解析**：sing-box v1.13 的 `/connections` 无独立 `inbound` 字段（入站信息在 `metadata.type`，格式 `类型/tag`），改为从 `type` 提取——修复协议页连接归因恒为 0 与「实时连接」入站列为空。

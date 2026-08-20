@@ -517,6 +517,17 @@ paths:
         '400': {$ref: '#/components/responses/BadRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
+  /api/v1/protocols/runtime-status:
+    get:
+      tags: [Protocols]
+      operationId: listProtocolRuntimeStatus
+      summary: Report per-protocol runtime state from a local listening-port probe and active connection counts
+      security: [{BearerAuth: []}]
+      responses:
+        '200': {description: Per-protocol runtime status, content: {application/json: {schema: {allOf: [{$ref: '#/components/schemas/SuccessEnvelope'}, {properties: {data: {$ref: '#/components/schemas/ProtocolRuntimeStatusResult'}}}]}}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '503': {description: Runtime service unavailable, content: {application/json: {schema: {$ref: '#/components/schemas/ManagementErrorResponse'}}}}
   /api/v1/protocols:
     get:
       tags: [Protocols]
@@ -1881,6 +1892,43 @@ components:
         items:
           type: array
           items: {$ref: '#/components/schemas/ResourceProtocol'}
+    ProtocolRuntimeStatusResult:
+      type: object
+      additionalProperties: false
+      required: [kernelStatus, configStatus, listeningAvailable, connectionsAvailable, items]
+      properties:
+        kernelStatus: {type: string, enum: [running, stopped, unhealthy], description: 内核整体运行状态。}
+        configStatus: {type: string, enum: [not_configured, pending, applied], description: 配置同步状态；pending 表示改动尚未应用到内核。}
+        listeningAvailable: {type: boolean, description: 本地监听端口探测是否成功。}
+        listeningReason: {type: string, description: 监听探测不可用原因。}
+        connectionsAvailable: {type: boolean, description: Clash 连接观测是否可用。}
+        connectionsReason: {type: string, description: 连接观测不可用原因。}
+        items: {type: array, items: {$ref: '#/components/schemas/ProtocolRuntimeStatusItem'}}
+    ProtocolRuntimeStatusItem:
+      type: object
+      additionalProperties: false
+      required: [id, name, type, transport, enabled, listenPort, status, activeConnections]
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string}
+        type: {$ref: '#/components/schemas/ResourceProtocolType'}
+        transport: {type: string, enum: [tcp, udp]}
+        enabled: {type: boolean}
+        listenPort: {type: integer, minimum: 1, maximum: 65535}
+        status:
+          type: string
+          enum: [listening, not_listening, kernel_down, disabled, unknown]
+          description: 监听端口与内核状态推导出的运行状态。
+        activeConnections: {type: [integer, 'null'], minimum: 0, description: 该协议入站的活跃连接数；连接观测不可用时为 null。}
+        portHop: {$ref: '#/components/schemas/ProtocolPortHopStatus'}
+    ProtocolPortHopStatus:
+      type: object
+      additionalProperties: false
+      required: [from, to, rule]
+      properties:
+        from: {type: integer, minimum: 1, maximum: 65535}
+        to: {type: integer, minimum: 1, maximum: 65535}
+        rule: {type: string, enum: [ok, missing, mismatched, unknown], description: iptables 端口跳跃规则与期望配置的比对结果。}
     ResourceCertificate:
       type: object
       additionalProperties: false

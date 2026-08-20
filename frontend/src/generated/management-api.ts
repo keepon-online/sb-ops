@@ -366,6 +366,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/protocols/runtime-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Report per-protocol runtime state from a local listening-port probe and active connection counts */
+        get: operations["listProtocolRuntimeStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/protocols": {
         parameters: {
             query?: never;
@@ -1492,6 +1509,54 @@ export interface components {
         };
         ResourceProtocolsResponse: {
             items: components["schemas"]["ResourceProtocol"][];
+        };
+        ProtocolRuntimeStatusResult: {
+            /**
+             * @description 内核整体运行状态。
+             * @enum {string}
+             */
+            kernelStatus: "running" | "stopped" | "unhealthy";
+            /**
+             * @description 配置同步状态；pending 表示改动尚未应用到内核。
+             * @enum {string}
+             */
+            configStatus: "not_configured" | "pending" | "applied";
+            /** @description 本地监听端口探测是否成功。 */
+            listeningAvailable: boolean;
+            /** @description 监听探测不可用原因。 */
+            listeningReason?: string;
+            /** @description Clash 连接观测是否可用。 */
+            connectionsAvailable: boolean;
+            /** @description 连接观测不可用原因。 */
+            connectionsReason?: string;
+            items: components["schemas"]["ProtocolRuntimeStatusItem"][];
+        };
+        ProtocolRuntimeStatusItem: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            type: components["schemas"]["ResourceProtocolType"];
+            /** @enum {string} */
+            transport: "tcp" | "udp";
+            enabled: boolean;
+            listenPort: number;
+            /**
+             * @description 监听端口与内核状态推导出的运行状态。
+             * @enum {string}
+             */
+            status: "listening" | "not_listening" | "kernel_down" | "disabled" | "unknown";
+            /** @description 该协议入站的活跃连接数；连接观测不可用时为 null。 */
+            activeConnections: number | null;
+            portHop?: components["schemas"]["ProtocolPortHopStatus"];
+        };
+        ProtocolPortHopStatus: {
+            from: number;
+            to: number;
+            /**
+             * @description iptables 端口跳跃规则与期望配置的比对结果。
+             * @enum {string}
+             */
+            rule: "ok" | "missing" | "mismatched" | "unknown";
         };
         ResourceCertificate: {
             /** Format: uuid */
@@ -3124,6 +3189,39 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+        };
+    };
+    listProtocolRuntimeStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Per-protocol runtime status */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessEnvelope"] & {
+                        data?: components["schemas"]["ProtocolRuntimeStatusResult"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description Runtime service unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManagementErrorResponse"];
+                };
+            };
         };
     };
     listProtocols: {
