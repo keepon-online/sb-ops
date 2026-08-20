@@ -62,6 +62,30 @@ func TestConnectionsRejectsExternalClashAPI(t *testing.T) {
 	}
 }
 
+// sing-box v1.13 packs the inbound into metadata.type as "<type>/<tag>" and
+// has no separate inbound field.
+func TestConnectionsParsesInboundFromType(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		_, _ = writer.Write([]byte(`{"connections":[
+			{"id":"c1","start":"2026-08-01T12:00:00Z","metadata":{"host":"example.com","dstPort":"443","network":"udp","type":"tuic/tuic-tuic"},"chains":["direct"],"upload":1,"download":2},
+			{"id":"c2","start":"2026-08-01T12:00:01Z","metadata":{"host":"example.com","dstPort":"443","network":"tcp","type":"mixed"},"chains":["direct"],"upload":1,"download":2}
+		]}`))
+	}))
+	defer server.Close()
+	_, port, err := net.SplitHostPort(server.Listener.Addr().String())
+	if err != nil {
+		t.Fatalf("split host port: %v", err)
+	}
+	service := NewSyncService(testClashDB(t, net.JoinHostPort("127.0.0.1", port)), ApplyConfig{})
+	result, err := service.Connections(context.Background())
+	if err != nil {
+		t.Fatalf("Connections: %v", err)
+	}
+	if len(result.Items) != 2 || result.Items[0].Inbound != "tuic-tuic" || result.Items[1].Inbound != "" {
+		t.Fatalf("items = %#v", result.Items)
+	}
+}
+
 func TestCloseConnectionUsesSingleEscapedID(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if request.Method != http.MethodDelete || request.URL.Path != "/connections/connection-1" {

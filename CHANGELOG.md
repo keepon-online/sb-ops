@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### 修复
+
+- **Clash 连接入站标签解析**：sing-box v1.13 的 `/connections` 无独立 `inbound` 字段（入站信息在 `metadata.type`，格式 `类型/tag`），改为从 `type` 提取——修复协议页连接归因恒为 0 与「实时连接」入站列为空。
+
 ## [0.1.0] - 2026-08-19
 
 初始版本：单一 Go 进程内嵌 sing-box 内核与 Web 管理控制台，面向个人使用的单 VPS 部署。

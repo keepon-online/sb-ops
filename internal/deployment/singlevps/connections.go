@@ -40,12 +40,27 @@ type clashConnectionResponse struct {
 			DstPort string `json:"dstPort"`
 			Network string `json:"network"`
 			Inbound string `json:"inbound"`
+			Type    string `json:"type"`
 			Rule    string `json:"rule"`
 		} `json:"metadata"`
 		Chains   []string `json:"chains"`
 		Upload   int64    `json:"upload"`
 		Download int64    `json:"download"`
 	} `json:"connections"`
+}
+
+// clashInboundTag extracts the inbound tag from clash connection metadata.
+// sing-box v1.13 has no separate "inbound" field: it packs the inbound into
+// "type" as "<inboundType>/<inboundTag>" (e.g. "tuic/tuic-tuic"). The bare
+// field is kept first for older cores that expose it directly.
+func clashInboundTag(inbound, connectionType string) string {
+	if inbound != "" {
+		return inbound
+	}
+	if _, tag, found := strings.Cut(connectionType, "/"); found {
+		return strings.TrimSpace(tag)
+	}
+	return ""
 }
 
 func (s *SyncService) Connections(ctx context.Context) (ConnectionsResult, error) {
@@ -74,7 +89,7 @@ func (s *SyncService) Connections(ctx context.Context) (ConnectionsResult, error
 	}
 	items := make([]Connection, 0, len(payload.Connections))
 	for _, item := range payload.Connections {
-		value := Connection{ID: item.ID, Inbound: item.Metadata.Inbound, Rule: item.Metadata.Rule, Host: item.Metadata.Host, Network: item.Metadata.Network, UploadBytes: item.Upload, DownloadBytes: item.Download}
+		value := Connection{ID: item.ID, Inbound: clashInboundTag(item.Metadata.Inbound, item.Metadata.Type), Rule: item.Metadata.Rule, Host: item.Metadata.Host, Network: item.Metadata.Network, UploadBytes: item.Upload, DownloadBytes: item.Download}
 		if len(item.Chains) > 0 {
 			value.Outbound = item.Chains[len(item.Chains)-1]
 		}
