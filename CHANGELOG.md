@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### 变更
+
+- **内核升级 sing-box v1.13.19**（自 v1.13.18）：补丁版本纯缺陷修复——二进制规则集/geosite 读取加固（限制不可信数据的分配上限）、FakeIP 元数据异步保存修复、默认网卡监视器开机卡死修复、DHCP DNS search domain 处理修复；连带 `sing v0.8.13` 与 `sing-tun` 小版本。对外 API 无变化，项目代码零改动。
+
 ### 新增
 
 - **协议运行状态监控**：协议列表新增「运行状态」列——按协议本地探测监听端口是否在监听（TCP 查 LISTEN、UDP 查绑定、端口跳跃协议额外核对 iptables 规则），并展示按入站聚合的活跃连接数（Clash API）；`GET /api/v1/protocols/runtime-status` 提供同源数据，探测失败逐项降级不报错。
