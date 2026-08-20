@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { InteractiveChart } from '../../../components/InteractiveChart';
 import { Page } from '../../../components/Page';
 import { UsageGauge } from '../../../components/UsageGauge';
+import { useElementWidth } from '../../../components/useElementWidth';
 import { monitorApi, type MonitorStatus } from '../../../services/monitor';
 import { ApiError } from '../../../services/http';
 import type { components } from '../../../generated/management-api';
@@ -128,10 +129,11 @@ export function MonitorPage() {
 }
 
 // CoreBars 用每核一根细柱呈现占用（btop/macOS 活动监视器式）：柱高即占用率，
-// 核数多时柱变细、区块高度固定；悬停高亮并显示精确数值。
+// 核数多时柱变细、区块高度固定；悬停高亮并显示精确数值。SVG 按容器实测宽度
+// 渲染，避免固定 viewBox 拉伸导致刻度文字变形，x 轴核号密度随宽度自适应。
 function CoreBars({ perCore }: { perCore: number[] }) {
   const [hover, setHover] = useState<number | null>(null);
-  const width = 1000;
+  const [containerRef, width] = useElementWidth<HTMLDivElement>();
   const height = 150;
   const left = 40;
   const right = 8;
@@ -145,14 +147,14 @@ function CoreBars({ perCore }: { perCore: number[] }) {
   const busiest = perCore.indexOf(Math.max(...perCore));
   const barX = (index: number) => left + index * slot + (slot - barWidth) / 2;
   const barY = (usage: number) => top + (1 - Math.min(usage, 100) / 100) * plotHeight;
-  const labelStep = Math.max(1, Math.ceil(count / 12));
+  const labelStep = Math.max(1, Math.ceil(count / Math.max(4, Math.floor(plotWidth / 40))));
   const handleMove = (event: React.MouseEvent<SVGRectElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
     if (rect.width === 0) return;
     const index = Math.floor(((event.clientX - rect.left) / rect.width) * count);
     setHover(Math.min(count - 1, Math.max(0, index)));
   };
-  return <div className="core-chart" style={{ marginTop: 8 }} role="img"
+  return <div className="core-chart" ref={containerRef} style={{ position: 'relative', marginTop: 8 }} role="img"
     aria-label={`CPU 每核占用柱状图，${count} 核，最忙为核 ${busiest}（${perCore[busiest].toFixed(1)}%）`}>
     <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" style={{ width: '100%', height: 150, display: 'block' }}>
       {[0, 25, 50, 75, 100].map((tick) => {

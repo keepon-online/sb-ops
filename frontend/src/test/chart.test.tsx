@@ -1,5 +1,5 @@
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { act, render, screen } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
 import { InteractiveChart } from '../components/InteractiveChart';
 
 describe('interactive chart axis', () => {
@@ -36,5 +36,34 @@ describe('interactive chart axis', () => {
     );
     expect(screen.getByText('0 B')).toBeInTheDocument();
     expect(screen.getByText('400 B')).toBeInTheDocument();
+  });
+
+  it('renders at the measured container width and thins x labels on narrow cards', async () => {
+    const observers: { callback: ResizeObserverCallback }[] = [];
+    vi.stubGlobal('ResizeObserver', class {
+      constructor(callback: ResizeObserverCallback) { observers.push({ callback }); }
+      observe() { /* entries dispatched manually in the test */ }
+      unobserve() { /* noop */ }
+      disconnect() { /* noop */ }
+    });
+    const labels = Array.from({ length: 41 }, (_, index) => `L${index}`);
+    const { container } = render(
+      <InteractiveChart
+        height={220}
+        ariaLabel="流量趋势"
+        labels={labels}
+        formatValue={(value) => `${Math.round(value)} B`}
+        series={[{ name: '下行', color: '#42a56f', values: labels.map(() => 100) }]}
+      />
+    );
+    await act(async () => {
+      observers[0]!.callback([{ contentRect: { width: 438 } } as unknown as ResizeObserverEntry], {} as ResizeObserver);
+    });
+    const svg = container.querySelector('svg')!;
+    expect(svg.getAttribute('viewBox')).toBe('0 0 438 220');
+    // plot ≈ 354px → 每个标签留 80px → 4 段 → 0,11,22,33 + 末位 40，共 5 个 x 标签。
+    const xLabels = Array.from(svg.querySelectorAll('text')).map((node) => node.textContent).filter((value) => /^L\d+$/.test(value));
+    expect(xLabels).toEqual(['L0', 'L11', 'L22', 'L33', 'L40']);
+    vi.unstubAllGlobals();
   });
 });

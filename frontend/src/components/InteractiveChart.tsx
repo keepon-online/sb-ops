@@ -1,5 +1,6 @@
 import { Empty, Typography } from 'antd';
 import { useState } from 'react';
+import { useElementWidth } from './useElementWidth';
 
 export type ChartSeries = { name: string; color: string; values: number[] };
 
@@ -9,10 +10,12 @@ export type ChartSeries = { name: string; color: string; values: number[] };
 // percentage charts) so the scale does not jump with the data; `integerTicks`
 // switches the y-axis to whole-number steps for count data (users online),
 // where quarter-splitting a small max would produce duplicate labels like
-// 0,0,1,1,1.
+// 0,0,1,1,1. The SVG is rendered at the container's measured width so text
+// labels are not distorted by horizontal stretching; x-axis label density
+// adapts to that width.
 export function InteractiveChart({ series, labels, formatValue, height, ariaLabel, emptyText = '当前范围暂无数据', area = false, maxValue, integerTicks = false }: { series: ChartSeries[]; labels: string[]; formatValue: (value: number) => string; height: number; ariaLabel: string; emptyText?: string; area?: boolean; maxValue?: number; integerTicks?: boolean }) {
   const [hover, setHover] = useState<number | null>(null);
-  const width = 1000;
+  const [containerRef, width] = useElementWidth<HTMLDivElement>();
   const left = 68;
   const right = 16;
   const top = 14;
@@ -24,7 +27,7 @@ export function InteractiveChart({ series, labels, formatValue, height, ariaLabe
   );
   const x = (index: number) => (count <= 1 ? (left + width - right) / 2 : left + (index * (width - left - right)) / (count - 1));
   const y = (value: number) => top + (1 - value / yMax) * (height - top - bottom);
-  const labelStep = Math.max(1, Math.ceil(count / 6));
+  const labelStep = Math.max(1, Math.ceil(count / Math.max(2, Math.floor((width - left - right) / 80))));
   const handleMove = (event: React.MouseEvent<SVGRectElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
     const svgX = ((event.clientX - rect.left) / rect.width) * width;
@@ -32,7 +35,7 @@ export function InteractiveChart({ series, labels, formatValue, height, ariaLabe
     setHover(Math.min(count - 1, Math.max(0, index)));
   };
   if (count === 0) return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={emptyText} />;
-  return <div className="traffic-chart" style={{ position: 'relative' }} role="img" aria-label={ariaLabel}>
+  return <div className="traffic-chart" ref={containerRef} style={{ position: 'relative' }} role="img" aria-label={ariaLabel}>
     <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" style={{ width: '100%', display: 'block' }}>
       {tickValues.map((value) => <g key={value}>
         <line x1={left} y1={y(value)} x2={width - right} y2={y(value)} stroke="var(--border-color)" strokeWidth={value === 0 ? 1.5 : 0.5} />
