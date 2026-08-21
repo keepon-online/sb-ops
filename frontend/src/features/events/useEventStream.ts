@@ -3,11 +3,23 @@ import { getToken } from '../../services/http';
 import { queryClient } from '../../services/queryClient';
 
 const lastEventKey = 'sb-last-event-id';
+// reset 表示事件游标失效（服务端重启或断线过久）需要全量刷新。链路抖动会让
+// SSE 频繁断连重连、每次都可能触发 reset——不节流会把网络抖动放大成整页数据
+// 的反复重拉与界面闪烁（弱网/经代理访问面板时尤其明显）。
+const resetThrottleMs = 5000;
+let lastResetAt = 0;
 
 function invalidate(type: string) {
   if (type.startsWith('traffic.')) void queryClient.invalidateQueries({ queryKey: ['traffic'] });
   if (type.startsWith('alert.')) void queryClient.invalidateQueries({ queryKey: ['alerts'] });
-  if (type === 'reset') void queryClient.invalidateQueries();
+  if (type === 'reset') {
+    const now = Date.now();
+    if (now - lastResetAt >= resetThrottleMs) {
+      lastResetAt = now;
+      void queryClient.invalidateQueries();
+    }
+    return;
+  }
   void queryClient.invalidateQueries({ queryKey: ['overview'] });
 }
 
