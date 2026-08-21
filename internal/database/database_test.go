@@ -586,3 +586,42 @@ INSERT INTO devices(id,user_id,name,ua_key,rotated_at,created_at) VALUES('d-manu
 		t.Fatalf("same ua with different source_ip rejected: %v", err)
 	}
 }
+
+func TestMigrateRepeatedWithSameUADifferentIPDevices(t *testing.T) {
+	db, err := Open(Options{Path: filepath.Join(t.TempDir(), "control.db")})
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	if err := Migrate(t.Context(), db); err != nil {
+		t.Fatalf("initial migrate: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO users(id,name,created_at,updated_at) VALUES('u-ua','ua',1,1);
+INSERT INTO devices(id,user_id,name,ua_key,source_ip,rotated_at,created_at) VALUES
+ ('d-1','u-ua','Clash Verge · 192.0.2.1','clashverge','192.0.2.1',1,1),
+ ('d-2','u-ua','Clash Verge · 192.0.2.2','clashverge','192.0.2.2',1,2);`); err != nil {
+		t.Fatalf("seed same-UA devices: %v", err)
+	}
+	// 第二次及以后启动不得重建已废弃的 (user_id, ua_key) 二元唯一索引，
+	// 否则同 UA 不同来源地址的合法设备会让启动直接失败。
+	if err := Migrate(t.Context(), db); err != nil {
+		t.Fatalf("second migrate: %v", err)
+	}
+	if err := Migrate(t.Context(), db); err != nil {
+		t.Fatalf("third migrate: %v", err)
+	}
+	var legacyIndex int
+	if err := db.QueryRow(`SELECT COUNT(1) FROM sqlite_master WHERE type='index' AND name='idx_devices_user_ua'`).Scan(&legacyIndex); err != nil {
+		t.Fatalf("check legacy index: %v", err)
+	}
+	if legacyIndex != 0 {
+		t.Fatalf("legacy index idx_devices_user_ua should not exist")
+	}
+	var ipIndex int
+	if err := db.QueryRow(`SELECT COUNT(1) FROM sqlite_master WHERE type='index' AND name='idx_devices_user_ua_ip'`).Scan(&ipIndex); err != nil {
+		t.Fatalf("check ip index: %v", err)
+	}
+	if ipIndex != 1 {
+		t.Fatalf("idx_devices_user_ua_ip count=%d, want 1", ipIndex)
+	}
+}

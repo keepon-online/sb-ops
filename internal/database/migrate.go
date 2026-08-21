@@ -347,8 +347,10 @@ func migrateDeviceUAKey(ctx context.Context, tx *sql.Tx) error {
 			return err
 		}
 	}
-	_, err := tx.ExecContext(ctx, `CREATE UNIQUE INDEX IF NOT EXISTS idx_devices_user_ua ON devices (user_id, ua_key) WHERE ua_key != ''`)
-	return err
+	// 不在此建 (user_id, ua_key) 二元唯一索引：它已被 migrateDeviceSourceIP
+	// 的三元索引 (user_id, ua_key, source_ip) 取代。若每轮启动先建后删二元
+	// 索引，库中存在同 UA 不同来源地址的合法设备时第二次启动必撞唯一约束。
+	return nil
 }
 
 // migrateUserSubscriptionToken adds the user-level subscription link columns.
