@@ -278,3 +278,49 @@ func TestAutoDiscoverySingleDeviceIPChangeUpdatesInPlace(t *testing.T) {
 		t.Fatalf("devices=%d err=%v want 3", len(devices), err)
 	}
 }
+
+func TestUpdateDevicePlatformOnlyFillsUnknown(t *testing.T) {
+	store := newTestStore(t)
+	svc := NewService(store)
+	ctx := t.Context()
+	created, _, err := svc.Create(ctx, CreateInput{Name: "alice", Enabled: true})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	unknownDevice, _, _, err := svc.DeviceForKey(ctx, created.ID, "clashverge", "Clash Verge", DeviceMetadata{SourceIP: "203.0.113.9"})
+	if err != nil {
+		t.Fatalf("discover unknown device: %v", err)
+	}
+	knownDevice, _, _, err := svc.DeviceForKey(ctx, created.ID, "stash", "Stash", DeviceMetadata{SourceIP: "203.0.113.10"})
+	if err != nil {
+		t.Fatalf("discover known device: %v", err)
+	}
+	refs, err := svc.UnknownPlatformDevices(ctx)
+	if err != nil || len(refs) != 2 {
+		t.Fatalf("unknown refs=%+v err=%v want 2 (both unknown initially)", refs, err)
+	}
+	if err := svc.UpdateDevicePlatform(ctx, created.ID, knownDevice.ID, "macos"); err != nil {
+		t.Fatalf("seed known platform: %v", err)
+	}
+	if err := svc.UpdateDevicePlatform(ctx, created.ID, unknownDevice.ID, "windows"); err != nil {
+		t.Fatalf("infer platform: %v", err)
+	}
+	// 再推一次不得覆盖已识别的值。
+	if err := svc.UpdateDevicePlatform(ctx, created.ID, unknownDevice.ID, "android"); err != nil {
+		t.Fatalf("second infer: %v", err)
+	}
+	devices, err := svc.ListDevices(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	platforms := map[string]string{}
+	for _, device := range devices {
+		platforms[device.ID] = device.Platform
+	}
+	if platforms[unknownDevice.ID] != "windows" || platforms[knownDevice.ID] != "macos" {
+		t.Fatalf("platforms=%v, want windows stays windows after android push and macos untouched", platforms)
+	}
+	if refs, _ = svc.UnknownPlatformDevices(ctx); len(refs) != 0 {
+		t.Fatalf("unknown refs after inference=%+v, want 0", refs)
+	}
+}

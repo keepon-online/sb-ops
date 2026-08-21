@@ -104,3 +104,25 @@ func TestCloseConnectionUsesSingleEscapedID(t *testing.T) {
 		t.Fatalf("CloseConnection: %v", err)
 	}
 }
+
+func TestConnectionsParsesSourceIP(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		_, _ = writer.Write([]byte(`{"connections":[
+			{"id":"c1","start":"2026-08-01T12:00:00Z","metadata":{"host":"dns.msftncsi.com","dstPort":"443","network":"tcp","type":"vless/vless-main","sourceIP":"203.0.113.9"},"chains":["direct"],"upload":1,"download":2},
+			{"id":"c2","start":"2026-08-01T12:00:01Z","metadata":{"host":"example.com","dstPort":"443","network":"tcp","type":"mixed"},"chains":["direct"],"upload":1,"download":2}
+		]}`))
+	}))
+	defer server.Close()
+	_, port, err := net.SplitHostPort(server.Listener.Addr().String())
+	if err != nil {
+		t.Fatalf("split host port: %v", err)
+	}
+	service := NewSyncService(testClashDB(t, net.JoinHostPort("127.0.0.1", port)), ApplyConfig{})
+	result, err := service.Connections(context.Background())
+	if err != nil {
+		t.Fatalf("Connections: %v", err)
+	}
+	if len(result.Items) != 2 || result.Items[0].SourceIP != "203.0.113.9" || result.Items[1].SourceIP != "" {
+		t.Fatalf("source IP not parsed: %#v", result.Items)
+	}
+}

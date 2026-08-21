@@ -16,6 +16,7 @@ type Connection struct {
 	ID            string    `json:"id"`
 	StartedAt     time.Time `json:"startedAt"`
 	Inbound       string    `json:"inbound,omitempty"`
+	SourceIP      string    `json:"sourceIp,omitempty"`
 	Rule          string    `json:"rule,omitempty"`
 	Outbound      string    `json:"outbound,omitempty"`
 	Host          string    `json:"host,omitempty"`
@@ -36,12 +37,13 @@ type clashConnectionResponse struct {
 		ID       string `json:"id"`
 		Start    string `json:"start"`
 		Metadata struct {
-			Host    string `json:"host"`
-			DstPort string `json:"dstPort"`
-			Network string `json:"network"`
-			Inbound string `json:"inbound"`
-			Type    string `json:"type"`
-			Rule    string `json:"rule"`
+			Host     string `json:"host"`
+			DstPort  string `json:"dstPort"`
+			Network  string `json:"network"`
+			Inbound  string `json:"inbound"`
+			Type     string `json:"type"`
+			SourceIP string `json:"sourceIP"`
+			Rule     string `json:"rule"`
 		} `json:"metadata"`
 		Chains   []string `json:"chains"`
 		Upload   int64    `json:"upload"`
@@ -89,7 +91,7 @@ func (s *SyncService) Connections(ctx context.Context) (ConnectionsResult, error
 	}
 	items := make([]Connection, 0, len(payload.Connections))
 	for _, item := range payload.Connections {
-		value := Connection{ID: item.ID, Inbound: clashInboundTag(item.Metadata.Inbound, item.Metadata.Type), Rule: item.Metadata.Rule, Host: item.Metadata.Host, Network: item.Metadata.Network, UploadBytes: item.Upload, DownloadBytes: item.Download}
+		value := Connection{ID: item.ID, Inbound: clashInboundTag(item.Metadata.Inbound, item.Metadata.Type), SourceIP: strings.TrimSpace(item.Metadata.SourceIP), Rule: item.Metadata.Rule, Host: item.Metadata.Host, Network: item.Metadata.Network, UploadBytes: item.Upload, DownloadBytes: item.Download}
 		if len(item.Chains) > 0 {
 			value.Outbound = item.Chains[len(item.Chains)-1]
 		}

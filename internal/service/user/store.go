@@ -563,6 +563,42 @@ func (s *Store) RenameDevice(ctx context.Context, userID, deviceID, name string)
 	return err
 }
 
+// UnknownPlatformDeviceRef identifies a device whose platform has not been
+// determined yet, together with the source address its subscription was last
+// fetched from.
+type UnknownPlatformDeviceRef struct {
+	UserID   string
+	DeviceID string
+	SourceIP string
+}
+
+// UnknownPlatformDevices lists devices still on the unknown platform that have
+// an observed source address, keyed for traffic-portrait attribution.
+func (s *Store) UnknownPlatformDevices(ctx context.Context) ([]UnknownPlatformDeviceRef, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT user_id,id,source_ip FROM devices WHERE platform='unknown' AND source_ip<>''`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	values := []UnknownPlatformDeviceRef{}
+	for rows.Next() {
+		var item UnknownPlatformDeviceRef
+		if err := rows.Scan(&item.UserID, &item.DeviceID, &item.SourceIP); err != nil {
+			return nil, err
+		}
+		values = append(values, item)
+	}
+	return values, rows.Err()
+}
+
+// UpdateDevicePlatform fills in an inferred platform. The guard on
+// platform='unknown' keeps an already-identified value (from the subscription
+// User-Agent) authoritative; inference never overrides it.
+func (s *Store) UpdateDevicePlatform(ctx context.Context, userID, deviceID, platform string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE devices SET platform=? WHERE id=? AND user_id=? AND platform='unknown'`, platform, deviceID, userID)
+	return err
+}
+
 func normalizeSourceIP(value string) string {
 	value = strings.TrimSpace(value)
 	if host, _, err := net.SplitHostPort(value); err == nil {

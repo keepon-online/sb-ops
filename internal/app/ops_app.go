@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/gookit/slog"
 	"github.com/keepon-online/sb-ops/api"
 	controlaudit "github.com/keepon-online/sb-ops/internal/audit"
 	"github.com/keepon-online/sb-ops/internal/config"
@@ -189,7 +190,61 @@ func newOps(db *sql.DB, sessionTTL time.Duration, apply deployment.ApplyConfig, 
 		defer value.wg.Done()
 		_ = monitor.Run(background)
 	}()
+	// 设备平台画像：按实时连接的目标域名（微软更新/NCSI、苹果软件更新、
+	// FCM 推送等高置信信号）推断 UA 未携带系统信息的设备平台，只回填
+	// unknown，不覆盖 UA 识别结果。
+	value.wg.Add(1)
+	go func() {
+		defer value.wg.Done()
+		_ = newDeviceProfiler(syncer, users, logger).Run(background)
+	}()
 	return value, nil
+}
+
+// deviceProfileStoreAdapter bridges the user service onto the profiler store
+// interface; the local ref type keeps observability free of service imports.
+type deviceProfileStoreAdapter struct {
+	users *serviceuser.Service
+}
+
+func (a deviceProfileStoreAdapter) UnknownPlatformDevices(ctx context.Context) ([]controlobservability.UnknownDeviceRef, error) {
+	refs, err := a.users.UnknownPlatformDevices(ctx)
+	if err != nil {
+		return nil, err
+	}
+	values := make([]controlobservability.UnknownDeviceRef, 0, len(refs))
+	for _, ref := range refs {
+		values = append(values, controlobservability.UnknownDeviceRef{UserID: ref.UserID, DeviceID: ref.DeviceID, SourceIP: ref.SourceIP})
+	}
+	return values, nil
+}
+
+func (a deviceProfileStoreAdapter) UpdateDevicePlatform(ctx context.Context, userID, deviceID, platform string) error {
+	return a.users.UpdateDevicePlatform(ctx, userID, deviceID, platform)
+}
+
+func newDeviceProfiler(syncer *deployment.SyncService, users *serviceuser.Service, logger *logging.Logger) *controlobservability.DeviceProfiler {
+	return &controlobservability.DeviceProfiler{
+		Snapshot: func(ctx context.Context) ([]controlobservability.ConnectionSample, error) {
+			result, err := syncer.Connections(ctx)
+			if err != nil {
+				return nil, err
+			}
+			samples := make([]controlobservability.ConnectionSample, 0, len(result.Items))
+			for _, item := range result.Items {
+				samples = append(samples, controlobservability.ConnectionSample{SourceIP: item.SourceIP, Host: item.Host})
+			}
+			return samples, nil
+		},
+		Store: deviceProfileStoreAdapter{users: users},
+		Log: func(level slog.Level, message string) {
+			if level >= slog.WarnLevel {
+				logger.Warn().Msg(message)
+			} else {
+				logger.Info().Msg(message)
+			}
+		},
+	}
 }
 
 // newAlertNotifier wires alert delivery: the embedded event bus always carries

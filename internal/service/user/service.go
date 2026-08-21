@@ -121,6 +121,16 @@ func (s *Service) RotateSubscriptionToken(ctx context.Context, userID string) (s
 	return s.store.RotateUserToken(ctx, userID)
 }
 
+// UnknownPlatformDevices lists devices awaiting platform inference.
+func (s *Service) UnknownPlatformDevices(ctx context.Context) ([]UnknownPlatformDeviceRef, error) {
+	return s.store.UnknownPlatformDevices(ctx)
+}
+
+// UpdateDevicePlatform fills an inferred platform; a known value stays authoritative.
+func (s *Service) UpdateDevicePlatform(ctx context.Context, userID, deviceID, platform string) error {
+	return s.store.UpdateDevicePlatform(ctx, userID, deviceID, platform)
+}
+
 // ListDevices returns the user's devices with decrypted subscription tokens.
 func (s *Service) ListDevices(ctx context.Context, userID string) ([]Device, error) {
 	return s.store.ListDevices(ctx, userID)
@@ -168,7 +178,11 @@ func (s *Service) DeviceForKey(ctx context.Context, userID, uaKey, label string,
 	if err != nil {
 		return Device{}, false, false, err
 	}
-	stored.Platform, stored.Client, stored.ClientVersion, stored.SourceIP, stored.LastSeenAt = metadata.Platform, metadata.Client, metadata.ClientVersion, metadata.SourceIP, metadata.LastSeenAt
+	platform := strings.TrimSpace(metadata.Platform)
+	if platform == "" {
+		platform = "unknown" // 与 UpdateDeviceMetadata 的空值规范化保持一致
+	}
+	stored.Platform, stored.Client, stored.ClientVersion, stored.SourceIP, stored.LastSeenAt = platform, metadata.Client, metadata.ClientVersion, metadata.SourceIP, metadata.LastSeenAt
 	if err := s.store.insertDevice(ctx, stored); err != nil {
 		// 并发首次下载同一客户端：唯一索引兜底，改为返回既有设备。
 		if existing, ok, findErr := s.store.FindDeviceByUAKey(ctx, userID, uaKey, metadata.SourceIP); ok && findErr == nil {
