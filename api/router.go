@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -265,6 +266,9 @@ func (h *handler) audit(c *gin.Context, action, resourceType, resourceID, result
 	if h.store == nil {
 		return
 	}
+	// 审计写库剥离请求取消：客户端断开后（同步收尾阶段常见）审计仍必须
+	// 落盘，否则合规追溯静默失效。
+	auditCtx := context.WithoutCancel(c.Request.Context())
 	var actorID *string
 	if value, ok := c.Get(principalKey); ok {
 		principal := value.(identity.Principal)
@@ -276,7 +280,7 @@ func (h *handler) audit(c *gin.Context, action, resourceType, resourceID, result
 			detailsJSON = details
 		}
 	}
-	if err := h.store.AppendAuditLog(c.Request.Context(), identity.AuditLog{
+	if err := h.store.AppendAuditLog(auditCtx, identity.AuditLog{
 		ID: uuid.NewString(), ActorID: actorID, Action: action,
 		ResourceType: resourceType, ResourceID: resourceID, Result: result,
 		RequestID: httpx.RequestID(c), ClientIP: clientAddress(c), DetailsJSON: detailsJSON,
