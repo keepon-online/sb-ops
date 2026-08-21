@@ -1,6 +1,7 @@
 package user
 
 import (
+	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -64,25 +65,26 @@ func TestDeviceLifecycle(t *testing.T) {
 		t.Fatalf("create: %v", err)
 	}
 
-	// 新增设备拿到独立凭据。
-	phone, phoneIssued, err := svc.CreateDevice(ctx, created.ID, DeviceInput{Name: "手机"})
-	if err != nil {
-		t.Fatalf("create device: %v", err)
+	// 订阅自动发现设备并拿到独立凭据。
+	phone, createdNew, found, err := svc.DeviceForKey(ctx, created.ID, "clashverge", "Clash Verge", DeviceMetadata{SourceIP: "198.51.100.10"})
+	if err != nil || !createdNew || !found {
+		t.Fatalf("discover device: %+v created=%v found=%v err=%v", phone, createdNew, found, err)
 	}
-	items, err := svc.ListDevices(ctx, created.ID)
-	if err != nil || len(items) != 1 {
-		t.Fatalf("devices=%+v err=%v want 1", items, err)
+	phoneItems, err := svc.ListDevices(ctx, created.ID)
+	if err != nil || len(phoneItems) != 1 {
+		t.Fatalf("devices=%+v err=%v want 1", phoneItems, err)
 	}
-	if phone.Token != phoneIssued.Token || phone.Token == "" {
-		t.Fatalf("created device should expose its token: %+v", phone)
+	if phoneItems[0].Token == "" {
+		t.Fatalf("discovered device should expose token in list: %+v", phoneItems)
 	}
+	phone.Token = phoneItems[0].Token
 
 	// 轮换设备：token 更换、设备 id 与名称保持。
 	rotated, rotatedIssued, err := svc.RotateDevice(ctx, created.ID, phone.ID)
 	if err != nil {
 		t.Fatalf("rotate device: %v", err)
 	}
-	if rotated.Token != rotatedIssued.Token || rotated.Token == phone.Token || rotated.Name != "手机" || rotated.ID != phone.ID {
+	if rotated.Token != rotatedIssued.Token || rotated.Token == phone.Token || rotated.Name != "Clash Verge · 198.51.100.10" || rotated.ID != phone.ID {
 		t.Fatalf("rotated=%+v issued=%+v", rotated, rotatedIssued)
 	}
 
@@ -113,7 +115,7 @@ func TestDeviceLifecycle(t *testing.T) {
 	}
 }
 
-func TestCreateDeviceDuplicateNameAndCap(t *testing.T) {
+func TestAutoDiscoveryDeviceCap(t *testing.T) {
 	store := newTestStore(t)
 	svc := NewService(store)
 	ctx := t.Context()
@@ -121,19 +123,15 @@ func TestCreateDeviceDuplicateNameAndCap(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	if _, _, err := svc.CreateDevice(ctx, created.ID, DeviceInput{Name: "手机"}); err != nil {
-		t.Fatalf("seed device: %v", err)
-	}
-	if _, _, err := svc.CreateDevice(ctx, created.ID, DeviceInput{Name: "手机"}); err == nil {
-		t.Fatal("duplicate device name must be rejected")
-	}
-	for i := 0; i < MaxDevicesPerUser-1; i++ {
-		if _, _, err := svc.CreateDevice(ctx, created.ID, DeviceInput{Name: time.Weekday(i).String()}); err != nil {
-			t.Fatalf("create device %d: %v", i, err)
+	for i := 0; i < MaxDevicesPerUser; i++ {
+		_, createdNew, found, err := svc.DeviceForKey(ctx, created.ID, fmt.Sprintf("client-%d", i), fmt.Sprintf("Client %d", i), DeviceMetadata{SourceIP: fmt.Sprintf("198.51.100.%d", i+1)})
+		if err != nil || !createdNew || !found {
+			t.Fatalf("discover device %d: created=%v found=%v err=%v", i, createdNew, found, err)
 		}
 	}
-	if _, _, err := svc.CreateDevice(ctx, created.ID, DeviceInput{Name: "overflow"}); err == nil {
-		t.Fatalf("device count must cap at %d", MaxDevicesPerUser)
+	_, createdNew, found, err := svc.DeviceForKey(ctx, created.ID, "overflow", "Overflow", DeviceMetadata{SourceIP: "203.0.113.1"})
+	if err != nil || createdNew || found {
+		t.Fatalf("device count must cap at %d: created=%v found=%v err=%v", MaxDevicesPerUser, createdNew, found, err)
 	}
 }
 
@@ -145,9 +143,9 @@ func TestDeviceUserMap(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	phone, _, err := svc.CreateDevice(ctx, created.ID, DeviceInput{Name: "手机"})
-	if err != nil {
-		t.Fatalf("create device: %v", err)
+	phone, createdNew, found, err := svc.DeviceForKey(ctx, created.ID, "clashverge", "Clash Verge", DeviceMetadata{SourceIP: "198.51.100.10"})
+	if err != nil || !createdNew || !found {
+		t.Fatalf("discover device: %+v created=%v found=%v err=%v", phone, createdNew, found, err)
 	}
 	owned, err := store.DeviceUserMap(ctx)
 	if err != nil {

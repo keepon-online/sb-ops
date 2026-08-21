@@ -1,6 +1,6 @@
 package resource
 
-const SchemaVersion = 10
+const SchemaVersion = 11
 
 const Schema = `
 CREATE TABLE IF NOT EXISTS control_plane_secrets (
@@ -35,9 +35,9 @@ CREATE TABLE IF NOT EXISTS devices (
   name TEXT NOT NULL,
   enabled INTEGER NOT NULL DEFAULT 1,
   used_bytes INTEGER NOT NULL DEFAULT 0 CHECK (used_bytes >= 0),
-  -- ua_key 非空=由订阅 UA 指纹自动发现的设备；空=手动添加或建号默认设备，
-  -- 部分唯一索引只在自动设备间约束（同一用户同一客户端最多一台）。
+  -- ua_key 非空=由订阅 UA 指纹自动发现的设备；空=历史手动设备。
   ua_key TEXT NOT NULL DEFAULT '',
+  source_ip TEXT NOT NULL DEFAULT '',
   platform TEXT NOT NULL DEFAULT 'unknown',
   client TEXT NOT NULL DEFAULT '',
   client_version TEXT NOT NULL DEFAULT '',
@@ -52,7 +52,7 @@ CREATE TABLE IF NOT EXISTS devices (
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_devices_user_ua ON devices (user_id, ua_key) WHERE ua_key != '';
+CREATE UNIQUE INDEX IF NOT EXISTS idx_devices_user_ua_ip ON devices (user_id, ua_key, source_ip) WHERE ua_key != '';
 
 CREATE TABLE IF NOT EXISTS certificates (
   id TEXT PRIMARY KEY,

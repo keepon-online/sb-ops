@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"net"
 	"strconv"
 	"strings"
 	"time"
@@ -27,6 +28,7 @@ type storedDevice struct {
 	UserID             string
 	Name               string
 	UAKey              string
+	SourceIP           string
 	Platform           string
 	Client             string
 	ClientVersion      string
@@ -104,12 +106,24 @@ INSERT INTO users (
 	return tx.Commit()
 }
 
+func (s *Store) insertDevice(ctx context.Context, device storedDevice) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := insertDevice(ctx, tx, device); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 func insertDevice(ctx context.Context, tx *sql.Tx, device storedDevice) error {
 	_, err := tx.ExecContext(ctx, `
-	INSERT INTO devices (
-	  id,user_id,name,enabled,used_bytes,ua_key,platform,client,client_version,last_seen_at,token_hash,token_ciphertext,identity_uuid,password_ciphertext,rotated_at,created_at
-	) VALUES (?,?,?,?,0,?,?,?,?,?,?,?,?,?,?,?)`,
-		device.ID, device.UserID, device.Name, 1, device.UAKey, device.Platform, device.Client, device.ClientVersion, common.TimeFromPtr(device.LastSeenAt), device.TokenHash, device.TokenCiphertext,
+		INSERT INTO devices (
+		  id,user_id,name,enabled,used_bytes,ua_key,source_ip,platform,client,client_version,last_seen_at,token_hash,token_ciphertext,identity_uuid,password_ciphertext,rotated_at,created_at
+		) VALUES (?,?,?,?,0,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		device.ID, device.UserID, device.Name, 1, device.UAKey, normalizeSourceIP(device.SourceIP), device.Platform, device.Client, device.ClientVersion, common.TimeFromPtr(device.LastSeenAt), device.TokenHash, device.TokenCiphertext,
 		device.UUID, device.PasswordCiphertext, common.UnixTime(device.RotatedAt), common.UnixTime(device.CreatedAt))
 	return common.MapSQLiteError(err)
 }
@@ -464,7 +478,7 @@ func (s *Store) ListDevices(ctx context.Context, userID string) ([]Device, error
 	}
 	rows, err := s.db.QueryContext(ctx, `
 SELECT d.id,d.name,d.enabled,d.used_bytes,d.token_ciphertext,d.identity_uuid,d.rotated_at,d.created_at,d.ua_key,
-       d.platform,d.client,d.client_version,d.last_seen_at
+       d.source_ip,d.platform,d.client,d.client_version,d.last_seen_at
 FROM devices d WHERE d.user_id=? ORDER BY d.created_at,d.id`, userID)
 	if err != nil {
 		return nil, err
@@ -474,6 +488,7 @@ FROM devices d WHERE d.user_id=? ORDER BY d.created_at,d.id`, userID)
 		enabled  int
 		token    []byte
 		uaKey    string
+		sourceIP string
 		lastSeen common.Time
 		rotated  common.Time
 		created  common.Time
@@ -481,7 +496,7 @@ FROM devices d WHERE d.user_id=? ORDER BY d.created_at,d.id`, userID)
 	stored := []storedListDevice{}
 	for rows.Next() {
 		var item storedListDevice
-		if err := rows.Scan(&item.device.ID, &item.device.Name, &item.enabled, &item.device.UsedBytes, &item.token, &item.device.UUID, &item.rotated, &item.created, &item.uaKey, &item.device.Platform, &item.device.Client, &item.device.ClientVersion, &item.lastSeen); err != nil {
+		if err := rows.Scan(&item.device.ID, &item.device.Name, &item.enabled, &item.device.UsedBytes, &item.token, &item.device.UUID, &item.rotated, &item.created, &item.uaKey, &item.sourceIP, &item.device.Platform, &item.device.Client, &item.device.ClientVersion, &item.lastSeen); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -498,6 +513,7 @@ FROM devices d WHERE d.user_id=? ORDER BY d.created_at,d.id`, userID)
 	for _, item := range stored {
 		item.device.Enabled = item.enabled != 0
 		item.device.Auto = item.uaKey != ""
+		_ = item.sourceIP
 		item.device.RotatedAt, item.device.CreatedAt = item.rotated.Time, item.created.Time
 		if !item.lastSeen.IsZero() {
 			lastSeen := item.lastSeen.Time
@@ -524,6 +540,7 @@ func (s *Store) UpdateDeviceMetadata(ctx context.Context, userID, deviceID strin
 	}
 	client := strings.TrimSpace(metadata.Client)
 	version := strings.TrimSpace(metadata.ClientVersion)
+	sourceIP := normalizeSourceIP(metadata.SourceIP)
 	seenAt := metadata.LastSeenAt
 	if seenAt == nil {
 		now := time.Now().UTC()
@@ -532,10 +549,25 @@ func (s *Store) UpdateDeviceMetadata(ctx context.Context, userID, deviceID strin
 	cutoff := seenAt.Add(-minInterval).Unix()
 	_, err := s.db.ExecContext(ctx, `
 UPDATE devices
-SET platform=?,client=?,client_version=?,last_seen_at=?
-WHERE id=? AND user_id=? AND (last_seen_at IS NULL OR last_seen_at <= ?)`,
-		platform, client, version, common.TimeFromPtr(seenAt), deviceID, userID, cutoff)
+SET source_ip=?,platform=?,client=?,client_version=?,last_seen_at=?
+WHERE id=? AND user_id=? AND (source_ip<>? OR last_seen_at IS NULL OR last_seen_at <= ?)`,
+		sourceIP, platform, client, version, common.TimeFromPtr(seenAt), deviceID, userID, sourceIP, cutoff)
 	return err
+}
+
+func normalizeSourceIP(value string) string {
+	value = strings.TrimSpace(value)
+	if host, _, err := net.SplitHostPort(value); err == nil {
+		value = host
+	}
+	value = strings.Trim(value, "[]")
+	if zone := strings.LastIndexByte(value, '%'); zone >= 0 {
+		value = value[:zone]
+	}
+	if ip := net.ParseIP(value); ip != nil {
+		return ip.String()
+	}
+	return ""
 }
 
 // CountDevices returns how many devices a user already has.
@@ -545,13 +577,20 @@ func (s *Store) CountDevices(ctx context.Context, userID string) (int, error) {
 	return count, err
 }
 
-// FindDeviceByUAKey locates the auto-discovered device owning a subscription
-// User-Agent fingerprint. Only id/name/enabled are populated; callers that
-// need credentials use ListDevices.
-func (s *Store) FindDeviceByUAKey(ctx context.Context, userID, uaKey string) (Device, bool, error) {
+// FindDeviceByUAKey locates the auto-discovered device owning a UA + source IP
+// fingerprint. Only id/name/enabled are populated; callers that need
+// credentials use ListDevices. An empty source IP matches only legacy rows with
+// an empty source IP.
+func (s *Store) FindDeviceByUAKey(ctx context.Context, userID, uaKey, sourceIP string) (Device, bool, error) {
 	var device Device
 	var enabled int
-	err := s.db.QueryRowContext(ctx, `SELECT id,name,enabled FROM devices WHERE user_id=? AND ua_key=?`, userID, uaKey).Scan(&device.ID, &device.Name, &enabled)
+	sourceIP = normalizeSourceIP(sourceIP)
+	err := s.db.QueryRowContext(ctx, `SELECT id,name,enabled FROM devices WHERE user_id=? AND ua_key=? AND source_ip=?`, userID, uaKey, sourceIP).Scan(&device.ID, &device.Name, &enabled)
+	if errors.Is(err, sql.ErrNoRows) && sourceIP != "" {
+		// Upgrade one pre-IP automatic device in place instead of creating an
+		// orphan duplicate on the first request after the migration.
+		err = s.db.QueryRowContext(ctx, `SELECT id,name,enabled FROM devices WHERE user_id=? AND ua_key=? AND source_ip='' ORDER BY created_at,id LIMIT 1`, userID, uaKey).Scan(&device.ID, &device.Name, &enabled)
+	}
 	if errors.Is(err, sql.ErrNoRows) {
 		return Device{}, false, nil
 	}
@@ -561,19 +600,6 @@ func (s *Store) FindDeviceByUAKey(ctx context.Context, userID, uaKey string) (De
 	device.Enabled = enabled != 0
 	device.Auto = true
 	return device, true, nil
-}
-
-// CreateDevice inserts a new device row for the user.
-func (s *Store) CreateDevice(ctx context.Context, device storedDevice) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-	if err := insertDevice(ctx, tx, device); err != nil {
-		return err
-	}
-	return tx.Commit()
 }
 
 // RotateDevice replaces one device's credential material in place.

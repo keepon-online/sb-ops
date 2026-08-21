@@ -1,6 +1,6 @@
 package observability
 
-const SchemaVersion = 10
+const SchemaVersion = 11
 
 const Schema = `
 CREATE TABLE IF NOT EXISTS operational_alerts (

@@ -123,7 +123,7 @@ func TestAutoDiscoveryRoutesByUserAgent(t *testing.T) {
 	recorder.userID = userID
 
 	// 首次以 Clash Verge 拉取：自动建设备并同步，返回新设备产物。
-	first, err := share.ArtifactByToken(t.Context(), token, "clash.yaml", "clash-verge/2.1.3")
+	first, err := share.ArtifactByToken(t.Context(), token, "clash.yaml", "clash-verge/2.1.3", "198.51.100.10")
 	if err != nil {
 		t.Fatalf("first fetch: %v", err)
 	}
@@ -141,22 +141,31 @@ func TestAutoDiscoveryRoutesByUserAgent(t *testing.T) {
 		t.Fatalf("device metadata=(%q,%q,%q), want (unknown,Clash Verge,2.1.3)", platform, client, version)
 	}
 
-	// 再次以同客户端拉取：复用既有设备，不再触发同步。
-	second, err := share.ArtifactByToken(t.Context(), token, "clash.yaml", "clash-verge/2.2.0")
+	// 同客户端、同来源地址（即使版本变化）：复用既有设备，不再触发同步。
+	second, err := share.ArtifactByToken(t.Context(), token, "clash.yaml", "clash-verge/2.2.0", "198.51.100.10")
 	if err != nil {
 		t.Fatalf("second fetch: %v", err)
 	}
 	if second.DeviceID != first.DeviceID || recorder.calls != 1 {
-		t.Fatalf("same client must reuse the device: first=%s second=%s calls=%d", first.DeviceID, second.DeviceID, recorder.calls)
+		t.Fatalf("same client and IP must reuse the device: first=%s second=%s calls=%d", first.DeviceID, second.DeviceID, recorder.calls)
 	}
 
-	// 不同客户端 → 第二台自动设备。
-	third, err := share.ArtifactByToken(t.Context(), token, "clash.yaml", "Stash/2.8")
+	// 同客户端、不同来源地址 → 第二台自动设备。
+	otherIP, err := share.ArtifactByToken(t.Context(), token, "clash.yaml", "clash-verge/2.2.0", "203.0.113.10")
+	if err != nil {
+		t.Fatalf("different IP fetch: %v", err)
+	}
+	if otherIP.DeviceID == first.DeviceID || recorder.calls != 2 {
+		t.Fatalf("same client on another IP must create a second device: first=%s second=%s calls=%d", first.DeviceID, otherIP.DeviceID, recorder.calls)
+	}
+
+	// 不同客户端 → 第三台自动设备。
+	third, err := share.ArtifactByToken(t.Context(), token, "clash.yaml", "Stash/2.8", "192.0.2.10")
 	if err != nil {
 		t.Fatalf("third fetch: %v", err)
 	}
-	if third.DeviceID == first.DeviceID || recorder.calls != 2 {
-		t.Fatalf("new client must create a second device: %+v calls=%d", third, recorder.calls)
+	if third.DeviceID == first.DeviceID || recorder.calls != 3 {
+		t.Fatalf("new client must create a third device: %+v calls=%d", third, recorder.calls)
 	}
 
 	// 空 UA：回退该用户任一已有产物（无默认设备概念）。
@@ -168,8 +177,8 @@ func TestAutoDiscoveryRoutesByUserAgent(t *testing.T) {
 		t.Fatalf("empty UA must fall back to any existing artifact: %+v", direct)
 	}
 	devices, err := users.ListDevices(t.Context(), userID)
-	if err != nil || len(devices) != 2 {
-		t.Fatalf("devices=%+v err=%v, want 2 (no default device)", devices, err)
+	if err != nil || len(devices) != 3 {
+		t.Fatalf("devices=%+v err=%v, want 3 (no default device)", devices, err)
 	}
 }
 
@@ -210,8 +219,8 @@ func TestAutoDiscoveryCapFallsBackToExistingArtifact(t *testing.T) {
 		t.Fatalf("seed auto device: %v", err)
 	}
 	for i := 0; i < serviceuser.MaxDevicesPerUser-1; i++ {
-		if _, _, err := users.CreateDevice(t.Context(), userID, serviceuser.DeviceInput{Name: fmt.Sprintf("manual-%d", i)}); err != nil {
-			t.Fatalf("fill devices: %v", err)
+		if _, created, found, err := users.DeviceForKey(t.Context(), userID, fmt.Sprintf("manual-%d", i), fmt.Sprintf("Client %d", i), serviceuser.DeviceMetadata{SourceIP: fmt.Sprintf("198.51.100.%d", i+1)}); err != nil || !created || !found {
+			t.Fatalf("fill devices: created=%v found=%v err=%v", created, found, err)
 		}
 	}
 	calls := recorder.calls

@@ -238,8 +238,7 @@ export interface paths {
         /** List a user's devices with decrypted subscription tokens */
         get: operations["listUserDevices"];
         put?: never;
-        /** Add a device with an independent credential and subscription link */
-        post: operations["createUserDevice"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1359,9 +1358,8 @@ export interface components {
             items: components["schemas"]["ResourceDevice"][];
             /** @description The user-level subscription link token; devices are auto-discovered when clients import it. */
             subscriptionToken: string;
-        };
-        ResourceCreateDeviceRequest: {
-            name: string;
+            /** @description Maximum number of devices allowed for this user. */
+            maxDevices: number;
         };
         ResourceDeviceUpdateRequest: {
             enabled: boolean;
@@ -2930,38 +2928,6 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
-        };
-    };
-    createUserDevice: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Subscription user UUID */
-                id: components["parameters"]["UserId"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ResourceCreateDeviceRequest"];
-            };
-        };
-        responses: {
-            /** @description Device created */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ResourceDeviceMutationResponse"];
-                };
-            };
-            400: components["responses"]["BadRequest"];
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-            409: components["responses"]["Conflict"];
         };
     };
     deleteUserDevice: {

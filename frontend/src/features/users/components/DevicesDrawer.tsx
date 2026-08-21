@@ -1,16 +1,12 @@
-import { AndroidOutlined, AppleOutlined, BarChartOutlined, DeleteOutlined, DesktopOutlined, KeyOutlined, LinkOutlined, PlusOutlined, QrcodeOutlined, ReloadOutlined } from '@ant-design/icons';
+import { AndroidOutlined, AppleOutlined, BarChartOutlined, DeleteOutlined, DesktopOutlined, KeyOutlined, LinkOutlined, QrcodeOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { App as AntApp, Button, Descriptions, Drawer, Empty, Input, Modal, Popconfirm, Progress, QRCode, Space, Switch, Tag, Tooltip, Typography } from 'antd';
+import { App as AntApp, Button, Descriptions, Drawer, Empty, Modal, Popconfirm, Progress, QRCode, Space, Switch, Tag, Tooltip, Typography } from 'antd';
 import { useState } from 'react';
 import { ApiError } from '../../../services/http';
 import { queryClient } from '../../../services/queryClient';
 import { subscriptionUrl, usersApi, type IssuedCredential, type ResourceDevice, type ResourceUser } from '../../../services/users';
 
 const subscriptionFormats = ['clash.yaml'];
-
-const formatHints: Record<string, string> = {
-  'clash.yaml': 'Clash 系客户端（Verge、ClashX、Clash for Windows、Clash Meta）：订阅 → 从 URL 导入。'
-};
 
 const platformLabels: Record<string, string> = {
   windows: 'Windows', macos: 'macOS', linux: 'Linux', android: 'Android', ios: 'iOS', unknown: '未知平台'
@@ -74,8 +70,6 @@ function DeviceUsageSummary({ devices }: { devices: { id: string; name: string; 
 // 流量按设备归因、额度按用户汇总。
 export function DevicesDrawer({ user, onClose }: { user: ResourceUser | null; onClose: () => void }) {
   const { message, notification } = AntApp.useApp();
-  const [adding, setAdding] = useState(false);
-  const [newName, setNewName] = useState('');
   const [qrDevice, setQrDevice] = useState<string>();
   const [credential, setCredential] = useState<IssuedCredential | null>(null);
 
@@ -97,11 +91,6 @@ export function DevicesDrawer({ user, onClose }: { user: ResourceUser | null; on
   };
   const afterWrite = () => { void refresh(); }
 
-  const create = useMutation({
-    mutationFn: (name: string) => usersApi.createDevice(user!.id, name),
-    onSuccess: (result) => { afterWrite(); setAdding(false); setNewName(''); setCredential(result.credential); message.success('设备已添加并同步到 sing-box'); },
-    onError: reportError
-  });
   const toggle = useMutation({
     mutationFn: (device: ResourceDevice) => usersApi.updateDevice(user!.id, device.id, !device.enabled),
     onSuccess: () => { afterWrite(); message.success('设备状态已更新'); },
@@ -138,32 +127,9 @@ export function DevicesDrawer({ user, onClose }: { user: ResourceUser | null; on
           <Descriptions.Item label="订阅 Token"><Typography.Text code copyable>{credential.token}</Typography.Text></Descriptions.Item>
           <Descriptions.Item label="UUID"><Typography.Text code copyable>{credential.uuid}</Typography.Text></Descriptions.Item>
           <Descriptions.Item label="密码"><Typography.Text code copyable>{credential.password}</Typography.Text></Descriptions.Item>
-          {subscriptionFormats.map((format) => (
-            <Descriptions.Item key={format} label={<Space size={4}><LinkOutlined />{format}</Space>}>
-              <Space direction="vertical" size={4} style={{ width: '100%' }}>
-                <Typography.Text copyable={{ text: subscriptionUrl(credential.token, format) }} ellipsis style={{ maxWidth: 420 }}>
-                  {subscriptionUrl(credential.token, format)}
-                </Typography.Text>
-                <Typography.Text type="secondary" style={{ fontSize: 12 }}>{formatHints[format]}</Typography.Text>
-              </Space>
-            </Descriptions.Item>
-          ))}
+          <Typography.Text type="secondary">设备凭据已更新。请继续使用上方用户级订阅链接，客户端会按来源自动归入设备。</Typography.Text>
         </Descriptions>
       ) : null}
-    </Modal>
-    <Modal
-      title="添加设备"
-      open={adding}
-      confirmLoading={create.isPending}
-      okText="添加"
-      onOk={() => create.mutate(newName.trim())}
-      onCancel={() => { setAdding(false); setNewName(''); }}
-      destroyOnClose
-    >
-      <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
-        订阅链接在客户端导入时会按客户端类型自动创建设备；手动添加可固定设备名并立即获得专属链接。
-      </Typography.Paragraph>
-      <Input placeholder="设备名称，如：手机、iPad" value={newName} onChange={(event) => setNewName(event.target.value)} onPressEnter={() => newName.trim() && create.mutate(newName.trim())} />
     </Modal>
     <Drawer
       title={`${user.name} 的设备`}
@@ -171,12 +137,9 @@ export function DevicesDrawer({ user, onClose }: { user: ResourceUser | null; on
       open
       destroyOnClose
       onClose={onClose}
-      extra={<Space size={4}>
-        <Popconfirm title="重置后旧订阅链接立即失效（设备凭据不受影响），继续？" onConfirm={() => rotateSubscription.mutate()}>
-          <Button size="small" icon={<ReloadOutlined />} loading={rotateSubscription.isPending}>重置链接</Button>
-        </Popconfirm>
-        <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => setAdding(true)}>添加设备</Button>
-      </Space>}
+      extra={<Popconfirm title="重置后旧订阅链接立即失效（设备凭据不受影响），继续？" onConfirm={() => rotateSubscription.mutate()}>
+        <Button size="small" icon={<ReloadOutlined />} loading={rotateSubscription.isPending}>重置链接</Button>
+      </Popconfirm>}
     >
       <div className="gauge-cell" style={{ alignItems: 'stretch', textAlign: 'left', padding: '12px 16px' }}>
         <div className="page-toolbar">
@@ -184,7 +147,7 @@ export function DevicesDrawer({ user, onClose }: { user: ResourceUser | null; on
             <LinkOutlined />
             <Typography.Text strong>用户订阅链接</Typography.Text>
           </Space>
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>在客户端导入后自动识别设备</Typography.Text>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>导入后按客户端与来源网络自动识别，最多 {devices.data?.maxDevices ?? 10} 台</Typography.Text>
         </div>
         {subscriptionFormats.map((format) => (
           <div key={format}>
@@ -209,6 +172,7 @@ export function DevicesDrawer({ user, onClose }: { user: ResourceUser | null; on
         <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="还没有设备——在客户端导入上方订阅链接后会自动出现" />
       ) : null}
       {devices.data ? <DeviceUsageSummary devices={devices.data.items} /> : null}
+      {devices.data && devices.data.items.length >= devices.data.maxDevices ? <Typography.Text type="warning" style={{ display: 'block', margin: '8px 0' }}>已达到每用户最多 {devices.data.maxDevices} 台设备；新的客户端会回退到已有设备。</Typography.Text> : null}
       <Space direction="vertical" size={16} style={{ width: '100%' }}>
         {(devices.data?.items || []).map((device) => (
           <div key={device.id} className="gauge-cell" style={{ alignItems: 'stretch', textAlign: 'left', padding: '12px 16px', gap: 8 }}>
@@ -236,24 +200,9 @@ export function DevicesDrawer({ user, onClose }: { user: ResourceUser | null; on
                 </Popconfirm>
               </Space>
             </div>
-            {subscriptionFormats.map((format) => (
-              <div key={format}>
-                <Space size={4} wrap>
-                  <LinkOutlined />
-                  <Typography.Text copyable={{ text: subscriptionUrl(device.token, format) }} ellipsis style={{ maxWidth: 360 }}>
-                    {subscriptionUrl(device.token, format)}
-                  </Typography.Text>
-                  <Button type="text" size="small" icon={<QrcodeOutlined />} aria-label={`${device.name} ${format} 二维码`} onClick={() => setQrDevice((current) => current === device.id ? undefined : device.id)} />
-                </Space>
-                {qrDevice === device.id ? (
-                  <Space direction="vertical" align="center" size={4} style={{ width: '100%', padding: '8px 0' }}>
-                    <QRCode value={subscriptionUrl(device.token, format)} size={150} bordered={false} />
-                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>用客户端扫码后导入订阅</Typography.Text>
-                  </Space>
-                ) : null}
-                <Typography.Text type="secondary" style={{ fontSize: 12, display: 'block' }}>{formatHints[format]}</Typography.Text>
-              </div>
-            ))}
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              设备凭据由用户订阅链接自动匹配，设备本身不再单独展示订阅链接。
+            </Typography.Text>
           </div>
         ))}
       </Space>

@@ -101,6 +101,9 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 	if err := migrateDeviceMetadata(ctx, tx); err != nil {
 		return fmt.Errorf("迁移设备元数据列: %w", err)
 	}
+	if err := migrateDeviceSourceIP(ctx, tx); err != nil {
+		return fmt.Errorf("迁移设备来源地址: %w", err)
+	}
 	if err := migrateUserSubscriptionToken(ctx, tx); err != nil {
 		return fmt.Errorf("迁移用户订阅令牌列: %w", err)
 	}
@@ -388,6 +391,25 @@ func migrateDeviceMetadata(ctx context.Context, tx *sql.Tx) error {
 		}
 	}
 	return nil
+}
+
+// migrateDeviceSourceIP adds the source_ip column for UA+IP auto-discovery
+// and replaces the old (user_id, ua_key) unique index with (user_id, ua_key, source_ip).
+func migrateDeviceSourceIP(ctx context.Context, tx *sql.Tx) error {
+	present, err := tableHasColumn(ctx, tx, "devices", "source_ip")
+	if err != nil {
+		return err
+	}
+	if !present {
+		if _, err := tx.ExecContext(ctx, `ALTER TABLE devices ADD COLUMN source_ip TEXT NOT NULL DEFAULT ''`); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `DROP INDEX IF EXISTS idx_devices_user_ua`); err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, `CREATE UNIQUE INDEX IF NOT EXISTS idx_devices_user_ua_ip ON devices (user_id, ua_key, source_ip) WHERE ua_key != ''`)
+	return err
 }
 
 // migrateOutboundSettings adds the encrypted per-type settings blob column to

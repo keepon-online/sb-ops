@@ -30,9 +30,8 @@ type User struct {
 }
 
 // Device 是用户的一台接入设备：一份独立凭据（uuid/password/订阅 token），
-// 入站用户 name 用设备 id 做 V2Ray stats 归因标签。Token 在列表响应中解密
-// 返回，便于面板直接复制订阅链接；Auto 标记由订阅链接 UA 指纹自动发现的
-// 设备（手动添加与建号默认设备为 false）。
+// 入站用户 name 用设备 id 做 V2Ray stats 归因标签。Auto 标记由订阅链接
+// 的 UA + 来源地址自动发现的设备。
 type Device struct {
 	ID            string     `json:"id"`
 	Name          string     `json:"name"`
@@ -110,22 +109,14 @@ type TrafficInput struct {
 	Bytes int64
 }
 
-// DeviceInput is the create payload for a new device.
-type DeviceInput struct {
-	Name string
-}
-
 // DeviceMetadata contains the latest client observation from a subscription request.
 type DeviceMetadata struct {
 	Platform      string
 	Client        string
 	ClientVersion string
+	SourceIP      string
 	LastSeenAt    *time.Time
 }
-
-// DefaultDeviceName is the device automatically created with a new user, so a
-// fresh account is immediately connectable without a second round-trip.
-const DefaultDeviceName = "默认设备"
 
 // MaxDevicesPerUser caps inbound user entries per user (each device becomes one
 // entry in every assigned inbound and one V2Ray stats whitelist entry).

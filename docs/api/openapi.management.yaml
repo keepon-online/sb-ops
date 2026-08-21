@@ -360,28 +360,6 @@ paths:
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
-    post:
-      tags: [Users]
-      operationId: createUserDevice
-      summary: Add a device with an independent credential and subscription link
-      security: [{BearerAuth: []}]
-      parameters: [{$ref: '#/components/parameters/UserId'}]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: {$ref: '#/components/schemas/ResourceCreateDeviceRequest'}
-      responses:
-        '201':
-          description: Device created
-          content:
-            application/json:
-              schema: {$ref: '#/components/schemas/ResourceDeviceMutationResponse'}
-        '400': {$ref: '#/components/responses/BadRequest'}
-        '401': {$ref: '#/components/responses/Unauthorized'}
-        '403': {$ref: '#/components/responses/Forbidden'}
-        '404': {$ref: '#/components/responses/NotFound'}
-        '409': {$ref: '#/components/responses/Conflict'}
   /api/v1/users/{id}/devices/{did}:
     patch:
       tags: [Users]
@@ -1659,18 +1637,13 @@ components:
     ResourceDeviceList:
       type: object
       additionalProperties: false
-      required: [items, subscriptionToken]
+      required: [items, subscriptionToken, maxDevices]
       properties:
         items:
           type: array
           items: {$ref: '#/components/schemas/ResourceDevice'}
         subscriptionToken: {type: string, description: The user-level subscription link token; devices are auto-discovered when clients import it.}
-    ResourceCreateDeviceRequest:
-      type: object
-      additionalProperties: false
-      required: [name]
-      properties:
-        name: {type: string, minLength: 1}
+        maxDevices: {type: integer, minimum: 1, description: Maximum number of devices allowed for this user.}
     ResourceDeviceUpdateRequest:
       type: object
       additionalProperties: false

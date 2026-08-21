@@ -8,10 +8,6 @@ import (
 	serviceuser "github.com/keepon-online/sb-ops/internal/service/user"
 )
 
-type deviceCreateRequest struct {
-	Name string `json:"name" binding:"required"`
-}
-
 type deviceUpdateRequest struct {
 	Enabled *bool `json:"enabled" binding:"required"`
 }
@@ -33,7 +29,7 @@ func (h *handler) listUserDevices(c *gin.Context) {
 		return
 	}
 	h.audit(c, actionDeviceList, resourceDevice, c.Param("id"), resultSuccess)
-	httpx.OK(c, gin.H{"items": devices, "subscriptionToken": token})
+	httpx.OK(c, gin.H{"items": devices, "subscriptionToken": token, "maxDevices": serviceuser.MaxDevicesPerUser})
 }
 
 // rotateUserSubscription re-issues the user-level subscription link.
@@ -45,18 +41,6 @@ func (h *handler) rotateUserSubscription(c *gin.Context) {
 	}
 	h.audit(c, actionUserSubscriptionRotate, resourceUser, c.Param("id"), resultSuccess)
 	httpx.OK(c, gin.H{"subscriptionToken": token})
-}
-
-func (h *handler) createUserDevice(c *gin.Context) {
-	var request deviceCreateRequest
-	if !httpx.BindJSON(c, &request, "设备信息无效") {
-		return
-	}
-	device, credential, err := h.users.CreateDevice(c.Request.Context(), c.Param("id"), serviceuser.DeviceInput{Name: request.Name})
-	if !h.mutate(c, err, actionDeviceCreate, resourceDevice, c.Param("id"), device.ID) {
-		return
-	}
-	httpx.Created(c, deviceMutationResponse{Device: device, Credential: &credential})
 }
 
 func (h *handler) updateUserDevice(c *gin.Context) {

@@ -55,12 +55,11 @@ func NewService(db *sql.DB, users *serviceuser.Service, sync func() error) *Serv
 }
 
 // ArtifactByToken 解析订阅 token → 用户可用性检查 → 设备路由 → 设备维度的
-// clash.yaml 产物。token 有两级：设备 token（手动添加或自动发现的设备直连
-// 该设备，不受 UA 影响）与用户 token（唯一订阅链接）：按请求 User-Agent
-// 路由到该客户端的设备，首次出现的客户端自动创建设备并同步内核；同步失败
-// 或无法识别客户端（空 UA）时回退该用户任一已有产物的设备（流量暂并入，
-// 客户端下次更新恢复按设备归因）。
-func (s *Service) ArtifactByToken(ctx context.Context, token, format, userAgent string) (Artifact, error) {
+// clash.yaml 产物。token 有两级：设备 token（已有设备的直连链接，不受 UA
+// 影响）与用户 token（唯一订阅链接）：按请求 User-Agent + 来源 IP 路由到该
+// 客户端的设备，首次出现的客户端自动创建设备并同步内核；同步失败或无法识别
+// 客户端（空 UA）时回退该用户任一已有产物的设备（流量暂并入，客户端下次更新恢复按设备归因）。
+func (s *Service) ArtifactByToken(ctx context.Context, token, format, userAgent string, sourceIPs ...string) (Artifact, error) {
 	token = strings.TrimSpace(token)
 	format = strings.ToLower(strings.TrimSpace(format))
 	if token == "" {
@@ -95,6 +94,10 @@ FROM users WHERE subscription_token_hash=?`, hash[:]).Scan(&artifact.UserID, &us
 	artifact.ExpiresAt = expiresAt.Ptr()
 	now := s.now()
 	uaInfo := ParseUserAgent(userAgent)
+	sourceIP := ""
+	if len(sourceIPs) > 0 {
+		sourceIP = sourceIPs[0]
+	}
 	var seenAt *time.Time
 	if uaInfo.Key != "" {
 		seenAt = &now
@@ -115,7 +118,7 @@ FROM users WHERE subscription_token_hash=?`, hash[:]).Scan(&artifact.UserID, &us
 	} else {
 		// 用户链接：按 UA 路由到设备。
 		if uaInfo.Key != "" {
-			metadata := serviceuser.DeviceMetadata{Platform: uaInfo.Platform, Client: uaInfo.Client, ClientVersion: uaInfo.Version, LastSeenAt: seenAt}
+			metadata := serviceuser.DeviceMetadata{Platform: uaInfo.Platform, Client: uaInfo.Client, ClientVersion: uaInfo.Version, SourceIP: sourceIP, LastSeenAt: seenAt}
 			device, created, found, err := s.users.DeviceForKey(ctx, artifact.UserID, uaInfo.Key, uaInfo.Label, metadata)
 			if err != nil {
 				s.log.Warn("订阅自动建设备失败", "ua", uaInfo.Key, "error", err)
@@ -130,12 +133,12 @@ FROM users WHERE subscription_token_hash=?`, hash[:]).Scan(&artifact.UserID, &us
 						s.log.Warn("新建设备后同步内核失败", "device", device.ID, "ua", uaInfo.Key, "error", syncErr)
 					} else {
 						artifact.DeviceID = device.ID
-						metadata := serviceuser.DeviceMetadata{Platform: uaInfo.Platform, Client: uaInfo.Client, ClientVersion: uaInfo.Version, LastSeenAt: seenAt}
+						metadata := serviceuser.DeviceMetadata{Platform: uaInfo.Platform, Client: uaInfo.Client, ClientVersion: uaInfo.Version, SourceIP: sourceIP, LastSeenAt: seenAt}
 						_ = s.users.UpdateDeviceMetadata(ctx, artifact.UserID, device.ID, metadata)
 					}
 				} else {
 					artifact.DeviceID = device.ID
-					metadata := serviceuser.DeviceMetadata{Platform: uaInfo.Platform, Client: uaInfo.Client, ClientVersion: uaInfo.Version, LastSeenAt: seenAt}
+					metadata := serviceuser.DeviceMetadata{Platform: uaInfo.Platform, Client: uaInfo.Client, ClientVersion: uaInfo.Version, SourceIP: sourceIP, LastSeenAt: seenAt}
 					_ = s.users.UpdateDeviceMetadata(ctx, artifact.UserID, device.ID, metadata)
 				}
 			}

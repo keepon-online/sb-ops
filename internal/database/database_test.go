@@ -64,7 +64,7 @@ func TestMigrateCreatesControlPlaneSchemaAndVersion(t *testing.T) {
 	if version != CurrentSchemaVersion {
 		t.Fatalf("version=%d, want %d", version, CurrentSchemaVersion)
 	}
-	for _, column := range []string{"platform", "client", "client_version", "last_seen_at"} {
+	for _, column := range []string{"platform", "client", "client_version", "last_seen_at", "source_ip"} {
 		var count int
 		if err := db.QueryRow(`SELECT COUNT(1) FROM pragma_table_info('devices') WHERE name=?`, column).Scan(&count); err != nil {
 			t.Fatalf("query device column %s: %v", column, err)

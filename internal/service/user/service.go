@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"fmt"
 	"strings"
 	"time"
 
@@ -21,8 +20,7 @@ func NewService(store *Store) *Service {
 	return &Service{store: store, now: func() time.Time { return time.Now().UTC() }}
 }
 
-// Create 建号只签发用户级订阅链接；设备由客户端导入链接时按 UA 自动创建
-// （或管理员手动添加），面板不再预置“默认设备”。
+// Create 建号只签发用户级订阅链接；设备由客户端导入链接时按 UA + 来源 IP 自动创建，面板不预置设备。
 func (s *Service) Create(ctx context.Context, input CreateInput) (User, string, error) {
 	fields := validateInput(input.Name, input.QuotaBytes, input.ResetIntervalDays)
 	if len(uniqueStrings(input.PolicyIDs)) > 1 {
@@ -128,43 +126,12 @@ func (s *Service) ListDevices(ctx context.Context, userID string) ([]Device, err
 	return s.store.ListDevices(ctx, userID)
 }
 
-// CreateDevice adds another device (independent credential + link) to a user.
-func (s *Service) CreateDevice(ctx context.Context, userID string, input DeviceInput) (Device, IssuedCredential, error) {
-	name := strings.TrimSpace(input.Name)
-	fields := map[string]string{}
-	if name == "" {
-		fields["name"] = "is required"
-	}
-	if len(fields) > 0 {
-		return Device{}, IssuedCredential{}, &common.ValidationError{Fields: fields}
-	}
-	if err := s.store.ensureUser(ctx, userID); err != nil {
-		return Device{}, IssuedCredential{}, err
-	}
-	count, err := s.store.CountDevices(ctx, userID)
-	if err != nil {
-		return Device{}, IssuedCredential{}, err
-	}
-	if count >= MaxDevicesPerUser {
-		return Device{}, IssuedCredential{}, &common.ValidationError{Fields: map[string]string{"name": fmt.Sprintf("每用户最多 %d 台设备", MaxDevicesPerUser)}}
-	}
-	now := s.now()
-	issued, stored, err := s.issueDevice(ctx, userID, name, "", now)
-	if err != nil {
-		return Device{}, IssuedCredential{}, err
-	}
-	if err := s.store.CreateDevice(ctx, stored); err != nil {
-		return Device{}, IssuedCredential{}, err
-	}
-	device := Device{ID: stored.ID, Name: name, Enabled: true, Platform: "unknown", Token: issued.Token, UUID: issued.UUID, RotatedAt: now, CreatedAt: now}
-	return device, issued, nil
-}
-
 // DeviceForKey returns the auto-discovered device owning a subscription
-// User-Agent fingerprint, creating it on first sight. found=false (with nil
-// error) means the device cap is reached or the fingerprint is unknown and
-// the caller should fall back to the default device; created distinguishes
-// a fresh device (the caller should re-sync the kernel) from an existing one.
+// UA + client source-IP fingerprint, creating it on first sight. found=false
+// (with nil error) means the device cap is reached or the fingerprint is
+// unknown and the caller should fall back to the default device; created
+// distinguishes a fresh device (the caller should re-sync the kernel) from an
+// existing one.
 func (s *Service) DeviceForKey(ctx context.Context, userID, uaKey, label string, metadataValues ...DeviceMetadata) (device Device, created, found bool, err error) {
 	var metadata DeviceMetadata
 	if len(metadataValues) > 0 {
@@ -173,7 +140,7 @@ func (s *Service) DeviceForKey(ctx context.Context, userID, uaKey, label string,
 	if uaKey == "" {
 		return Device{}, false, false, nil
 	}
-	if existing, ok, err := s.store.FindDeviceByUAKey(ctx, userID, uaKey); err != nil || ok {
+	if existing, ok, err := s.store.FindDeviceByUAKey(ctx, userID, uaKey, metadata.SourceIP); err != nil || ok {
 		if err != nil || !ok {
 			return existing, false, ok, err
 		}
@@ -188,24 +155,34 @@ func (s *Service) DeviceForKey(ctx context.Context, userID, uaKey, label string,
 		return Device{}, false, false, nil
 	}
 	now := s.now()
-	issued, stored, err := s.issueDevice(ctx, userID, label, uaKey, now)
+	deviceName := autoDeviceName(label, metadata.SourceIP)
+	issued, stored, err := s.issueDevice(ctx, userID, deviceName, uaKey, now)
 	if err != nil {
 		return Device{}, false, false, err
 	}
-	stored.Platform, stored.Client, stored.ClientVersion, stored.LastSeenAt = metadata.Platform, metadata.Client, metadata.ClientVersion, metadata.LastSeenAt
-	if err := s.store.CreateDevice(ctx, stored); err != nil {
+	stored.Platform, stored.Client, stored.ClientVersion, stored.SourceIP, stored.LastSeenAt = metadata.Platform, metadata.Client, metadata.ClientVersion, metadata.SourceIP, metadata.LastSeenAt
+	if err := s.store.insertDevice(ctx, stored); err != nil {
 		// 并发首次下载同一客户端：唯一索引兜底，改为返回既有设备。
-		if existing, ok, findErr := s.store.FindDeviceByUAKey(ctx, userID, uaKey); ok && findErr == nil {
+		if existing, ok, findErr := s.store.FindDeviceByUAKey(ctx, userID, uaKey, metadata.SourceIP); ok && findErr == nil {
 			return existing, false, true, nil
 		}
 		return Device{}, false, false, err
 	}
-	device = Device{ID: stored.ID, Name: label, Enabled: true, Auto: true, Platform: stored.Platform, Client: stored.Client, ClientVersion: stored.ClientVersion, LastSeenAt: stored.LastSeenAt, UUID: issued.UUID, RotatedAt: now, CreatedAt: now}
+	device = Device{ID: stored.ID, Name: deviceName, Enabled: true, Auto: true, Platform: stored.Platform, Client: stored.Client, ClientVersion: stored.ClientVersion, LastSeenAt: stored.LastSeenAt, UUID: issued.UUID, RotatedAt: now, CreatedAt: now}
 	return device, true, true, nil
 }
 
 // RotateDevice re-issues one device's credential; the old token/uuid/password
 // die immediately.
+func autoDeviceName(label, sourceIP string) string {
+	label = strings.TrimSpace(label)
+	sourceIP = normalizeSourceIP(sourceIP)
+	if sourceIP == "" {
+		return label
+	}
+	return label + " · " + sourceIP
+}
+
 func (s *Service) RotateDevice(ctx context.Context, userID, deviceID string) (Device, IssuedCredential, error) {
 	devices, err := s.store.ListDevices(ctx, userID)
 	if err != nil {

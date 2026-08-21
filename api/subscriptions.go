@@ -11,7 +11,7 @@ import (
 )
 
 func (h *handler) downloadSubscription(c *gin.Context) {
-	artifact, err := h.share.ArtifactByToken(c.Request.Context(), c.Param("token"), c.Param("format"), c.Request.UserAgent())
+	artifact, err := h.share.ArtifactByToken(c.Request.Context(), c.Param("token"), c.Param("format"), c.Request.UserAgent(), c.ClientIP())
 	if err != nil {
 		switch {
 		case errors.Is(err, serviceshare.ErrUserDisabled), errors.Is(err, serviceshare.ErrUserExpired), errors.Is(err, serviceshare.ErrQuotaExhausted), errors.Is(err, serviceshare.ErrDeviceDisabled):
