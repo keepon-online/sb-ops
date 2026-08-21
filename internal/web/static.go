@@ -61,6 +61,13 @@ func (a *embeddedAssets) Serve(c *gin.Context) {
 			if contentType == "" {
 				contentType = stdhttp.DetectContentType(body)
 			}
+			// Vite 产物带内容 hash，可安全长缓存；其余文件（含 404 回退前的
+			// 未知路径）必须回源验证，否则浏览器会沿用旧 index.html 跑旧前端。
+			if strings.HasPrefix(requestPath, "assets/") {
+				c.Header("Cache-Control", "public, max-age=31536000, immutable")
+			} else {
+				c.Header("Cache-Control", "no-cache")
+			}
 			c.Data(stdhttp.StatusOK, contentType, body)
 			return
 		}
@@ -71,5 +78,6 @@ func (a *embeddedAssets) Serve(c *gin.Context) {
 		httpx.Error(c, stdhttp.StatusNotFound, httpx.CodeNotFound, "前端页面不存在", nil)
 		return
 	}
+	c.Header("Cache-Control", "no-cache")
 	c.Data(stdhttp.StatusOK, "text/html; charset=utf-8", body)
 }
