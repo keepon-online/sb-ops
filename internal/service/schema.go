@@ -52,7 +52,9 @@ CREATE TABLE IF NOT EXISTS devices (
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_devices_user_ua_ip ON devices (user_id, ua_key, source_ip) WHERE ua_key != '';
+-- idx_devices_user_ua_ip 由 database.Migrate 的 migrateDeviceSourceIP 统一创建：
+-- 它引用的 source_ip 列对旧库靠 ALTER TABLE 补齐，若在此处建索引会在补列前执行，
+-- 旧库启动即报 no such column: source_ip。
 
 CREATE TABLE IF NOT EXISTS certificates (
   id TEXT PRIMARY KEY,

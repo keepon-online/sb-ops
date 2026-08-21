@@ -514,3 +514,75 @@ func TestMigrateTopsUpAIRuleSetsOnce(t *testing.T) {
 		t.Fatalf("deleted gemini rule set was re-seeded after marker recorded")
 	}
 }
+
+func TestMigrateAddsDeviceSourceIPAndSwapsUniqueIndex(t *testing.T) {
+	db, err := Open(Options{Path: filepath.Join(t.TempDir(), "control.db")})
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	if err := Migrate(t.Context(), db); err != nil {
+		t.Fatalf("initial migrate: %v", err)
+	}
+	// 重建为 v10 形状的 devices 表（无 source_ip，仍带旧的 (user_id, ua_key) 唯一索引），
+	// 再迁移即模拟旧库升级——schema 常量不得在该列补齐前引用它。
+	if _, err := db.Exec(`DROP INDEX IF EXISTS idx_devices_user_ua_ip;
+DROP TABLE devices;
+CREATE TABLE devices (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  used_bytes INTEGER NOT NULL DEFAULT 0 CHECK (used_bytes >= 0),
+  ua_key TEXT NOT NULL DEFAULT '',
+  platform TEXT NOT NULL DEFAULT 'unknown',
+  client TEXT NOT NULL DEFAULT '',
+  client_version TEXT NOT NULL DEFAULT '',
+  last_seen_at INTEGER,
+  token_hash BLOB UNIQUE,
+  token_ciphertext BLOB,
+  identity_uuid TEXT,
+  password_ciphertext BLOB,
+  rotated_at INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  UNIQUE (user_id, name),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE UNIQUE INDEX idx_devices_user_ua ON devices (user_id, ua_key) WHERE ua_key != '';
+INSERT INTO users(id,name,created_at,updated_at) VALUES('u-src','src',1,1);
+INSERT INTO devices(id,user_id,name,ua_key,rotated_at,created_at) VALUES('d-auto','u-src','auto','curl/8',1,1);
+INSERT INTO devices(id,user_id,name,ua_key,rotated_at,created_at) VALUES('d-manual','u-src','manual','',1,1);`); err != nil {
+		t.Fatalf("seed legacy devices schema: %v", err)
+	}
+	if err := Migrate(t.Context(), db); err != nil {
+		t.Fatalf("upgrade migration: %v", err)
+	}
+	var columnCount int
+	if err := db.QueryRow(`SELECT COUNT(1) FROM pragma_table_info('devices') WHERE name='source_ip'`).Scan(&columnCount); err != nil {
+		t.Fatalf("check source_ip column: %v", err)
+	}
+	if columnCount != 1 {
+		t.Fatalf("source_ip column count=%d, want 1", columnCount)
+	}
+	var sourceIP string
+	if err := db.QueryRow(`SELECT source_ip FROM devices WHERE id='d-auto'`).Scan(&sourceIP); err != nil {
+		t.Fatalf("legacy auto device lost: %v", err)
+	}
+	if sourceIP != "" {
+		t.Fatalf("legacy device source_ip=%q, want empty default", sourceIP)
+	}
+	var oldIndex int
+	if err := db.QueryRow(`SELECT COUNT(1) FROM sqlite_master WHERE type='index' AND name='idx_devices_user_ua'`).Scan(&oldIndex); err != nil {
+		t.Fatalf("check legacy index: %v", err)
+	}
+	if oldIndex != 0 {
+		t.Fatalf("legacy index idx_devices_user_ua still present")
+	}
+	// 同一 (user, ua, ip) 的第二台自动设备应被新唯一索引拒绝；同 UA 不同来源地址允许。
+	if _, err := db.Exec(`INSERT INTO devices(id,user_id,name,ua_key,source_ip,rotated_at,created_at) VALUES('d-dup','u-src','dup','curl/8','',1,1)`); err == nil {
+		t.Fatalf("duplicate (user_id, ua_key, source_ip) accepted")
+	}
+	if _, err := db.Exec(`INSERT INTO devices(id,user_id,name,ua_key,source_ip,rotated_at,created_at) VALUES('d-ip2','u-src','ip2','curl/8','203.0.113.9',1,1)`); err != nil {
+		t.Fatalf("same ua with different source_ip rejected: %v", err)
+	}
+}
