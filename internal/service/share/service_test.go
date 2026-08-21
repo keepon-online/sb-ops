@@ -150,22 +150,39 @@ func TestAutoDiscoveryRoutesByUserAgent(t *testing.T) {
 		t.Fatalf("same client and IP must reuse the device: first=%s second=%s calls=%d", first.DeviceID, second.DeviceID, recorder.calls)
 	}
 
-	// 同客户端、不同来源地址 → 第二台自动设备。
+	// 同客户端、不同来源地址：名下仅一台时视为同一台换网络——原地更新
+	// 来源地址与设备名，不新建孤儿设备，也不触发内核同步。
 	otherIP, err := share.ArtifactByToken(t.Context(), token, "clash.yaml", "clash-verge/2.2.0", "203.0.113.10")
 	if err != nil {
 		t.Fatalf("different IP fetch: %v", err)
 	}
-	if otherIP.DeviceID == first.DeviceID || recorder.calls != 2 {
-		t.Fatalf("same client on another IP must create a second device: first=%s second=%s calls=%d", first.DeviceID, otherIP.DeviceID, recorder.calls)
+	if otherIP.DeviceID != first.DeviceID || recorder.calls != 1 {
+		t.Fatalf("single device on another IP must be reused in place: first=%s second=%s calls=%d", first.DeviceID, otherIP.DeviceID, recorder.calls)
+	}
+	var movedIP string
+	if err := share.db.QueryRow(`SELECT source_ip FROM devices WHERE id=?`, first.DeviceID).Scan(&movedIP); err != nil || movedIP != "203.0.113.10" {
+		t.Fatalf("source_ip=%q err=%v, want in-place update to 203.0.113.10", movedIP, err)
 	}
 
-	// 不同客户端 → 第三台自动设备。
+	// 不同客户端 → 第二台自动设备。
 	third, err := share.ArtifactByToken(t.Context(), token, "clash.yaml", "Stash/2.8", "192.0.2.10")
 	if err != nil {
 		t.Fatalf("third fetch: %v", err)
 	}
-	if third.DeviceID == first.DeviceID || recorder.calls != 3 {
-		t.Fatalf("new client must create a third device: %+v calls=%d", third, recorder.calls)
+	if third.DeviceID == first.DeviceID || recorder.calls != 2 {
+		t.Fatalf("new client must create another device: %+v calls=%d", third, recorder.calls)
+	}
+
+	// 同客户端双出口（名下已两台）后再换 IP：无法判断是哪台换网，保持新建。
+	if _, err := share.db.Exec(`UPDATE devices SET ua_key='clashverge' WHERE ua_key='stash'`); err != nil {
+		t.Fatalf("simulate dual-exit client: %v", err)
+	}
+	dualExit, err := share.ArtifactByToken(t.Context(), token, "clash.yaml", "clash-verge/2.2.0", "198.51.100.77")
+	if err != nil {
+		t.Fatalf("dual-exit fetch: %v", err)
+	}
+	if dualExit.DeviceID == first.DeviceID || dualExit.DeviceID == third.DeviceID || recorder.calls != 3 {
+		t.Fatalf("dual-exit client on a new IP must create a new device: first=%s third=%s got=%s calls=%d", first.DeviceID, third.DeviceID, dualExit.DeviceID, recorder.calls)
 	}
 
 	// 空 UA：回退该用户任一已有产物（无默认设备概念）。
@@ -201,12 +218,23 @@ func TestAutoDiscoveryDirectDeviceToken(t *testing.T) {
 	if autoToken == "" {
 		t.Fatal("auto device token not found")
 	}
-	direct, err := share.ArtifactByToken(t.Context(), autoToken, "clash.yaml", "Stash/2.8")
+	// 直连拉取也要刷新设备元数据：换来源地址后（绕过节流）客户端观察值
+	// （Stash）与新 IP 应写回该设备。
+	direct, err := share.ArtifactByToken(t.Context(), autoToken, "clash.yaml", "Stash/2.8", "203.0.113.50")
 	if err != nil {
 		t.Fatalf("direct fetch: %v", err)
 	}
 	if direct.DeviceID != auto.DeviceID {
 		t.Fatalf("device token must route directly: %+v", direct)
+	}
+	devices, _ = users.ListDevices(t.Context(), userID)
+	for _, device := range devices {
+		if device.ID != auto.DeviceID {
+			continue
+		}
+		if device.Client != "Stash" || device.SourceIP != "203.0.113.50" || device.LastSeenAt == nil {
+			t.Fatalf("direct fetch should refresh metadata: client=%q sourceIp=%q lastSeen=%v", device.Client, device.SourceIP, device.LastSeenAt)
+		}
 	}
 }
 

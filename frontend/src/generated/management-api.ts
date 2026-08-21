@@ -1344,6 +1344,8 @@ export interface components {
             client: string;
             /** @description Latest observed subscription client version. */
             clientVersion: string;
+            /** @description Normalized client source address observed on the latest subscription request; empty until the device is first seen. */
+            sourceIp?: string;
             /**
              * Format: date-time
              * @description Latest observed subscription request time.

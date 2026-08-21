@@ -43,6 +43,7 @@ type Device struct {
 	Platform      string     `json:"platform"`
 	Client        string     `json:"client"`
 	ClientVersion string     `json:"clientVersion"`
+	SourceIP      string     `json:"sourceIp"`
 	LastSeenAt    *time.Time `json:"lastSeenAt,omitempty"`
 	RotatedAt     time.Time  `json:"rotatedAt"`
 	CreatedAt     time.Time  `json:"createdAt"`

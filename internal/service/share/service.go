@@ -115,6 +115,13 @@ FROM users WHERE subscription_token_hash=?`, hash[:]).Scan(&artifact.UserID, &us
 		if artifact.DeviceEnabled == 0 {
 			return Artifact{}, ErrDeviceDisabled
 		}
+		// 设备级 token 直连也是这台设备本人的拉取：刷新平台/客户端/来源地址
+		// 与活跃时间（复用 5 分钟节流；空 UA 不写入 unknown 噪音）。
+		if seenAt != nil {
+			_ = s.users.UpdateDeviceMetadata(ctx, artifact.UserID, artifact.DeviceID, serviceuser.DeviceMetadata{
+				Platform: uaInfo.Platform, Client: uaInfo.Client, ClientVersion: uaInfo.Version, SourceIP: sourceIP, LastSeenAt: seenAt,
+			})
+		}
 	} else {
 		// 用户链接：按 UA 路由到设备。
 		if uaInfo.Key != "" {

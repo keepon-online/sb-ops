@@ -230,3 +230,51 @@ func TestListReturnsUsersInOneBatch(t *testing.T) {
 		t.Fatalf("limited items=%d cursor=%q want 2 items and a cursor", len(limited.Items), limited.NextCursor)
 	}
 }
+
+func TestAutoDiscoverySingleDeviceIPChangeUpdatesInPlace(t *testing.T) {
+	store := newTestStore(t)
+	svc := NewService(store)
+	ctx := t.Context()
+	created, _, err := svc.Create(ctx, CreateInput{Name: "alice", Enabled: true})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	first, createdNew, found, err := svc.DeviceForKey(ctx, created.ID, "clashverge", "Clash Verge", DeviceMetadata{SourceIP: "198.51.100.10"})
+	if err != nil || !createdNew || !found {
+		t.Fatalf("first discover: created=%v found=%v err=%v", createdNew, found, err)
+	}
+	// 换网络重拉：同一客户端名下仅一台 → 原地更新 IP 与名字，不新建孤儿设备。
+	moved, createdNew, found, err := svc.DeviceForKey(ctx, created.ID, "clashverge", "Clash Verge", DeviceMetadata{SourceIP: "203.0.113.99"})
+	if err != nil || createdNew || !found {
+		t.Fatalf("ip change should reuse the single device: created=%v found=%v err=%v", createdNew, found, err)
+	}
+	if moved.ID != first.ID || moved.Name != "Clash Verge · 203.0.113.99" {
+		t.Fatalf("moved=%+v want id=%s and name with the new ip", moved, first.ID)
+	}
+	devices, err := svc.ListDevices(ctx, created.ID)
+	if err != nil || len(devices) != 1 {
+		t.Fatalf("devices=%d err=%v want 1", len(devices), err)
+	}
+	if devices[0].SourceIP != "203.0.113.99" {
+		t.Fatalf("sourceIp=%q want 203.0.113.99", devices[0].SourceIP)
+	}
+	// 同一客户端第二台（同客户端双出口的历史数据）后再换 IP：无法判断是哪台
+	// 换网，应保持新建而不是覆盖既有设备。
+	if _, createdNew, found, err := svc.DeviceForKey(ctx, created.ID, "singbox", "sing-box", DeviceMetadata{SourceIP: "192.0.2.1"}); err != nil || !createdNew || !found {
+		t.Fatalf("second client: created=%v found=%v err=%v", createdNew, found, err)
+	}
+	if _, err := store.db.Exec(`UPDATE devices SET ua_key='clashverge' WHERE ua_key='singbox'`); err != nil {
+		t.Fatalf("simulate dual-exit clashverge: %v", err)
+	}
+	third, createdNew, found, err := svc.DeviceForKey(ctx, created.ID, "clashverge", "Clash Verge", DeviceMetadata{SourceIP: "198.51.100.77"})
+	if err != nil || !createdNew || !found {
+		t.Fatalf("dual-exit new ip must create a new device: created=%v found=%v err=%v", createdNew, found, err)
+	}
+	if third.ID == first.ID {
+		t.Fatal("dual-exit must not overwrite the existing device")
+	}
+	devices, err = svc.ListDevices(ctx, created.ID)
+	if err != nil || len(devices) != 3 {
+		t.Fatalf("devices=%d err=%v want 3", len(devices), err)
+	}
+}

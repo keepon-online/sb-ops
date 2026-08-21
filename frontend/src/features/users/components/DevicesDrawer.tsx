@@ -184,6 +184,7 @@ export function DevicesDrawer({ user, onClose }: { user: ResourceUser | null; on
                 {device.client ? <Tag color="blue">{device.client}{formatClientVersion(device.clientVersion) ? ` ${formatClientVersion(device.clientVersion)}` : ''}</Tag> : null}
                 {device.enabled ? <Tag color="success">启用</Tag> : <Tag>已停用</Tag>}
                 {device.auto ? <Tooltip title="由订阅链接按客户端类型自动创建，流量自动归入此设备"><Tag color="geekblue">自动发现</Tag></Tooltip> : null}
+                {device.sourceIp ? <Tooltip title="最近一次订阅请求的来源地址"><Tag>IP {device.sourceIp}</Tag></Tooltip> : null}
                 <Typography.Text type="secondary">已用 {formatBytes(device.usedBytes)}</Typography.Text>
                 {device.lastSeenAt ? <Typography.Text type="secondary" style={{ fontSize: 12 }}>最近活跃 {new Date(device.lastSeenAt).toLocaleString()}</Typography.Text> : <Typography.Text type="secondary" style={{ fontSize: 12 }}>尚未识别</Typography.Text>}
                 <Typography.Text type="secondary" style={{ fontSize: 12 }}>轮换于 {new Date(device.rotatedAt).toLocaleString()}</Typography.Text>

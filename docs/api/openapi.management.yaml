@@ -1631,6 +1631,7 @@ components:
         platform: {type: string, enum: [windows, macos, linux, android, ios, unknown]}
         client: {type: string, description: Latest observed subscription client name.}
         clientVersion: {type: string, description: Latest observed subscription client version.}
+        sourceIp: {type: string, description: Normalized client source address observed on the latest subscription request; empty until the device is first seen.}
         lastSeenAt: {type: [string, 'null'], format: date-time, description: Latest observed subscription request time.}
         rotatedAt: {type: string, format: date-time}
         createdAt: {type: string, format: date-time}
