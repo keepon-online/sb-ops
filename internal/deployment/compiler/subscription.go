@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
+	"net"
 	"sort"
 	"strings"
 
@@ -62,20 +63,21 @@ func clashSubscription(input Input, protocols []serviceprotocol.Protocol, user s
 		case serviceprotocol.TypeHysteria2:
 			proxies = append(proxies, map[string]any{
 				"name": name, "type": "hysteria2", "server": input.PublicAddress, "port": protocol.ListenPort,
-				"password": device.Password, "sni": setting(protocol, "serverName"), "alpn": []string{"h3"}, "skip-cert-verify": true,
-				"up":   fmt.Sprintf("%d Mbps", numberSetting(protocol, "upMbps", 100)),
-				"down": fmt.Sprintf("%d Mbps", numberSetting(protocol, "downMbps", 100)),
+				"password": device.Password, "sni": setting(protocol, "serverName"), "alpn": []string{"h3"},
+				"skip-cert-verify": skipCertVerify(setting(protocol, "serverName")),
+				"up":               fmt.Sprintf("%d Mbps", numberSetting(protocol, "upMbps", 100)),
+				"down":             fmt.Sprintf("%d Mbps", numberSetting(protocol, "downMbps", 100)),
 			})
 		case serviceprotocol.TypeTUIC:
 			proxies = append(proxies, map[string]any{
 				"name": name, "type": "tuic", "server": input.PublicAddress, "port": protocol.ListenPort,
 				"uuid": device.UUID, "password": device.Password, "sni": setting(protocol, "serverName"), "alpn": []string{"h3"},
-				"congestion-controller": setting(protocol, "congestionControl"), "udp-relay-mode": "native", "skip-cert-verify": true,
+				"congestion-controller": setting(protocol, "congestionControl"), "udp-relay-mode": "native", "skip-cert-verify": skipCertVerify(setting(protocol, "serverName")),
 			})
 		case serviceprotocol.TypeAnyTLS:
 			proxies = append(proxies, map[string]any{
 				"name": name, "type": "anytls", "server": input.PublicAddress, "port": protocol.ListenPort,
-				"password": device.Password, "sni": setting(protocol, "serverName"), "udp": true, "skip-cert-verify": true,
+				"password": device.Password, "sni": setting(protocol, "serverName"), "udp": true, "skip-cert-verify": skipCertVerify(setting(protocol, "serverName")),
 			})
 		case serviceprotocol.TypeShadowsocks:
 			proxies = append(proxies, map[string]any{
@@ -91,7 +93,7 @@ func clashSubscription(input Input, protocols []serviceprotocol.Protocol, user s
 			if setting(protocol, "tlsMode") == "reality" {
 				proxy["reality-opts"] = map[string]any{"public-key": setting(protocol, "realityPublicKey"), "short-id": setting(protocol, "shortId")}
 			} else {
-				proxy["skip-cert-verify"] = true
+				proxy["skip-cert-verify"] = skipCertVerify(setting(protocol, "serverName"))
 			}
 			proxies = append(proxies, proxy)
 		}
@@ -432,6 +434,12 @@ func clashAction(value string) (string, error) {
 	default:
 		return "", fmt.Errorf("不支持的动作 %q", value)
 	}
+}
+
+// skipCertVerify reports whether the server name is an IP address (self-signed)
+// rather than a domain name (trusted ACME certificate).
+func skipCertVerify(serverName string) bool {
+	return net.ParseIP(serverName) != nil
 }
 
 func shadowsocksSubscriptionPassword(protocol serviceprotocol.Protocol, device serviceuser.ArtifactDevice) string {

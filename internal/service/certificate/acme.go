@@ -12,6 +12,7 @@ import (
 	"encoding/pem"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -157,6 +158,9 @@ func (s *Service) completeDNS01(ctx context.Context, client *acme.Client, dns *c
 		return fmt.Errorf("写入 DNS 记录: %w", err)
 	}
 	defer func() { _ = dns.cleanup(context.Background(), fqdn, record) }()
+	if err := waitDNSPropagation(ctx, fqdn, record); err != nil {
+		return fmt.Errorf("等待 DNS 传播: %w", err)
+	}
 	if _, err := client.Accept(ctx, chal); err != nil {
 		return fmt.Errorf("提交 ACME 挑战: %w", err)
 	}
@@ -164,6 +168,30 @@ func (s *Service) completeDNS01(ctx context.Context, client *acme.Client, dns *c
 		return fmt.Errorf("等待 ACME 验证: %w", err)
 	}
 	return nil
+}
+
+// waitDNSPropagation polls the DNS for the expected TXT record until it
+// appears, using the system resolver. Cloudflare propagates within seconds,
+// but Let's Encrypt queries authoritative resolvers that may have stale
+// cache, so we retry for up to 60 seconds.
+func waitDNSPropagation(ctx context.Context, fqdn, expected string) error {
+	for i := 0; i < 30; i++ {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(2 * time.Second):
+		}
+		records, err := net.DefaultResolver.LookupTXT(ctx, fqdn)
+		if err != nil {
+			continue
+		}
+		for _, record := range records {
+			if record == expected {
+				return nil
+			}
+		}
+	}
+	return fmt.Errorf("超时：DNS 记录未在 60 秒内传播")
 }
 
 const cloudflareBaseURL = "https://api.cloudflare.com/client/v4"
