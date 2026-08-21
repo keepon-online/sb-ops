@@ -352,10 +352,10 @@ func TestCompileLegacyProtocolSet(t *testing.T) {
 	if proxies["vmess"]["ws-opts"].(map[string]any)["path"] != "/legacy-vm" {
 		t.Fatalf("VMess subscription path = %#v", proxies["vmess"])
 	}
-if proxies["tuic"]["congestion-controller"] != "bbr" || proxies["tuic"]["skip-cert-verify"] != false {
-			t.Fatalf("unexpected TUIC subscription: %#v", proxies["tuic"])
-		}
-		if proxies["anytls"]["password"] != "legacy-password" || proxies["anytls"]["skip-cert-verify"] != false {
+	if proxies["tuic"]["congestion-controller"] != "bbr" || proxies["tuic"]["skip-cert-verify"] != false {
+		t.Fatalf("unexpected TUIC subscription: %#v", proxies["tuic"])
+	}
+	if proxies["anytls"]["password"] != "legacy-password" || proxies["anytls"]["skip-cert-verify"] != false {
 		t.Fatalf("unexpected AnyTLS subscription: %#v", proxies["anytls"])
 	}
 }
