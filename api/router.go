@@ -273,6 +273,28 @@ func (h *handler) authenticate() gin.HandlerFunc {
 }
 
 func (h *handler) audit(c *gin.Context, action, resourceType, resourceID, result string, errDetail ...error) {
+	detailsJSON := "{}"
+	if len(errDetail) > 0 && errDetail[0] != nil {
+		if details := marshalErrorDetails(errDetail[0]); details != "" {
+			detailsJSON = details
+		}
+	}
+	h.appendAuditLog(c, action, resourceType, resourceID, result, detailsJSON)
+}
+
+// auditChanges 落一条带字段级 diff 的审计：details 形如
+// {"changes":{"defaultAction":{"old":"direct","new":"proxy"}}}，让更新类
+// 操作可追溯「改了什么」——此前成功审计只留 {}，排查只能靠猜。
+func (h *handler) auditChanges(c *gin.Context, action, resourceType, resourceID string, changes map[string]any) {
+	payload, err := json.Marshal(map[string]any{"changes": changes})
+	if err != nil {
+		h.appendAuditLog(c, action, resourceType, resourceID, resultSuccess, "{}")
+		return
+	}
+	h.appendAuditLog(c, action, resourceType, resourceID, resultSuccess, string(payload))
+}
+
+func (h *handler) appendAuditLog(c *gin.Context, action, resourceType, resourceID, result, detailsJSON string) {
 	if h.store == nil {
 		return
 	}
@@ -283,12 +305,6 @@ func (h *handler) audit(c *gin.Context, action, resourceType, resourceID, result
 	if value, ok := c.Get(principalKey); ok {
 		principal := value.(identity.Principal)
 		actorID = &principal.AccountID
-	}
-	detailsJSON := "{}"
-	if len(errDetail) > 0 && errDetail[0] != nil {
-		if details := marshalErrorDetails(errDetail[0]); details != "" {
-			detailsJSON = details
-		}
 	}
 	if err := h.store.AppendAuditLog(auditCtx, identity.AuditLog{
 		ID: uuid.NewString(), ActorID: actorID, Action: action,

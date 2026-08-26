@@ -84,6 +84,14 @@ func (s *Service) ListRules(ctx context.Context, policyID string) ([]Rule, error
 	}
 	return s.store.ListRules(ctx, policyID)
 }
+
+// GetRule 返回策略内的单条规则，更新 handler 用它取改前快照计算审计 diff。
+func (s *Service) GetRule(ctx context.Context, policyID, id string) (Rule, error) {
+	if _, err := s.store.GetPolicy(ctx, policyID); err != nil {
+		return Rule{}, err
+	}
+	return s.store.GetRule(ctx, policyID, id)
+}
 func (s *Service) CreateRule(ctx context.Context, input RuleWriteInput) (Rule, error) {
 	value, fields := ruleFromInput(input)
 	if len(fields) > 0 {

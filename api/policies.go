@@ -77,8 +77,9 @@ func (h *handler) updatePolicy(c *gin.Context) {
 		return
 	}
 	request.ID = c.Param("id")
+	before, beforeErr := h.policies.Get(c.Request.Context(), request.ID)
 	value, err := h.policies.Update(c.Request.Context(), request)
-	if !h.mutate(c, err, actionPolicyUpdate, resourcePolicy, request.ID, value.ID) {
+	if !h.mutate(c, err, actionPolicyUpdate, resourcePolicy, request.ID, value.ID, diffable(beforeErr, err, before, value)) {
 		return
 	}
 	httpx.OK(c, value)
@@ -132,8 +133,9 @@ func (h *handler) updatePolicyRule(c *gin.Context) {
 		return
 	}
 	request.PolicyID, request.ID = c.Param("id"), c.Param("ruleId")
+	before, beforeErr := h.policies.GetRule(c.Request.Context(), request.PolicyID, request.ID)
 	value, err := h.policies.UpdateRule(c.Request.Context(), request)
-	if !h.mutate(c, err, actionRuleUpdate, resourceRule, request.ID, value.ID) {
+	if !h.mutate(c, err, actionRuleUpdate, resourceRule, request.ID, value.ID, diffable(beforeErr, err, before, value)) {
 		return
 	}
 	httpx.OK(c, value)

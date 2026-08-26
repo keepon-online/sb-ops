@@ -233,8 +233,9 @@ func (h *handler) updateSingBoxOutbound(c *gin.Context) {
 		return
 	}
 	request.ID = c.Param("id")
+	before, beforeErr := h.singbox.GetOutbound(c.Request.Context(), request.ID)
 	value, err := h.singbox.UpdateOutbound(c.Request.Context(), request)
-	if !h.mutate(c, err, actionSingBoxOutboundUpdate, resourceSingBoxOutbound, request.ID, value.ID) {
+	if !h.mutate(c, err, actionSingBoxOutboundUpdate, resourceSingBoxOutbound, request.ID, value.ID, diffable(beforeErr, err, before, value)) {
 		return
 	}
 	httpx.OK(c, value)
@@ -276,8 +277,9 @@ func (h *handler) updateSingBoxRouteRule(c *gin.Context) {
 		return
 	}
 	request.ID = c.Param("id")
+	before, beforeErr := h.singbox.GetRule(c.Request.Context(), request.ID)
 	value, err := h.singbox.UpdateRule(c.Request.Context(), request)
-	if !h.mutate(c, err, actionSingBoxRouteRuleUpdate, resourceSingBoxRouteRule, request.ID, value.ID) {
+	if !h.mutate(c, err, actionSingBoxRouteRuleUpdate, resourceSingBoxRouteRule, request.ID, value.ID, diffable(beforeErr, err, before, value)) {
 		return
 	}
 	httpx.OK(c, value)
