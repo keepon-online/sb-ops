@@ -56,5 +56,9 @@ func ClassifyRuntimeConfigChanges(previous, next RuntimeConfig) ReloadSummary {
 	if previous.Notifications != next.Notifications {
 		summary.Immediate = append(summary.Immediate, "notifications")
 	}
+	if previous.Updates != next.Updates {
+		// The upgrade service reads the repo/token live on every operation.
+		summary.Immediate = append(summary.Immediate, "updates")
+	}
 	return summary
 }

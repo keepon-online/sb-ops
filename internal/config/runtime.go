@@ -15,6 +15,7 @@ type RuntimeConfig struct {
 	Traffic       TrafficCollectorConfig `mapstructure:"traffic"`
 	Deployment    DeploymentConfig       `mapstructure:"deployment"`
 	Notifications NotificationsConfig    `mapstructure:"notifications"`
+	Updates       UpdatesConfig          `mapstructure:"updates"`
 	Acme          AcmeConfig             `mapstructure:"acme"`
 	Panel         PanelConfig            `mapstructure:"panel"`
 	Development   DevelopmentConfig      `mapstructure:"development"`
@@ -64,6 +65,15 @@ type NotificationsConfig struct {
 	WebhookSecret    string `mapstructure:"webhook_secret"`
 	TelegramBotToken string `mapstructure:"telegram_bot_token"`
 	TelegramChatID   string `mapstructure:"telegram_chat_id"`
+}
+
+// UpdatesConfig points the panel at the GitHub repository that hosts its own
+// release artifacts. All fields are optional: an empty repo disables in-panel
+// upgrades. The token is a PAT with read access to the (possibly private)
+// repository and is read live on every upgrade operation.
+type UpdatesConfig struct {
+	Repo  string `mapstructure:"repo"`
+	Token string `mapstructure:"token"`
 }
 
 // AcmeConfig holds the Let's Encrypt (ACME) settings used to issue and renew
@@ -156,6 +166,8 @@ func NormalizeRuntimeConfig(cfg RuntimeConfig) RuntimeConfig {
 	cfg.Notifications.WebhookSecret = strings.TrimSpace(cfg.Notifications.WebhookSecret)
 	cfg.Notifications.TelegramBotToken = strings.TrimSpace(cfg.Notifications.TelegramBotToken)
 	cfg.Notifications.TelegramChatID = strings.TrimSpace(cfg.Notifications.TelegramChatID)
+	cfg.Updates.Repo = strings.TrimSpace(cfg.Updates.Repo)
+	cfg.Updates.Token = strings.TrimSpace(cfg.Updates.Token)
 	cfg.Acme.Email = strings.TrimSpace(cfg.Acme.Email)
 	cfg.Acme.DNSProvider = strings.ToLower(strings.TrimSpace(cfg.Acme.DNSProvider))
 	cfg.Acme.APIToken = strings.TrimSpace(cfg.Acme.APIToken)
@@ -216,5 +228,18 @@ func ValidateRuntimeConfig(cfg RuntimeConfig) error {
 			return fmt.Errorf("development.frontend_dev_proxy 无效: %w", err)
 		}
 	}
+	if cfg.Updates.Repo != "" && !validGitHubRepo(cfg.Updates.Repo) {
+		return fmt.Errorf("updates.repo 必须是 owner/repo 形式的 GitHub 仓库标识")
+	}
 	return nil
+}
+
+// validGitHubRepo accepts "owner/repo" with neither part empty and no extra
+// slashes, scheme prefixes or trailing whitespace (already normalized).
+func validGitHubRepo(repo string) bool {
+	owner, name, found := strings.Cut(repo, "/")
+	if !found {
+		return false
+	}
+	return owner != "" && name != "" && !strings.Contains(name, "/")
 }

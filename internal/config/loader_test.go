@@ -129,3 +129,46 @@ logging:
 		t.Fatalf("interval normalize = %v", normalized.Traffic.Interval)
 	}
 }
+
+func TestUpdatesConfig(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	atomicWriteConfig(t, path, []byte(`
+updates:
+  repo: " keepon-online/sb-ops "
+  token: " ghp_test "
+`))
+	cfg, _, err := LoadRuntimeConfig(path)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if cfg.Updates.Repo != "keepon-online/sb-ops" || cfg.Updates.Token != "ghp_test" {
+		t.Fatalf("updates normalize unexpected: %+v", cfg.Updates)
+	}
+
+	// Absent section decodes to the zero value — upgrades stay disabled.
+	atomicWriteConfig(t, path, []byte("server:\n  listen: \"127.0.0.1:8030\"\n"))
+	cfg, _, err = LoadRuntimeConfig(path)
+	if err != nil {
+		t.Fatalf("load without updates: %v", err)
+	}
+	if (cfg.Updates != UpdatesConfig{}) {
+		t.Fatalf("absent updates should be zero value, got %+v", cfg.Updates)
+	}
+
+	base := NormalizeRuntimeConfig(DefaultRuntimeConfig())
+	for _, repo := range []string{"sb-ops", "owner/repo/extra", "/sb-ops", "owner/"} {
+		base.Updates = UpdatesConfig{Repo: repo}
+		if err := ValidateRuntimeConfig(base); err == nil {
+			t.Fatalf("repo %q should fail validation", repo)
+		}
+	}
+	base.Updates = UpdatesConfig{Repo: "keepon-online/sb-ops", Token: "t"}
+	if err := ValidateRuntimeConfig(base); err != nil {
+		t.Fatalf("valid repo should pass: %v", err)
+	}
+
+	summary := ClassifyRuntimeConfigChanges(RuntimeConfig{}, RuntimeConfig{Updates: UpdatesConfig{Repo: "a/b"}})
+	if len(summary.Immediate) != 1 || summary.Immediate[0] != "updates" {
+		t.Fatalf("updates change should classify as immediate, got %+v", summary)
+	}
+}
