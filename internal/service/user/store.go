@@ -547,9 +547,11 @@ func (s *Store) UpdateDeviceMetadata(ctx context.Context, userID, deviceID strin
 		seenAt = &now
 	}
 	cutoff := seenAt.Add(-minInterval).Unix()
+	// 来源地址为空（自环拉取被订阅服务丢弃、或 UA 未携带）时保留已存地址，
+	// 只刷新其余元数据；非空且不同才覆盖。
 	_, err := s.db.ExecContext(ctx, `
 UPDATE devices
-SET source_ip=?,platform=?,client=?,client_version=?,last_seen_at=?
+SET source_ip=COALESCE(NULLIF(?,''),source_ip),platform=?,client=?,client_version=?,last_seen_at=?
 WHERE id=? AND user_id=? AND (source_ip<>? OR last_seen_at IS NULL OR last_seen_at <= ?)`,
 		sourceIP, platform, client, version, common.TimeFromPtr(seenAt), deviceID, userID, sourceIP, cutoff)
 	return err
@@ -635,10 +637,11 @@ func (s *Store) FindDeviceByUAKey(ctx context.Context, userID, uaKey, sourceIP s
 		// orphan duplicate on the first request after the migration.
 		err = s.db.QueryRowContext(ctx, `SELECT id,name,enabled FROM devices WHERE user_id=? AND ua_key=? AND source_ip='' ORDER BY created_at,id LIMIT 1`, userID, uaKey).Scan(&device.ID, &device.Name, &enabled)
 	}
-	if errors.Is(err, sql.ErrNoRows) && sourceIP != "" {
-		// 该客户端名下仅一台设备时视为同一台：IP 变化（换网络/换出口）原地
-		// 更新而不是留下永不更新的孤儿设备；已有多台（同客户端多出口）无法
-		// 判断是哪台换网，保持 not found 由调用方新建。
+	if errors.Is(err, sql.ErrNoRows) {
+		// 该客户端名下仅一台设备时视为同一台：IP 变化（换网络/换出口）与
+		// 来源不可观测（经代理自环回面板的拉取）都原地更新而不是留下永不
+		// 更新的孤儿设备；已有多台（同客户端多出口）无法判断是哪台，保持
+		// not found 由调用方新建或回退。
 		var count int
 		if countErr := s.db.QueryRowContext(ctx, `SELECT COUNT(1) FROM devices WHERE user_id=? AND ua_key=?`, userID, uaKey).Scan(&count); countErr == nil && count == 1 {
 			err = s.db.QueryRowContext(ctx, `SELECT id,name,enabled FROM devices WHERE user_id=? AND ua_key=?`, userID, uaKey).Scan(&device.ID, &device.Name, &enabled)

@@ -199,6 +199,59 @@ func TestAutoDiscoveryRoutesByUserAgent(t *testing.T) {
 	}
 }
 
+// TestSelfLoopFetchKeepsDeviceSourceIP 覆盖 TUN/系统代理下的自环拉取：订阅
+// 更新走隧道、由同进程内核回连面板，来源地址是本机地址——不得冲掉设备已有
+// 的真实出口地址与名字，也不得误建新设备；首次即自环的拉取不落来源地址，
+// 后续直连拉取原地认领。
+func TestSelfLoopFetchKeepsDeviceSourceIP(t *testing.T) {
+	share, users, recorder := newTestService(t)
+	userID, token := mustCreateUser(t, users)
+	recorder.userID = userID
+
+	first, err := share.ArtifactByToken(t.Context(), token, "clash.yaml", "clash-verge/2.1.3", "198.51.100.10")
+	if err != nil {
+		t.Fatalf("direct fetch: %v", err)
+	}
+	selfFetch, err := share.ArtifactByToken(t.Context(), token, "clash.yaml", "clash-verge/2.2.0", "127.0.0.1")
+	if err != nil {
+		t.Fatalf("self-loop fetch: %v", err)
+	}
+	if selfFetch.DeviceID != first.DeviceID || recorder.calls != 1 {
+		t.Fatalf("self-loop fetch must reuse the device: first=%s got=%s calls=%d", first.DeviceID, selfFetch.DeviceID, recorder.calls)
+	}
+	var sourceIP, name string
+	if err := share.db.QueryRow(`SELECT source_ip,name FROM devices WHERE id=?`, first.DeviceID).Scan(&sourceIP, &name); err != nil || sourceIP != "198.51.100.10" || name != "Clash Verge · 198.51.100.10" {
+		t.Fatalf("device=(%q,%q) err=%v, want source_ip and name unchanged", sourceIP, name, err)
+	}
+
+	// 首次拉取即自环（新客户端）：不写入本机地址；下次直连拉取原地认领并
+	// 回填真实地址与名字。
+	loopFirst, err := share.ArtifactByToken(t.Context(), token, "clash.yaml", "Stash/2.8", "127.0.0.1")
+	if err != nil {
+		t.Fatalf("loop-first fetch: %v", err)
+	}
+	if loopFirst.DeviceID == "" {
+		t.Fatalf("loop-first fetch should still serve an artifact: %+v", loopFirst)
+	}
+	if err := share.db.QueryRow(`SELECT source_ip,name FROM devices WHERE id=?`, loopFirst.DeviceID).Scan(&sourceIP, &name); err != nil || sourceIP != "" || name != "Stash" {
+		t.Fatalf("loop-created device=(%q,%q) err=%v, want empty source_ip and bare label name", sourceIP, name, err)
+	}
+	claim, err := share.ArtifactByToken(t.Context(), token, "clash.yaml", "Stash/2.8", "192.0.2.5")
+	if err != nil {
+		t.Fatalf("claim fetch: %v", err)
+	}
+	if claim.DeviceID != loopFirst.DeviceID || recorder.calls != 2 {
+		t.Fatalf("direct fetch must claim the loop-created device: loop=%s got=%s calls=%d", loopFirst.DeviceID, claim.DeviceID, recorder.calls)
+	}
+	if err := share.db.QueryRow(`SELECT source_ip,name FROM devices WHERE id=?`, loopFirst.DeviceID).Scan(&sourceIP, &name); err != nil || sourceIP != "192.0.2.5" || name != "Stash · 192.0.2.5" {
+		t.Fatalf("claimed device=(%q,%q) err=%v, want in-place update to 192.0.2.5", sourceIP, name, err)
+	}
+	devices, err := users.ListDevices(t.Context(), userID)
+	if err != nil || len(devices) != 2 {
+		t.Fatalf("devices=%+v err=%v, want 2 (no self-loop duplicates)", devices, err)
+	}
+}
+
 func TestAutoDiscoveryDirectDeviceToken(t *testing.T) {
 	share, users, recorder := newTestService(t)
 	userID, token := mustCreateUser(t, users)

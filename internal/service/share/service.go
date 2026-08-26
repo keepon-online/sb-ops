@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"strings"
 	"time"
 
@@ -54,6 +55,36 @@ func NewService(db *sql.DB, users *serviceuser.Service, sync func() error) *Serv
 	return &Service{db: db, now: func() time.Time { return time.Now().UTC() }, users: users, sync: sync, log: slog.Default()}
 }
 
+// selfLoopSource 判定订阅请求是否经代理自环回面板：客户端开 TUN/系统代理后
+// 订阅更新走隧道，由同进程的内嵌内核代为回连，来源地址落在本机地址（含
+// loopback）上。这类地址写入设备会冲掉真实出口地址并干扰设备名与平台画像，
+// 调用方按「未观测到来源地址」处理。
+func selfLoopSource(value string) bool {
+	ip := net.ParseIP(strings.TrimSpace(value))
+	if ip == nil {
+		return false
+	}
+	if ip.IsLoopback() {
+		return true
+	}
+	interfaces, err := net.Interfaces()
+	if err != nil {
+		return false
+	}
+	for _, iface := range interfaces {
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, addr := range addrs {
+			if network, ok := addr.(*net.IPNet); ok && ip.Equal(network.IP) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // ArtifactByToken 解析订阅 token → 用户可用性检查 → 设备路由 → 设备维度的
 // clash.yaml 产物。token 有两级：设备 token（已有设备的直连链接，不受 UA
 // 影响）与用户 token（唯一订阅链接）：按请求 User-Agent + 来源 IP 路由到该
@@ -97,6 +128,9 @@ FROM users WHERE subscription_token_hash=?`, hash[:]).Scan(&artifact.UserID, &us
 	sourceIP := ""
 	if len(sourceIPs) > 0 {
 		sourceIP = sourceIPs[0]
+	}
+	if selfLoopSource(sourceIP) {
+		sourceIP = ""
 	}
 	var seenAt *time.Time
 	if uaInfo.Key != "" {

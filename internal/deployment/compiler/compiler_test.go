@@ -204,8 +204,41 @@ func TestCompileClashSubscriptionIncludesCommonRules(t *testing.T) {
 	for i, rule := range rules {
 		actualRules[i] = rule.(string)
 	}
-	if !reflect.DeepEqual(actualRules, defaultClashRules()) || !containsRule(actualRules, "RULE-SET,category-ads-all,"+clashAdsGroup) || !containsRule(actualRules, "RULE-SET,cn,"+clashChinaGroup+",no-resolve") || actualRules[len(actualRules)-1] != "MATCH,"+clashFinalGroup {
+	wantRules := append([]string{"IP-CIDR,1.1.1.1/32,DIRECT,no-resolve"}, defaultClashRules()...)
+	if !reflect.DeepEqual(actualRules, wantRules) || !containsRule(actualRules, "RULE-SET,category-ads-all,"+clashAdsGroup) || !containsRule(actualRules, "RULE-SET,cn,"+clashChinaGroup+",no-resolve") || actualRules[len(actualRules)-1] != "MATCH,"+clashFinalGroup {
 		t.Fatalf("rules = %#v", actualRules)
+	}
+}
+
+func TestClashRulesPinPanelAddressDirect(t *testing.T) {
+	user := serviceuser.ArtifactUser{ID: "user", Enabled: true}
+	input := func(address string) Input {
+		return Input{PublicAddress: address, UserPolicies: map[string]map[string]bool{"user": {}}}
+	}
+	domainRules, err := clashRules(input("panel.example.com"), user)
+	if err != nil {
+		t.Fatalf("clashRules(domain): %v", err)
+	}
+	if domainRules[0] != "DOMAIN,panel.example.com,DIRECT" || domainRules[len(domainRules)-1] != "MATCH,"+clashFinalGroup {
+		t.Fatalf("domain rules = %#v, want panel DIRECT first and MATCH last", domainRules)
+	}
+	ipRules, err := clashRules(input("203.0.113.7"), user)
+	if err != nil {
+		t.Fatalf("clashRules(ip): %v", err)
+	}
+	if ipRules[0] != "IP-CIDR,203.0.113.7/32,DIRECT,no-resolve" {
+		t.Fatalf("ip rules = %#v, want panel IP-CIDR first", ipRules)
+	}
+	// 有策略规则的订阅同样把面板地址钉在最前，避免被用户规则覆盖。
+	policyInput := Input{PublicAddress: "panel.example.com", UserPolicies: map[string]map[string]bool{"user": {"p1": true}}}
+	policyInput.Policies = []servicepolicy.Policy{{ID: "p1", Name: "custom", Enabled: true, DefaultAction: "proxy"}}
+	policyInput.PolicyRules = map[string][]servicepolicy.Rule{"p1": {{Name: "内网直连", Enabled: true, Action: "direct", Conditions: servicepolicy.Conditions{Domains: []string{"corp.example.com"}}}}}
+	policyRules, err := clashRules(policyInput, user)
+	if err != nil {
+		t.Fatalf("clashRules(policy): %v", err)
+	}
+	if policyRules[0] != "DOMAIN,panel.example.com,DIRECT" || policyRules[1] != "DOMAIN,corp.example.com,DIRECT" {
+		t.Fatalf("policy rules = %#v, want panel DIRECT before user rules", policyRules)
 	}
 }
 

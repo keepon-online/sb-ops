@@ -155,9 +155,10 @@ func (s *Service) DeviceForKey(ctx context.Context, userID, uaKey, label string,
 			return existing, false, ok, err
 		}
 		// 来源地址变化（含认领 source_ip 为空的历史设备）后把名字同步为
-		// 「客户端 · 新IP」，避免名字残留旧地址。best-effort：撞名等失败
+		// 「客户端 · 新IP」，避免名字残留旧地址；来源不可观测（自环拉取）时
+		// 跳过改名，防止把名字里的地址后缀剥掉。best-effort：撞名等失败
 		// 不影响订阅下发与元数据回填。
-		if name := autoDeviceName(label, metadata.SourceIP); name != existing.Name {
+		if name := autoDeviceName(label, metadata.SourceIP); name != existing.Name && normalizeSourceIP(metadata.SourceIP) != "" {
 			if renameErr := s.store.RenameDevice(ctx, userID, existing.ID, name); renameErr == nil {
 				existing.Name = name
 			}

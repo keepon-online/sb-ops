@@ -281,9 +281,23 @@ func clashRules(input Input, user serviceuser.ArtifactUser) ([]string, error) {
 	}
 	if len(rules) == 0 {
 		rules = defaultClashRules()
-		return rules, nil
+		return append(selfDirectRules(input.PublicAddress), rules...), nil
 	}
-	return append(rules, "MATCH,"+defaultAction), nil
+	return append(append(selfDirectRules(input.PublicAddress), rules...), "MATCH,"+defaultAction), nil
+}
+
+// selfDirectRules 把面板自身地址钉在规则最前：TUN/系统代理下客户端的订阅
+// 更新与面板访问若走隧道，会由本机内核自环回面板——既采集不到真实来源地址，
+// 面板故障时客户端连订阅都无法刷新。public_address 是裸主机名或 IPv4。
+func selfDirectRules(publicAddress string) []string {
+	host := strings.TrimSpace(publicAddress)
+	if host == "" {
+		return nil
+	}
+	if ip := net.ParseIP(host); ip != nil && ip.To4() != nil {
+		return []string{"IP-CIDR," + host + "/32,DIRECT,no-resolve"}
+	}
+	return []string{"DOMAIN," + host + ",DIRECT"}
 }
 
 func defaultClashRules() []string {
