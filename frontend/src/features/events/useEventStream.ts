@@ -12,6 +12,7 @@ let lastResetAt = 0;
 function invalidate(type: string) {
   if (type.startsWith('traffic.')) void queryClient.invalidateQueries({ queryKey: ['traffic'] });
   if (type.startsWith('alert.')) void queryClient.invalidateQueries({ queryKey: ['alerts'] });
+  if (type.startsWith('upgrade.')) void queryClient.invalidateQueries({ queryKey: ['system', 'upgrade'] });
   if (type === 'reset') {
     const now = Date.now();
     if (now - lastResetAt >= resetThrottleMs) {

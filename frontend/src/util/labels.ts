@@ -19,6 +19,7 @@ export const resourceTypeLabels: Record<string, string> = {
   session: '会话',
   permission: '权限',
   system: '系统',
+  system_upgrade: '面板升级',
   database: '数据库',
   control_plane: '控制面'
 };
@@ -87,7 +88,9 @@ const auditActionOverrides: Record<string, string> = {
   'protocol.clone': '复制协议',
   'rule.order': '排序规则',
   'auth.login': '登录',
-  'auth.logout': '登出'
+  'auth.logout': '登出',
+  'system.upgrade.check': '检查面板更新',
+  'system.upgrade.start': '开始面板升级'
 };
 
 export function auditActionLabel(action: string): string {

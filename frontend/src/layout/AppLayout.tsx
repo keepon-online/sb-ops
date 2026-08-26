@@ -2,6 +2,7 @@ import {
   ApiOutlined,
   AuditOutlined,
   AlertOutlined,
+  CloudUploadOutlined,
   ControlOutlined,
   DashboardOutlined,
   LockOutlined,
@@ -49,6 +50,7 @@ const navigationItems: ItemType[] = [
     label: '系统',
     children: [
       { key: '/monitor', icon: <MonitorOutlined />, label: '服务器监控' },
+      { key: '/system', icon: <CloudUploadOutlined />, label: '系统升级' },
       { key: '/audit', icon: <AuditOutlined />, label: '审计日志' }
     ]
   }

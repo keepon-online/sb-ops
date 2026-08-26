@@ -18,6 +18,7 @@ const AuditPage = lazy(() => import('../features/audit/pages/AuditPage').then((m
 const TrafficPage = lazy(() => import('../features/traffic/pages/TrafficPage').then((m) => ({ default: m.TrafficPage })));
 const AlertsPage = lazy(() => import('../features/alerts/pages/AlertsPage').then((m) => ({ default: m.AlertsPage })));
 const MonitorPage = lazy(() => import('../features/monitor/pages/MonitorPage').then((m) => ({ default: m.MonitorPage })));
+const SystemPage = lazy(() => import('../features/system/pages/SystemPage').then((m) => ({ default: m.SystemPage })));
 
 export default function App() {
   return (
@@ -37,6 +38,7 @@ export default function App() {
               <Route path="policies" element={<ErrorBoundary><PoliciesPage /></ErrorBoundary>} />
               <Route path="singbox" element={<ErrorBoundary><SingBoxPage /></ErrorBoundary>} />
               <Route path="monitor" element={<ErrorBoundary><MonitorPage /></ErrorBoundary>} />
+              <Route path="system" element={<ErrorBoundary><SystemPage /></ErrorBoundary>} />
               <Route path="audit" element={<ErrorBoundary><AuditPage /></ErrorBoundary>} />
               <Route path="*" element={<NotFoundPage />} />
             </Route>
