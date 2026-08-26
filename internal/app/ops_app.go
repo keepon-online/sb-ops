@@ -31,6 +31,7 @@ import (
 	"github.com/keepon-online/sb-ops/internal/service/secret"
 	serviceshare "github.com/keepon-online/sb-ops/internal/service/share"
 	servicesingbox "github.com/keepon-online/sb-ops/internal/service/singbox"
+	controlupgrade "github.com/keepon-online/sb-ops/internal/service/upgrade"
 	serviceuser "github.com/keepon-online/sb-ops/internal/service/user"
 	controltraffic "github.com/keepon-online/sb-ops/internal/traffic"
 	"github.com/keepon-online/sb-ops/internal/web"
@@ -52,6 +53,7 @@ type OpsApp struct {
 	Events        *controlevents.Bus
 	Alerts        *controlobservability.Service
 	Health        *controlobservability.HealthState
+	Upgrade       *controlupgrade.Service
 	Router        *gin.Engine
 	db            *sql.DB
 	cancel        context.CancelFunc
@@ -71,13 +73,13 @@ type OpsApp struct {
 func NewOps(db *sql.DB, sessionTTL time.Duration, loggers ...*logging.Logger) (*OpsApp, error) {
 	return newOps(db, sessionTTL, deployment.ApplyConfig{}, controltraffic.CollectorConfig{}, func() config.RuntimeConfig {
 		return config.DefaultRuntimeConfig()
-	}, loggers...)
+	}, "", nil, loggers...)
 }
 
 // newOps is the testable constructor: callers pass the apply target, the
 // traffic collector knobs, and a config provider for runtime settings. In
 // production these come from RuntimeConfig (see New).
-func newOps(db *sql.DB, sessionTTL time.Duration, apply deployment.ApplyConfig, collector controltraffic.CollectorConfig, configProvider func() config.RuntimeConfig, loggers ...*logging.Logger) (*OpsApp, error) {
+func newOps(db *sql.DB, sessionTTL time.Duration, apply deployment.ApplyConfig, collector controltraffic.CollectorConfig, configProvider func() config.RuntimeConfig, version string, restart func(), loggers ...*logging.Logger) (*OpsApp, error) {
 	logger := logging.DefaultLogger()
 	if len(loggers) > 0 && loggers[0] != nil {
 		logger = loggers[0]
@@ -122,6 +124,11 @@ func newOps(db *sql.DB, sessionTTL time.Duration, apply deployment.ApplyConfig, 
 	})
 	events := controlevents.NewBus(db)
 	alerts := controlobservability.NewService(db, newAlertNotifier(events, configProvider))
+	// 升级源每次操作现取，跟随 config.yaml updates 段热更新。
+	upgradeService := controlupgrade.NewService(func() (string, string) {
+		cfg := configProvider()
+		return cfg.Updates.Repo, cfg.Updates.Token
+	}, version, restart, events)
 	health := controlobservability.NewHealthState(nil)
 	monitor := controlmonitor.NewService()
 	gin.SetMode(gin.ReleaseMode)
@@ -131,13 +138,13 @@ func newOps(db *sql.DB, sessionTTL time.Duration, apply deployment.ApplyConfig, 
 	api.RegisterRoutes(router, api.Dependencies{
 		Identity: auth, Store: identityStore, Users: users, Protocols: protocols, Certificates: certificates, Policies: policies, SingBox: singBox, Sync: syncer,
 		Overview: overview, AuditLogs: auditLogs, Share: subscriptions, Traffic: traffic, Events: events, Alerts: alerts, Config: configProvider,
-		Argo: argoService, ArgoManager: argoManager, Monitor: monitor,
+		Argo: argoService, ArgoManager: argoManager, Monitor: monitor, Upgrade: upgradeService,
 	})
 	background, cancel := context.WithCancel(context.Background())
 	value := &OpsApp{
 		Auth: auth, IdentityStore: identityStore, Users: users, Protocols: protocols,
 		Certificates: certificates, Policies: policies, SingBox: singBox, Sync: syncer, Overview: overview, AuditLogs: auditLogs, Subscriptions: subscriptions, Traffic: traffic, Events: events, Alerts: alerts,
-		Router: router, db: db, cancel: cancel, Health: health, logger: logger, config: configProvider, argo: argoManager,
+		Router: router, db: db, cancel: cancel, Health: health, Upgrade: upgradeService, logger: logger, config: configProvider, argo: argoManager,
 		activeConnections: kernelConnections(syncer),
 	}
 	if err := syncer.Start(context.Background()); err != nil {

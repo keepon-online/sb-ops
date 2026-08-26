@@ -3,7 +3,7 @@ package httpx
 // Code 是统一响应信封中的业务状态码：0 表示成功，非零为错误并按域分段。
 // 数值是对外契约的一部分，发布后只能追加新码，不能复用或改动已有数值。
 //
-//	1xxx 通用错误    2xxx 认证与账号    3xxx 资源域    5xxx sing-box 运行时
+//	1xxx 通用错误    2xxx 认证与账号    3xxx 资源域    4xxx 面板升级    5xxx sing-box 运行时
 type Code int
 
 const (
@@ -28,6 +28,12 @@ const (
 	CodeResourceReferenced         Code = 3002 // 资源正在被引用（原 RESOURCE_REFERENCED）
 	CodeNameConflict               Code = 3003 // 名称已存在（原 NAME_CONFLICT）
 	CodeCredentialRotationRequired Code = 3004 // 凭据需先轮换（原 CREDENTIAL_ROTATION_REQUIRED）
+
+	// 4xxx 面板升级
+	CodeUpgradeNotConfigured Code = 4001 // 升级源未配置（config.yaml updates 段缺失）
+	CodeUpgradeCheckFailed   Code = 4002 // 查询 GitHub 最新版本失败
+	CodeUpgradeBusy          Code = 4003 // 已有升级正在进行
+	CodeUpgradeAlreadyLatest Code = 4004 // 当前已是最新版本
 
 	// 5xxx sing-box 运行时
 	CodeRuntimeUnavailable Code = 5001 // 运行时尚未配置（原 SINGBOX_RUNTIME_UNAVAILABLE）

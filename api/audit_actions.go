@@ -109,6 +109,11 @@ const (
 
 	actionUserSubscriptionRotate = "user.subscription.rotate"
 	resourceDevice               = "user_device"
+
+	// 面板升级
+	resourceSystemUpgrade    = "system_upgrade"
+	actionSystemUpgradeCheck = "system.upgrade.check"
+	actionSystemUpgradeStart = "system.upgrade.start"
 )
 
 // 单例资源的固定 resourceID：singbox_config 是 store 层 id=1 的单行表，

@@ -66,6 +66,7 @@ func NewService(source Source, currentVersion string, restart func(), events *co
 		currentVersion: currentVersion,
 		restart:        restart,
 		executable:     os.Executable,
+		phase:          PhaseIdle,
 	}
 }
 

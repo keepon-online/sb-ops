@@ -24,7 +24,10 @@ type App struct {
 	stop   func()
 }
 
-func New(cfg *config.RuntimeConfigHolder, stop func(), logger *logging.Logger) (*App, error) {
+// New 装配控制面板。version 是构建期注入的面板版本（main.version），
+// restart 是自升级完成后触发进程重生的钩子（置重启标志并向自身发
+// SIGTERM，由 main 的优雅停机路径收尾后 exec 新二进制）。
+func New(cfg *config.RuntimeConfigHolder, stop func(), logger *logging.Logger, version string, restart func()) (*App, error) {
 	if logger == nil {
 		logger = logging.DefaultLogger()
 	}
@@ -51,7 +54,7 @@ func New(cfg *config.RuntimeConfigHolder, stop func(), logger *logging.Logger) (
 	collector := controltraffic.CollectorConfig{
 		Interval: current.Traffic.Interval,
 	}
-	opsApp, err := newOps(db, current.Panel.SessionTTL, apply, collector, cfg.Current, logger)
+	opsApp, err := newOps(db, current.Panel.SessionTTL, apply, collector, cfg.Current, version, restart, logger)
 	if err != nil {
 		_ = db.Close()
 		return nil, err

@@ -29,6 +29,7 @@ import (
 	serviceprotocol "github.com/keepon-online/sb-ops/internal/service/protocol"
 	serviceshare "github.com/keepon-online/sb-ops/internal/service/share"
 	servicesingbox "github.com/keepon-online/sb-ops/internal/service/singbox"
+	controlupgrade "github.com/keepon-online/sb-ops/internal/service/upgrade"
 	serviceuser "github.com/keepon-online/sb-ops/internal/service/user"
 	controltraffic "github.com/keepon-online/sb-ops/internal/traffic"
 )
@@ -56,6 +57,7 @@ type Dependencies struct {
 	Monitor      *controlmonitor.Service
 	Config       func() config.RuntimeConfig
 	Argo         *serviceargo.Service
+	Upgrade      *controlupgrade.Service
 	// ArgoManager restarts tunnel processes; the supervisor may be absent in
 	// tests, hence the narrow interface.
 	ArgoManager interface{ RestartTunnel(id string) }
@@ -79,6 +81,7 @@ type handler struct {
 	monitor      *controlmonitor.Service
 	config       func() config.RuntimeConfig
 	argo         *serviceargo.Service
+	upgrade      *controlupgrade.Service
 	argoManager  interface{ RestartTunnel(id string) }
 }
 
@@ -91,6 +94,7 @@ func RegisterRoutes(router *gin.Engine, dependencies Dependencies) {
 		identity: dependencies.Identity, store: dependencies.Store, users: dependencies.Users,
 		protocols: dependencies.Protocols, certificates: dependencies.Certificates,
 		policies: dependencies.Policies, singbox: dependencies.SingBox, argo: dependencies.Argo, argoManager: dependencies.ArgoManager,
+		upgrade:  dependencies.Upgrade,
 		sync:     dependencies.Sync,
 		overview: dependencies.Overview, auditLogs: dependencies.AuditLogs, share: dependencies.Share, traffic: dependencies.Traffic, events: dependencies.Events, alerts: dependencies.Alerts,
 		monitor: dependencies.Monitor,
@@ -245,6 +249,12 @@ func RegisterRoutes(router *gin.Engine, dependencies Dependencies) {
 		trafficRead.GET("/summary", h.trafficSummary)
 		trafficRead.GET("/active-users", h.trafficActiveUsers)
 		trafficRead.GET("/protocol-shares", h.trafficProtocolShares)
+	}
+	if h.upgrade != nil {
+		systemUpgrade := authenticated.Group("/system/upgrade")
+		systemUpgrade.GET("/status", h.getUpgradeStatus)
+		systemUpgrade.POST("/check", h.checkUpgrade)
+		systemUpgrade.POST("/start", h.startUpgrade)
 	}
 }
 

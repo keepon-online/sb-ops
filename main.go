@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync/atomic"
 	"syscall"
 
 	"github.com/keepon-online/sb-ops/internal/app"
@@ -40,6 +41,17 @@ func run() error {
 	signalContext, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stopSignals()
 
+	// 自升级重启：升级服务替换二进制后置标志并向自身发 SIGTERM，走下方
+	// 完整的优雅停机链（SSE → HTTP drain → 内核/数据库），收尾后 exec
+	// 重生为磁盘上的新二进制，而非让进程退出等待外部拉起。
+	var restartRequested atomic.Bool
+	restarter := func() {
+		restartRequested.Store(true)
+		if err := syscall.Kill(syscall.Getpid(), syscall.SIGTERM); err != nil {
+			slog.Error("发送升级重启信号失败", "error", err)
+		}
+	}
+
 	cfg, stop, err := config.StartRuntimeConfigWatcher(configPath)
 	if err != nil {
 		return fmt.Errorf("加载配置失败: %w", err)
@@ -59,7 +71,7 @@ func run() error {
 		defer logCloser.Close()
 	}
 	logger.Info().Str("version", version).Msg("启动 sing-box 控制面板")
-	application, err := app.New(cfg, stop, logger)
+	application, err := app.New(cfg, stop, logger, version, restarter)
 	if err != nil {
 		return fmt.Errorf("创建应用失败: %w", err)
 	}
@@ -107,6 +119,9 @@ func run() error {
 			logger.Error().Err(err).Msg("优雅停机时关闭应用失败")
 		}
 		applicationClosed = true
+		if restartRequested.Load() {
+			return restartProcess(logger)
+		}
 		logger.Info().Msg("优雅停机完成")
 		return nil
 	case result := <-results:
@@ -116,6 +131,18 @@ func run() error {
 		}
 		return fmt.Errorf("%s 服务启动失败: %w", result.name, result.err)
 	}
+}
+
+// restartProcess 以替换后的二进制重生面板：此时优雅停机已完成（监听、
+// 内核、数据库均已关闭），exec 原地复用进程身份，无需 init/systemd 拉起。
+// exec 仅在失败时返回；此时保持 .bak 手动回滚语义，进程以错误退出。
+func restartProcess(logger *logging.Logger) error {
+	exe, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("定位面板二进制失败: %w", err)
+	}
+	logger.Info().Str("path", exe).Msg("优雅停机完成，正在以新版本重启面板")
+	return syscall.Exec(exe, os.Args, os.Environ())
 }
 
 func shutdownServers(logger *logging.Logger, servers []managedServer) {

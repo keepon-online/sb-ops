@@ -38,6 +38,8 @@ tags:
     description: Authenticated resumable operations event stream.
   - name: Alerts
     description: Operational alerts and acknowledgement workflow.
+  - name: System
+    description: Panel self-upgrade against GitHub Releases.
 paths:
   /health/live:
     get:
@@ -1423,6 +1425,42 @@ paths:
       security: [{BearerAuth: []}]
       parameters: [{name: id, in: path, required: true, schema: {type: string, format: uuid}}]
       responses: {'200': {description: Acknowledged alert, content: {application/json: {schema: {$ref: '#/components/schemas/Alert'}}}}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}, '404': {$ref: '#/components/responses/NotFound'}}
+  /api/v1/system/upgrade/status:
+    get:
+      tags: [System]
+      operationId: getSystemUpgradeStatus
+      summary: Panel self-upgrade snapshot (current version, phase, latest known release)
+      security: [{BearerAuth: []}]
+      responses:
+        '200': {description: Upgrade status, content: {application/json: {schema: {allOf: [{$ref: '#/components/schemas/SuccessEnvelope'}, {properties: {data: {$ref: '#/components/schemas/UpgradeStatus'}}}]}}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /api/v1/system/upgrade/check:
+    post:
+      tags: [System]
+      operationId: checkSystemUpgrade
+      summary: Query the latest GitHub release and compare with the running version
+      security: [{BearerAuth: []}]
+      responses:
+        '200': {description: Latest release info, content: {application/json: {schema: {allOf: [{$ref: '#/components/schemas/SuccessEnvelope'}, {properties: {data: {$ref: '#/components/schemas/UpgradeRelease'}}}]}}}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '502': {description: GitHub API unreachable, content: {application/json: {schema: {$ref: '#/components/schemas/ManagementErrorResponse'}}}}
+  /api/v1/system/upgrade/start:
+    post:
+      tags: [System]
+      operationId: startSystemUpgrade
+      summary: Download, verify, replace the panel binary, and restart the process in the background
+      security: [{BearerAuth: []}]
+      responses:
+        '200': {description: Upgrade accepted; poll status for progress, content: {application/json: {schema: {allOf: [{$ref: '#/components/schemas/SuccessEnvelope'}, {properties: {data: {$ref: '#/components/schemas/UpgradeStatus'}}}]}}}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '502': {description: GitHub API unreachable, content: {application/json: {schema: {$ref: '#/components/schemas/ManagementErrorResponse'}}}}
 components:
   securitySchemes:
     BearerAuth:
@@ -2738,6 +2776,27 @@ components:
       properties:
         pending: {type: integer, format: int64, minimum: 0}
         failed: {type: integer, format: int64, minimum: 0}
+    UpgradeRelease:
+      type: object
+      additionalProperties: false
+      required: [version, notes, publishedAt, upgradable]
+      properties:
+        version: {type: string, description: "Release tag, e.g. v0.3.0"}
+        notes: {type: string, description: Release notes body (markdown)}
+        publishedAt: {type: integer, format: int64, minimum: 0, description: Unix seconds; 0 means unknown}
+        upgradable: {type: boolean, description: Whether the tag is newer than the running version}
+    UpgradeStatus:
+      type: object
+      additionalProperties: false
+      required: [configured, repo, currentVersion, phase, updatedAt]
+      properties:
+        configured: {type: boolean, description: Whether updates.repo is set in config.yaml}
+        repo: {type: string, description: GitHub owner/repo upgrade source; the access token is never exposed}
+        currentVersion: {type: string}
+        phase: {type: string, enum: [idle, checking, downloading, verifying, applying, restarting, failed]}
+        latest: {$ref: '#/components/schemas/UpgradeRelease'}
+        error: {type: string, description: Failure detail when phase is failed}
+        updatedAt: {type: integer, format: int64, minimum: 0, description: Unix seconds of the last state change}
     LivenessResponse:
       type: object
       additionalProperties: false
