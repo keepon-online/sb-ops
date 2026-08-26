@@ -12,6 +12,7 @@ import (
 	serviceargo "github.com/keepon-online/sb-ops/internal/service/argo"
 	servicepolicy "github.com/keepon-online/sb-ops/internal/service/policy"
 	serviceprotocol "github.com/keepon-online/sb-ops/internal/service/protocol"
+	servicesingbox "github.com/keepon-online/sb-ops/internal/service/singbox"
 	serviceuser "github.com/keepon-online/sb-ops/internal/service/user"
 	"gopkg.in/yaml.v3"
 )
@@ -647,5 +648,16 @@ func TestCompileRendersArgoSubscriptionNodes(t *testing.T) {
 	// 原生节点必须保留在最前。
 	if proxies[0].(map[string]any)["name"] != "VMess" {
 		t.Fatalf("native node = %#v", proxies[0])
+	}
+}
+
+func TestInputValidateRejectsDanglingRuleSetDetour(t *testing.T) {
+	input := Input{PublicAddress: "panel.example.com", RuleSets: []servicesingbox.RuleSet{{Tag: "openai", Format: "binary", URL: "https://example.com/openai.srs", DownloadDetour: "warp"}}}
+	if err := input.Validate(); err == nil || !strings.Contains(err.Error(), "下载出站") {
+		t.Fatalf("err=%v, want dangling download detour error", err)
+	}
+	input.RuleSets[0].DownloadDetour = "direct"
+	if err := input.Validate(); err != nil {
+		t.Fatalf("builtin detour should validate: %v", err)
 	}
 }

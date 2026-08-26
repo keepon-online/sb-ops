@@ -313,7 +313,7 @@ func (s *Store) DeleteOutbound(ctx context.Context, id string) error {
 
 func (s *Store) OutboundReferenced(ctx context.Context, tag string) (bool, error) {
 	var count int
-	if err := s.db.QueryRowContext(ctx, `SELECT (SELECT COUNT(1) FROM singbox_route_rules WHERE outbound_tag=?) + (SELECT COUNT(1) FROM singbox_config WHERE id=1 AND default_outbound_tag=?)`, tag, tag).Scan(&count); err != nil {
+	if err := s.db.QueryRowContext(ctx, `SELECT (SELECT COUNT(1) FROM singbox_route_rules WHERE outbound_tag=?) + (SELECT COUNT(1) FROM singbox_config WHERE id=1 AND default_outbound_tag=?) + (SELECT COUNT(1) FROM singbox_rule_sets WHERE download_detour=?)`, tag, tag, tag).Scan(&count); err != nil {
 		return false, err
 	}
 	return count > 0, nil

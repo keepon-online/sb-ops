@@ -176,6 +176,20 @@ func (s *Service) ListOutbounds(ctx context.Context) ([]Outbound, error) {
 	return values, nil
 }
 
+// GetOutbound 返回单个（脱敏）出站，更新 handler 用它取改前快照计算审计 diff。
+func (s *Service) GetOutbound(ctx context.Context, id string) (Outbound, error) {
+	value, err := s.store.GetOutbound(ctx, id)
+	if err != nil {
+		return Outbound{}, err
+	}
+	return maskOutbound(value), nil
+}
+
+// GetRule 返回单个服务器路由规则，更新 handler 用它取改前快照计算审计 diff。
+func (s *Service) GetRule(ctx context.Context, id string) (RouteRule, error) {
+	return s.store.GetRule(ctx, id)
+}
+
 func (s *Service) CreateOutbound(ctx context.Context, input OutboundWriteInput) (Outbound, error) {
 	value, fields := outboundFromInput(input)
 	if value.Type == OutboundTypeWarp && (value.Warp == nil || value.Warp.PrivateKey == "") {
@@ -331,6 +345,9 @@ func (s *Service) CreateRuleSet(ctx context.Context, input RuleSetWriteInput) (R
 	if len(fields) > 0 {
 		return RuleSet{}, &common.ValidationError{Fields: fields}
 	}
+	if err := s.validateDetourReference(ctx, value.DownloadDetour); err != nil {
+		return RuleSet{}, err
+	}
 	now := s.now()
 	value.ID, value.Revision, value.CreatedAt, value.UpdatedAt = uuid.NewString(), 1, now, now
 	if err := s.store.CreateRuleSet(ctx, value); err != nil {
@@ -347,6 +364,9 @@ func (s *Service) UpdateRuleSet(ctx context.Context, input RuleSetWriteInput) (R
 	if len(fields) > 0 {
 		return RuleSet{}, &common.ValidationError{Fields: fields}
 	}
+	if err := s.validateDetourReference(ctx, value.DownloadDetour); err != nil {
+		return RuleSet{}, err
+	}
 	current, err := s.store.GetRuleSet(ctx, input.ID)
 	if err != nil {
 		return RuleSet{}, err
@@ -355,7 +375,21 @@ func (s *Service) UpdateRuleSet(ctx context.Context, input RuleSetWriteInput) (R
 	if err := s.store.UpdateRuleSet(ctx, value, input.Revision); err != nil {
 		return RuleSet{}, err
 	}
-	return s.store.GetRuleSet(ctx, input.ID)
+	return s.store.GetRuleSet(ctx, value.ID)
+}
+
+// validateDetourReference 校验规则集的 download_detour 指向存在的出站：
+// 悬空的下载出站会在内核拉取远程规则集时才失败，启动期同步无从暴露。
+func (s *Service) validateDetourReference(ctx context.Context, detour string) error {
+	if detour == "" {
+		return nil
+	}
+	if exists, err := s.outboundExists(ctx, detour); err != nil {
+		return err
+	} else if !exists {
+		return validation("downloadDetour", "must reference an existing outbound")
+	}
+	return nil
 }
 
 func (s *Service) DeleteRuleSet(ctx context.Context, id string) error {

@@ -221,6 +221,9 @@ func (i Input) validateSingBoxConfig() error {
 		if strings.TrimSpace(ruleSet.URL) == "" {
 			return fmt.Errorf("规则集 %s 缺少下载地址", ruleSet.Tag)
 		}
+		if ruleSet.DownloadDetour != "" && !tags[ruleSet.DownloadDetour] {
+			return fmt.Errorf("规则集 %s 的下载出站 %q 不存在", ruleSet.Tag, ruleSet.DownloadDetour)
+		}
 	}
 	for _, rule := range i.RouteRules {
 		if rule.Enabled && !tags[rule.OutboundTag] {

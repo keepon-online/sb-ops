@@ -332,3 +332,39 @@ func TestOutboundWarpValidation(t *testing.T) {
 		t.Fatal("warp outbound without private key unexpectedly accepted")
 	}
 }
+
+// 规则集的 download_detour 必须指向存在的出站，且被引用的出站不允许删除：
+// 悬空的下载出站只在内核拉取远程规则集时才失败，启动期同步无从暴露。
+func TestRuleSetDownloadDetourReferencesOutbound(t *testing.T) {
+	service, _ := newTestService(t)
+	_, err := service.CreateRuleSet(t.Context(), RuleSetWriteInput{Tag: "openai", Format: "binary", URL: "https://example.com/openai.srs", DownloadDetour: "missing"})
+	var fieldError *common.ValidationError
+	if !errors.As(err, &fieldError) || fieldError.Fields["downloadDetour"] == "" {
+		t.Fatalf("err=%v, want downloadDetour validation error", err)
+	}
+
+	password := "secret"
+	outbound, err := service.CreateOutbound(t.Context(), OutboundWriteInput{Type: OutboundTypeSOCKS, Tag: "socks-out", Server: "127.0.0.1", ServerPort: 1080, Password: &password})
+	if err != nil {
+		t.Fatalf("create outbound: %v", err)
+	}
+	created, err := service.CreateRuleSet(t.Context(), RuleSetWriteInput{Tag: "openai", Format: "binary", URL: "https://example.com/openai.srs", DownloadDetour: "socks-out"})
+	if err != nil {
+		t.Fatalf("create rule set with valid detour: %v", err)
+	}
+	if created.DownloadDetour != "socks-out" {
+		t.Fatalf("rule set detour = %q", created.DownloadDetour)
+	}
+	if err := service.DeleteOutbound(t.Context(), outbound.ID); !errors.Is(err, common.ErrReferenced) {
+		t.Fatalf("delete referenced outbound err=%v, want ErrReferenced", err)
+	}
+	// 改掉 detour 后删除即可通过。
+	updated, err := service.UpdateRuleSet(t.Context(), RuleSetWriteInput{ID: created.ID, Revision: created.Revision, Tag: "openai", Format: "binary", URL: "https://example.com/openai.srs"})
+	if err != nil {
+		t.Fatalf("clear detour: %v", err)
+	}
+	_ = updated
+	if err := service.DeleteOutbound(t.Context(), outbound.ID); err != nil {
+		t.Fatalf("delete outbound after clearing detour: %v", err)
+	}
+}
