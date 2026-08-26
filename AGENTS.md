@@ -12,12 +12,12 @@
 
 ```bash
 make build            # 前端构建 + go build → dist/sb-control
-make test             # go test -tags=with_quic,with_utls,with_clash_api,with_v2ray_api ./...
+make test             # go test -tags=with_quic,with_utls,with_clash_api,with_v2ray_api,with_wireguard,with_gvisor ./...
 make vet              # 同上 vet
 make frontend-check   # redocly lint openapi + tsc --noEmit + vite build（前端门禁）
 make api              # openapi-typescript 重新生成 frontend/src/generated/management-api.ts
 npm --prefix frontend test   # vitest 前端单测
-go test -tags=with_quic,with_utls,with_clash_api,with_v2ray_api ./internal/<pkg>/...
+go test -tags=with_quic,with_utls,with_clash_api,with_v2ray_api,with_wireguard,with_gvisor ./internal/<pkg>/...
 ```
 
 ## 架构与分层
