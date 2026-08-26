@@ -42,6 +42,7 @@ go test -tags=with_quic,with_utls,with_clash_api,with_v2ray_api,with_wireguard,w
 - **流量统计行模型（互斥）**：`traffic_hourly/daily` 写入两种行——设备行（`user_id≠''`、`device_id≠''`、`protocol_id=''`）与入站行（`user_id=''`、`device_id=''`、`protocol_id≠''`）。V2Ray user 统计天生无协议归属，因此「用户排行 × 协议过滤」（或反之）恒为空集：前端 TrafficPage 已做维度互斥（切维度清空+禁用另一侧过滤），后端 `ActiveUsers`/`ProtocolShares` 会忽略不适用的过滤——改查询时保持此语义。`AggregateRecent` 的聚合窗口**含当天进行中数据**（end=now 滚动重聚合），勿改回截止当天 00:00（会导致跨天查询缺当天）。
 - **两套分流勿混淆**：「订阅分流」（`PoliciesPage`，写入 Clash 订阅、只影响单用户客户端）vs「服务器分流」（`SingBoxPage` routes tab，作用于内核转发、影响所有用户）。
 - 告警外发配置在 `config.yaml` 的 `notifications` 段（`webhook_url` / `webhook_secret` / `telegram_bot_token` / `telegram_chat_id`），未配置静默跳过；notifier 通过 `func() config.RuntimeConfig` 实时读最新配置（改 config.yaml 热重载生效）。
+- **面板自升级**：`config.yaml` 的 `updates` 段（`repo`/`token`，空即禁用）+ `internal/service/upgrade`（无状态服务，升级源经 `Source` 闭包注入、不 import internal/config，业务码 4xxx）。升级流程 = 下载 Release 资产 `sb-ops-linux-<GOARCH>` → sha256 校验（GitHub 资产 digest 优先、SHA256SUMS 回退）→ 备份 `.bak` → 原子 rename → `restarter` 钩子（main.go 置标志 + 自发 SIGTERM）走**既有优雅停机链**后 `syscall.Exec` 重生为新二进制；协议入站由启动时 `syncer.Start` 自动恢复。新版本起不来**不做自动回滚**——`.bak` 留在二进制旁供 SSH 手动换回，勿引入双进程看门狗之类的复杂化。
 
 ## 数据库 / 迁移
 

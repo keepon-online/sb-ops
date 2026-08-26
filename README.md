@@ -79,6 +79,7 @@ make release VERSION=v2.0.0
 | `traffic` | `interval` / `retention_days` | 流量采集周期（默认 `1m`）、历史保留天数（默认 90，0 为永久） |
 | `deployment` | `public_address` / `tls_cert_path` / `tls_key_path` | 客户端连接的公网地址、可选外部 TLS 证书路径 |
 | `notifications` | `webhook_url` / `webhook_secret` / `telegram_bot_token` / `telegram_chat_id` | 告警外发（Webhook / Telegram，均选填） |
+| `updates` | `repo` / `token` | 面板自升级源（GitHub `owner/repo` 与读取用 PAT，选填，缺省即禁用） |
 | `panel` | `session_ttl` | 会话有效期（默认 `24h`） |
 | `development` | `allow_private_address` / `frontend_dev_proxy` | 允许私网地址作为公网地址（本地开发）、前端开发代理地址 |
 
@@ -87,6 +88,18 @@ make release VERSION=v2.0.0
 `deployment.public_address` 是订阅生成的公网地址（客户端连接本节点所用的 IPv4 或域名），须在启动前配置；`tls_cert_path` / `tls_key_path` 留空则使用面板生成的自签证书。进程所有者需保证证书文件可读、入站端口可绑定（1024 以下端口需相应宿主权限）。
 
 保存受管资源会自动编译并重建内嵌内核，现有代理连接会短暂中断。若新内核启动失败，应用立即恢复上一份成功配置并记录失败到运行时状态。
+
+### 面板自升级
+
+配置 `updates` 段后，「系统 → 系统升级」页面可直接从 GitHub Releases 检查并升级面板自身，无需手动上传二进制：
+
+```yaml
+updates:
+  repo: "<github owner>/<repo>"   # 托管 Release 资产的仓库
+  token: "<PAT>"                   # 具备该仓库 Contents 只读权限的令牌，公开仓库可留空
+```
+
+推送 `v*` 标签触发 CI 构建并发布 `sb-ops-linux-<arch>` 与 `SHA256SUMS` 资产，随后在面板点击升级：服务下载对应架构资产并校验 sha256（优先 GitHub 资产摘要，缺失时回退 SHA256SUMS），通过后将当前二进制备份为 `<二进制>.bak` 并原子替换，面板随后优雅停机、以新版本自动重启，协议入站由启动同步自动恢复。下载或校验失败时面板保持旧版本运行并在页面展示原因；若新版本起不来，登录服务器执行 `cp <二进制>.bak <二进制>` 手动回滚即可。
 
 ## 开发
 
