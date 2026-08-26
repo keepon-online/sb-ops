@@ -11,6 +11,10 @@ const (
 	StatusQuotaExceeded Status = "quotaExceeded"
 )
 
+// User 是订阅用户。UsedBytes 是驱动额度扣减的累计计数器：自开号（或上次
+// 手动重置）起单调累加，与 traffic_hourly 的历史窗口统计（总览页口径）刻意
+// 分离——重置/手工调整只改计数器不动历史，留存清理只删历史不动计数器，两边
+// 数字不一致是预期行为而非采集丢失。
 type User struct {
 	ID                string     `json:"id"`
 	Name              string     `json:"name"`

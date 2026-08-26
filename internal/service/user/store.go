@@ -739,6 +739,10 @@ func (s *Store) AdjustQuota(ctx context.Context, id, mode string, bytes int64, n
 	return nil
 }
 
+// setTraffic mutates the quota counters only: users/devices used_bytes are
+// zeroed or adjusted in place while traffic_hourly history is left untouched.
+// Window statistics (overview 24h totals) therefore keep counting pre-reset
+// traffic — the counter and the history are meant to diverge.
 func (s *Store) setTraffic(ctx context.Context, id, mode string, bytes int64, now time.Time) error {
 	switch mode {
 	case "reset":

@@ -137,6 +137,10 @@ FROM devices`, dayStart).Scan(&result.Devices.Total, &result.Devices.Auto, &resu
 			result.RuntimeStatus = "running"
 		}
 	}
+	// 流量概览与用户排行都是 [now-24h, now) 滚动窗口内 traffic_hourly 用户行
+	// 的求和，与用户页 users.used_bytes 累计计数器口径不同（后者自开号/上次
+	// 重置起累加，重置只清计数器、留存清理只删历史），两边数字不一致是预期
+	// 行为而非采集丢失。
 	if s.traffic != nil {
 		to := time.Now().UTC()
 		filter := controltraffic.Filter{From: to.Add(-24 * time.Hour), To: to, Interval: "hour"}
