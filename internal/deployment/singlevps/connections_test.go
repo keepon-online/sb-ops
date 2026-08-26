@@ -29,7 +29,7 @@ func TestConnectionsReadsAllowedLocalClashAPI(t *testing.T) {
 		if request.URL.Path != "/connections" {
 			t.Fatalf("path = %q", request.URL.Path)
 		}
-		_, _ = writer.Write([]byte(`{"connections":[{"id":"connection-1","start":"2026-08-01T12:00:00Z","metadata":{"host":"example.com","dstPort":"443","network":"tcp","inbound":"vless-in","rule":"Proxy"},"chains":["direct","proxy"],"upload":12,"download":34}]}`))
+		_, _ = writer.Write([]byte(`{"connections":[{"id":"connection-1","start":"2026-08-01T12:00:00Z","metadata":{"host":"example.com","destinationPort":"443","network":"tcp","inbound":"vless-in"},"chains":["direct","proxy"],"rule":"domain_suffix(example.com) => route","upload":12,"download":34}]}`))
 	}))
 	defer server.Close()
 
@@ -49,6 +49,9 @@ func TestConnectionsReadsAllowedLocalClashAPI(t *testing.T) {
 	if item.ID != "connection-1" || item.Host != "example.com" || item.Port != 443 || item.Outbound != "proxy" || item.UploadBytes != 12 || item.DownloadBytes != 34 {
 		t.Fatalf("connection = %#v", item)
 	}
+	if item.Rule != "domain_suffix(example.com) => route" {
+		t.Fatalf("top-level rule not parsed: %#v", item)
+	}
 }
 
 func TestConnectionsRejectsExternalClashAPI(t *testing.T) {
@@ -67,8 +70,8 @@ func TestConnectionsRejectsExternalClashAPI(t *testing.T) {
 func TestConnectionsParsesInboundFromType(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		_, _ = writer.Write([]byte(`{"connections":[
-			{"id":"c1","start":"2026-08-01T12:00:00Z","metadata":{"host":"example.com","dstPort":"443","network":"udp","type":"tuic/tuic-tuic"},"chains":["direct"],"upload":1,"download":2},
-			{"id":"c2","start":"2026-08-01T12:00:01Z","metadata":{"host":"example.com","dstPort":"443","network":"tcp","type":"mixed"},"chains":["direct"],"upload":1,"download":2}
+			{"id":"c1","start":"2026-08-01T12:00:00Z","metadata":{"host":"example.com","destinationPort":"443","network":"udp","type":"tuic/tuic-tuic"},"chains":["direct"],"upload":1,"download":2},
+			{"id":"c2","start":"2026-08-01T12:00:01Z","metadata":{"host":"example.com","destinationPort":"443","network":"tcp","type":"mixed"},"chains":["direct"],"upload":1,"download":2}
 		]}`))
 	}))
 	defer server.Close()
@@ -108,8 +111,8 @@ func TestCloseConnectionUsesSingleEscapedID(t *testing.T) {
 func TestConnectionsParsesSourceIP(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		_, _ = writer.Write([]byte(`{"connections":[
-			{"id":"c1","start":"2026-08-01T12:00:00Z","metadata":{"host":"dns.msftncsi.com","dstPort":"443","network":"tcp","type":"vless/vless-main","sourceIP":"203.0.113.9"},"chains":["direct"],"upload":1,"download":2},
-			{"id":"c2","start":"2026-08-01T12:00:01Z","metadata":{"host":"example.com","dstPort":"443","network":"tcp","type":"mixed"},"chains":["direct"],"upload":1,"download":2}
+			{"id":"c1","start":"2026-08-01T12:00:00Z","metadata":{"host":"dns.msftncsi.com","destinationPort":"443","network":"tcp","type":"vless/vless-main","sourceIP":"203.0.113.9"},"chains":["direct"],"upload":1,"download":2},
+			{"id":"c2","start":"2026-08-01T12:00:01Z","metadata":{"host":"example.com","destinationPort":"443","network":"tcp","type":"mixed"},"chains":["direct"],"upload":1,"download":2}
 		]}`))
 	}))
 	defer server.Close()

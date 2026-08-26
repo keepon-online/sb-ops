@@ -36,14 +36,14 @@ type clashConnectionResponse struct {
 	Connections []struct {
 		ID       string `json:"id"`
 		Start    string `json:"start"`
+		Rule     string `json:"rule"`
 		Metadata struct {
-			Host     string `json:"host"`
-			DstPort  string `json:"dstPort"`
-			Network  string `json:"network"`
-			Inbound  string `json:"inbound"`
-			Type     string `json:"type"`
-			SourceIP string `json:"sourceIP"`
-			Rule     string `json:"rule"`
+			Host            string `json:"host"`
+			DestinationPort string `json:"destinationPort"`
+			Network         string `json:"network"`
+			Inbound         string `json:"inbound"`
+			Type            string `json:"type"`
+			SourceIP        string `json:"sourceIP"`
 		} `json:"metadata"`
 		Chains   []string `json:"chains"`
 		Upload   int64    `json:"upload"`
@@ -55,6 +55,8 @@ type clashConnectionResponse struct {
 // sing-box v1.13 has no separate "inbound" field: it packs the inbound into
 // "type" as "<inboundType>/<inboundTag>" (e.g. "tuic/tuic-tuic"). The bare
 // field is kept first for older cores that expose it directly.
+// 同理两处 v1.13 的字段契约：端口在 metadata.destinationPort（不是 mihomo 的
+// dstPort），命中规则在连接顶层 rule（不在 metadata 里）。
 func clashInboundTag(inbound, connectionType string) string {
 	if inbound != "" {
 		return inbound
@@ -91,11 +93,11 @@ func (s *SyncService) Connections(ctx context.Context) (ConnectionsResult, error
 	}
 	items := make([]Connection, 0, len(payload.Connections))
 	for _, item := range payload.Connections {
-		value := Connection{ID: item.ID, Inbound: clashInboundTag(item.Metadata.Inbound, item.Metadata.Type), SourceIP: strings.TrimSpace(item.Metadata.SourceIP), Rule: item.Metadata.Rule, Host: item.Metadata.Host, Network: item.Metadata.Network, UploadBytes: item.Upload, DownloadBytes: item.Download}
+		value := Connection{ID: item.ID, Inbound: clashInboundTag(item.Metadata.Inbound, item.Metadata.Type), SourceIP: strings.TrimSpace(item.Metadata.SourceIP), Rule: item.Rule, Host: item.Metadata.Host, Network: item.Metadata.Network, UploadBytes: item.Upload, DownloadBytes: item.Download}
 		if len(item.Chains) > 0 {
 			value.Outbound = item.Chains[len(item.Chains)-1]
 		}
-		_, _ = fmt.Sscanf(item.Metadata.DstPort, "%d", &value.Port)
+		_, _ = fmt.Sscanf(item.Metadata.DestinationPort, "%d", &value.Port)
 		value.StartedAt, _ = time.Parse(time.RFC3339Nano, item.Start)
 		items = append(items, value)
 	}
