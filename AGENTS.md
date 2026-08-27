@@ -4,14 +4,14 @@
 
 ## 项目概览
 
-- 单 Go 二进制（根 `main.go`，go-site 式扁平入口）+ React/antd 前端（`frontend`），内嵌 sing-box 内核；单 VPS 单进程，无独立 Docker/systemd 编排。
+- 单 Go 二进制（根 `main.go` 扁平入口）+ React/antd 前端（`frontend`），内嵌 sing-box 内核；单 VPS 单进程部署（systemd + Nginx 反代方案与已验证实例见 `docs/deployment.md`，仓库内不携带编排文件）。
 - 个人使用、**单管理员**（无 RBAC/多账号，`internal/identity` 只做认证与会话）。
-- 产品语言为中文（面板 UI、资源层校验/错误消息已中文化）。**统一响应信封**：管理 API 的 JSON 响应一律 `{code, message, data, requestId}`（校验失败附加 `fieldErrors`），`code` 是数字业务码——`0` 成功，`1xxx` 通用 / `2xxx` 认证账号 / `3xxx` 资源域 / `5xxx` sing-box，注册表在 `internal/httpx/codes.go`（数值是契约，只增不改），前端对应表在 `services/http.ts` 的 `ApiCode`；HTTP 状态码保留 REST 语义，信封之外再无业务信息。订阅产物（clash.yaml）、SSE、健康检查、204 无体响应不走信封。请求体绑定统一走 `httpx.BindJSON`（`internal/httpx/bind.go`）：binding tag 校验失败自动附带字段级中文 `fieldErrors`（键为 JSON 字段名，中文模板集中在该文件），新 handler 不要再手写 `ShouldBindJSON`；成功响应用 `httpx.OK`/`httpx.Created`，勿用裸 `httpx.JSON`（保留给健康检查等非信封契约）。
+- 产品语言为中文（面板 UI、资源层校验/错误消息已中文化）。**统一响应信封**：管理 API 的 JSON 响应一律 `{code, message, data, requestId}`（校验失败附加 `fieldErrors`），`code` 是数字业务码——`0` 成功，`1xxx` 通用 / `2xxx` 认证账号 / `3xxx` 资源域 / `4xxx` 面板升级 / `5xxx` sing-box，注册表在 `internal/httpx/codes.go`（数值是契约，只增不改），前端对应表在 `services/http.ts` 的 `ApiCode`；HTTP 状态码保留 REST 语义，信封之外再无业务信息。订阅产物（clash.yaml）、SSE、健康检查、204 无体响应不走信封。请求体绑定统一走 `httpx.BindJSON`（`internal/httpx/bind.go`）：binding tag 校验失败自动附带字段级中文 `fieldErrors`（键为 JSON 字段名，中文模板集中在该文件），新 handler 不要再手写 `ShouldBindJSON`；成功响应用 `httpx.OK`/`httpx.Created`，勿用裸 `httpx.JSON`（保留给健康检查等非信封契约）。
 
 ## 常用命令（Go 命令必须带 build tags）
 
 ```bash
-make build            # 前端构建 + go build → dist/sb-control
+make build            # 前端构建 + go build → dist/sb-ops
 make test             # go test -tags=with_quic,with_utls,with_clash_api,with_v2ray_api,with_wireguard,with_gvisor ./...
 make vet              # 同上 vet
 make frontend-check   # redocly lint openapi + tsc --noEmit + vite build（前端门禁）
@@ -23,11 +23,11 @@ go test -tags=with_quic,with_utls,with_clash_api,with_v2ray_api,with_wireguard,w
 ## 架构与分层
 
 - `internal/app`：装配（`newOps`）；`api/`：管理 API + 订阅端点（handler 层，一域一文件）；`internal/web`：前端静态资源 embed 与健康检查路由；`internal/httpx`：统一错误契约（`requestId`/`code`）与中间件。
-- `internal/service/*`：业务服务（user / protocol / certificate / policy / singbox / share / secret / common），领域包内 `model.go`/`store.go`/`service.go`。
-- `internal/traffic`：V2Ray 采集、历史聚合、保留清理；`internal/observability`：告警评估、readiness、Webhook/Telegram 外发。
+- `internal/service/*`：业务服务（user / protocol / certificate / policy / singbox / share / secret / argo / upgrade / common），领域包内 `model.go`/`store.go`/`service.go`。
+- `internal/traffic`：V2Ray 采集、历史聚合、保留清理；`internal/observability`：告警评估、readiness、设备平台画像、Webhook/Telegram 外发。
 - `internal/deployment/compiler` + `singlevps`：资源 → `sb.json` 编译、同步与回滚；`internal/runtime/singbox`：内核生命周期。**内核日志统一进面板日志**——`kernelLogWriter` 经 sing-box 的 `log.PlatformWriter` 转发进 `internal/logging` 门面（剥 `INFO[  12]` 前缀与 ANSI 色码，级别映射 debug/info/warn/error），内核自身输出重定向 `/dev/null`；不要让内核直接写 stderr（硬编码 `+0800 …` 时间戳格式）。
 - `internal/database`：SQLite 打开与迁移。
-- 分层规则：HTTP handler 调 service，service 调 store；store 持有 `*sql.DB`（`internal/identity` 的 `h.store` 审计直连是例外）。
+- 分层规则：HTTP handler 调 service，service 调 store；store 持有 `*sql.DB`（`internal/identity` 的 `h.store` 审计直连是例外）。**写操作收尾统一走 `h.mutate`**（审计 + 内核同步一体，勿绕开）；更新类 handler 先取改前快照再传 `diffable(beforeErr, err, before, value)`，成功审计的 details 会带字段级 `{old,new}` diff（`resourceChanges` 自动忽略 revision/updatedAt；出站快照走脱敏视图）——新增更新端点照此接，别再退回只留 `{}`。
 
 ## 领域约定（勿破坏）
 
@@ -35,12 +35,12 @@ go test -tags=with_quic,with_utls,with_clash_api,with_v2ray_api,with_wireguard,w
 - **部署参数在 `config.yaml` 的 `deployment` 段**（`public_address` / `tls_cert_path` / `tls_key_path`），由 `ApplyConfig` → `compiler.LoadInput` 传入。
 
 - **Clash/V2Ray API 收敛**：地址与密钥由面板「服务端配置 → 基础配置」`singbox_config` 管理（**单一事实来源**）；不要在 config.yaml 引入 clash/v2ray 地址配置。
-- **config.yaml 只保留与默认值不同的键**（server.listen / server.db_path（默认在 data_dir 下，此处显式放仓库根）/ deployment.public_address / development.allow_private_address / logging 段（与默认一致，显式写入便于自文档））；其余键的默认值见 `internal/config/runtime.go` 的 `DefaultRuntimeConfig`。可选段（缺省即禁用）：`notifications` / `acme`。`cors_allowed_origins` 已删除（无 CORS 中间件消费，勿恢复）。
+- **config.yaml 只保留与默认值不同的键**（server.listen / server.db_path（默认在 data_dir 下，此处显式放仓库根）/ deployment.public_address / development.allow_private_address / logging 段（与默认一致，显式写入便于自文档））；其余键的默认值见 `internal/config/runtime.go` 的 `DefaultRuntimeConfig`。可选段（缺省即禁用）：`notifications` / `acme` / `updates`（面板自升级）。`cors_allowed_origins` 已删除（无 CORS 中间件消费，勿恢复）。
 - **日志配置在 `config.yaml` 的 `logging` 段**（`level`：debug/info/warn/error，同时作用于双 sink；`file_format`：`text`（默认，无颜色可读文本）/`json`；`rotate_max_mb`/`rotate_backups`：文件轮转参数）：`internal/logging`（gookit/slog 流式门面）双 sink——stdout 彩色 text + `<data_dir>/logs/sb-control.log` 尺寸轮转（0600）；改动需重启生效。注意 gookit 级别数值**越小越严重**（Panic=100…Trace=800），过滤方向别写反。
-- **流量采集走 V2Ray stats gRPC**（user-tag 按设备归因、经 deviceID→userID 映射汇总到用户并驱动额度扣减，额度单位 GB）；**Clash API 仅实时连接观测**（`/connections`）。采集地址每次周期动态解析（resolver），采集失败触发 `traffic_stalled` 告警。
-- **凭据按「设备」维度**：`devices` 表——每设备独立 uuid/password/token，入站用户 name = 设备 id（即 V2Ray stats 标签）；`UNIQUE(user_id, name)`、上限 10 台/用户，设备仅由链接导入自动发现或手动添加（建号不建设备，用户级订阅 token 存 `users.subscription_token_*`，可轮换）；`ua_key`（部分唯一索引）非空的设备为由订阅 UA 指纹自动发现（`share.DeviceKeyFromUserAgent` 客户端识别 + 首次下载自动建设备并触发一次同步，失败回退默认设备），设备列表 `auto` 字段标记。原 `credentials` 表已删（未上线直接重建，无迁移数据，`runtime_artifacts` PK 为 user+device+format）。
+- **流量采集走 V2Ray stats gRPC**（user-tag 按设备归因、经 deviceID→userID 映射汇总到用户并驱动额度扣减，额度单位 GB）；**Clash API 仅实时连接观测**（`/connections`）。采集地址每次周期动态解析（resolver），采集失败触发 `traffic_stalled` 告警。**sing-box v1.13 `/connections` 字段契约**（与 mihomo 不同，改 `singlevps/connections.go` 前必看）：端口在 `metadata.destinationPort`（不是 mihomo 的 `dstPort`）、命中规则在连接**顶层** `rule`（不在 metadata）、入站无独立字段（打包在 `metadata.type` 为 `"<类型>/<tag>"`）；`host` 取 `Metadata.Domain` 回退 `Destination.Fqdn`——客户端代理协议带域名即有值，**不需要 sniff 规则**。测试夹具要按真实载荷写键名，别照解析器写（曾因此假绿）。
+- **凭据按「设备」维度**：`devices` 表——每设备独立 uuid/password/token，入站用户 name = 设备 id（即 V2Ray stats 标签）；`UNIQUE(user_id, name)`、上限 10 台/用户，设备**只**由用户级订阅链接自动发现（v0.2.0 已移除手动添加的前后端入口与 API；建号不建设备，用户级订阅 token 存 `users.subscription_token_*`，可轮换）；`ua_key`（部分唯一索引）非空的设备为自动发现设备，指纹 = **UA + 来源 IP**（`share.DeviceKeyFromUserAgent` 识别客户端，同 UA 不同公网出口建独立设备，自动设备名带来源后缀如 `Clash Verge · 203.0.113.10`；首次下载自动建设备并触发一次同步，失败回退默认设备）。原 `credentials` 表已删（未上线直接重建，无迁移数据，`runtime_artifacts` PK 为 user+device+format）。**平台画像**（`observability/deviceprofile.go`：每 2 分钟按实时连接的目标域名推断 unknown 平台，≥2 个不同信号域名才判定）依赖客户端系统流量进隧道——**系统代理模式下 NCSI/WindowsUpdate 不走 WinINET 代理，windows 信号永远观察不到（客户端需 TUN 模式）**；同出口多设备共享画像；识别只填 unknown、永不覆盖 UA 识别值；`source_ip` 被自环污染的存量设备在**直连**拉取订阅时原地恢复（经隧道自环拉取按未观测处理）。
 - **流量统计行模型（互斥）**：`traffic_hourly/daily` 写入两种行——设备行（`user_id≠''`、`device_id≠''`、`protocol_id=''`）与入站行（`user_id=''`、`device_id=''`、`protocol_id≠''`）。V2Ray user 统计天生无协议归属，因此「用户排行 × 协议过滤」（或反之）恒为空集：前端 TrafficPage 已做维度互斥（切维度清空+禁用另一侧过滤），后端 `ActiveUsers`/`ProtocolShares` 会忽略不适用的过滤——改查询时保持此语义。`AggregateRecent` 的聚合窗口**含当天进行中数据**（end=now 滚动重聚合），勿改回截止当天 00:00（会导致跨天查询缺当天）。
-- **两套分流勿混淆**：「订阅分流」（`PoliciesPage`，写入 Clash 订阅、只影响单用户客户端）vs「服务器分流」（`SingBoxPage` routes tab，作用于内核转发、影响所有用户）。
+- **两套分流勿混淆**：「订阅分流」（`PoliciesPage`，写入 Clash 订阅、只影响单用户客户端；策略「默认动作」= 订阅里 `MATCH` 兜底，改 direct 会让未识别境外域名直连）vs「服务器分流」（`SingBoxPage` routes tab，作用于内核转发、影响所有用户）。服务器分流的**出站引用有全链路校验**：规则写入校验存在性，删除/改名被引用出站会被拦（路由规则、默认出站、DNS detour、规则集 `download_detour` 四类引用），编译期 `Input.Validate` 兜底——因为**悬空出站引用 sing-box check 不报错、内核照常启动、命中规则的连接拨号秒断**（`router: outbound not found`），别指望内核校验兜底。
 - 告警外发配置在 `config.yaml` 的 `notifications` 段（`webhook_url` / `webhook_secret` / `telegram_bot_token` / `telegram_chat_id`），未配置静默跳过；notifier 通过 `func() config.RuntimeConfig` 实时读最新配置（改 config.yaml 热重载生效）。
 - **面板自升级**：`config.yaml` 的 `updates` 段（`repo`/`token`，空即禁用）+ `internal/service/upgrade`（无状态服务，升级源经 `Source` 闭包注入、不 import internal/config，业务码 4xxx）。升级流程 = 下载 Release 资产 `sb-ops-linux-<GOARCH>` → sha256 校验（GitHub 资产 digest 优先、SHA256SUMS 回退）→ 备份 `.bak` → 原子 rename → `restarter` 钩子（main.go 置标志 + 自发 SIGTERM）走**既有优雅停机链**后 `syscall.Exec` 重生为新二进制；协议入站由启动时 `syncer.Start` 自动恢复。新版本起不来**不做自动回滚**——`.bak` 留在二进制旁供 SSH 手动换回，勿引入双进程看门狗之类的复杂化。
 
@@ -65,7 +65,7 @@ go test -tags=with_quic,with_utls,with_clash_api,with_v2ray_api,with_wireguard,w
 
 ## CI / lint
 
-- `golangci-lint` 用 **v2 配置**（`.golangci.yml`，`run.build-tags` 已配齐四 tags，与 Makefile 一致）；CI 锁 v2.4.0。`~/go/bin/golangci-lint` 若是 v1 会拒绝 v2 配置，装 v2.4.0 对齐验证。
+- `golangci-lint` 用 **v2 配置**（`.golangci.yml`，`run.build-tags` 已配齐六 tags，与 Makefile 一致）；CI 锁 v2.4.0。`~/go/bin/golangci-lint` 若是 v1 会拒绝 v2 配置，装 v2.4.0 对齐验证。
 - **ST1005**：错误消息不能以大写拉丁字母开头——中文消息以 "Clash API…"/"Cloudflare…" 开头会挂，写成中文开头（如「监听地址无效（Clash API）」）。
 - CI 还有 `gofmt -l ./*.go ./api ./internal` 检查；提交前跑一下。
 
@@ -75,7 +75,7 @@ go test -tags=with_quic,with_utls,with_clash_api,with_v2ray_api,with_wireguard,w
 - **协议端到端自测**（不装客户端）：用面板同版本内核跑官方 CLI —— `GOFLAGS=-tags=with_quic,with_utls go run github.com/sagernet/sing-box/cmd/sing-box@v1.13.19 run -c client.json`（本地 mixed 入站 + 目标出站），再 `curl -x http://127.0.0.1:2080 https://www.gstatic.com/generate_204`。
 - **本地 WSL 开发**：后端进程需带 `https_proxy`（规则集/ACME 要访问 GitHub）且 `no_proxy` 覆盖本地端口；协议入站端口 <1024 需 root/setcap，本地用 ≥1024；`networkingMode=mirrored` 可解 Windows→WSL 的 UDP（hy2/tuic）转发问题。
 - `traffic_stalled` 告警与「流量采集循环超过阈值未成功完成」错误日志测量的是**采集循环存活**（零流量的一轮查询也算心跳，见 `local_collector.go` 的 `RecordCollection`），并按 Clash API 活跃连接数区分空闲与故障（`ops_app.go` 的 `trafficStallError`）：无活跃连接（含 Clash API 不可观测）按空闲处理，不打错误日志、不告警、不降 readiness；有活跃连接但无采集心跳才是采集链路真的断了，根因看同期的「本地流量采集失败」日志。
-- 诊断技巧：`control_plane_secrets` 表内存有各 AES 主密钥，可本地解密 `protocols.settings_json` 核对参数；面板 API 会脱敏私钥字段。
+- 诊断技巧：`control_plane_secrets` 表内存有各 AES 主密钥，可本地解密 `protocols.settings_json` 核对参数；面板 API 会脱敏私钥字段。流量/域名审计：内核 INFO 日志逐连接记域名（journalctl 搜 `outbound connection to`）、`inbound connection from` 是来源 IP；订阅拉取来源看 nginx access log 的 `/subscribe` 行（直连 = 客户端真实出口，`203.0.113.10` 这类本机地址 = 经隧道自环）。手工 sqlite3 查询列名写错只向 stderr 报 `no such column`，在多命令脚本里易被误读成「表为空」——先 `.schema` 再查。
 
 ## 提交约定
 

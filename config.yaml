@@ -1,6 +1,6 @@
 # 仅保留与默认值不同的配置;其余键及默认值见 internal/config/runtime.go。
 # 可选段(未配置时自动禁用/使用默认):notifications(告警外发)、acme(证书签发)、
-# traffic.retention_days(默认 90,0 为永久保留)。
+# updates(面板自升级,repo+token)、traffic.retention_days(默认 90,0 为永久保留)。
 server:
   listen: ":8030"
   # 默认在 data_dir(./data)下建库;这里显式放在仓库根。
