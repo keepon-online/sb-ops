@@ -1,0 +1,23 @@
+# sb-ops 配置样例（复制为工作目录下的 config.yaml 后按环境修改）。
+# 仅保留与默认值不同的键；其余键及默认值见 internal/config/runtime.go 的 DefaultRuntimeConfig。
+# 可选段(未配置时自动禁用):notifications(告警外发)、acme(证书签发)、
+# updates(面板自升级,repo+token)、traffic.retention_days(默认 90,0 为永久保留)。
+server:
+  listen: ":8030"
+  # 默认在 data_dir(./data)下建库;如需放仓库根可显式指定。
+  # db_path: "./singbox-web.db"
+
+# 日志:控制台固定彩色文本;level 同时作用于控制台与文件。
+# file_format 为文件落盘格式——text(无颜色可读文本,默认)/json。
+logging:
+  level: "info"
+  file_format: "text"
+
+deployment:
+  # 客户端拨打的地址,用于订阅与证书生成(公网 IPv4 或域名)。
+  public_address: "203.0.113.10"
+
+# 本机/局域网开发测试时可临时开启,把私网/回环地址当作 public_address;
+# 正式对外部署必须删除 development 段(默认不存在)。
+# development:
+#   allow_private_address: true

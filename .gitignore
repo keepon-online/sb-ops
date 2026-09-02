@@ -10,6 +10,8 @@ frontend/.npm-cache/
 frontend/dist/
 .tmp-gocache/
 config.local.yaml
+# 真实运行配置含部署环境信息，仓库只携带脱敏样例 config.example.yaml
+config.yaml
 .idea
 .worktrees/
 *.exe

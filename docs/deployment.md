@@ -246,7 +246,7 @@ sudo systemctl restart sb-ops
 
 ### 服务器与目录
 
-- 主机：Ubuntu 22.04，amd64，公网地址 `203.0.113.10`。
+- 主机：Ubuntu 22.04，amd64，公网地址 `203.0.113.10`（示例，TEST-NET-3 文档专用段）。
 - 面板域名：`panel.example.com`，Cloudflare DNS 使用 A 记录指向 VPS，当前为 DNS only。
 - Argo 节点域名：`sb.example.com`，由 Cloudflare Tunnel 转发到 VMess WebSocket 入站；不要把面板域名和 Argo 域名混用。
 - 二进制：`/opt/sb-ops/sb-ops`。
