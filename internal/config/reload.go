@@ -14,10 +14,6 @@ func ClassifyRuntimeConfigChanges(previous, next RuntimeConfig) ReloadSummary {
 		// change only takes effect after a restart.
 		summary.RestartRequired = append(summary.RestartRequired, "panel.session_ttl")
 	}
-	if previous.Development.FrontendDevProxy != next.Development.FrontendDevProxy {
-		// The asset backend (embedded vs dev proxy) is chosen once at startup.
-		summary.RestartRequired = append(summary.RestartRequired, "development.frontend_dev_proxy")
-	}
 	if previous.Server.Listen != next.Server.Listen {
 		summary.RestartRequired = append(summary.RestartRequired, "server.listen")
 	}

@@ -6,5 +6,5 @@ import (
 )
 
 func RegisterFrontendRoutes(router *gin.Engine, cfg *config.RuntimeConfigHolder) {
-	registerStaticRoutes(router, newFrontendAssets(cfg))
+	registerStaticRoutes(router, newEmbeddedAssets(cfg))
 }

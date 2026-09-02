@@ -133,7 +133,7 @@ func newOps(db *sql.DB, sessionTTL time.Duration, apply deployment.ApplyConfig, 
 	monitor := controlmonitor.NewService()
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
-	router.Use(httpx.RecoveryMiddleware(), httpx.RequestIDMiddleware(), securityHeaders(configProvider().Development.FrontendDevProxy != ""))
+	router.Use(httpx.RecoveryMiddleware(), httpx.RequestIDMiddleware(), securityHeaders())
 	web.RegisterHealthRoutes(router, db, health, database.CurrentSchemaVersion)
 	api.RegisterRoutes(router, api.Dependencies{
 		Identity: auth, Store: identityStore, Users: users, Protocols: protocols, Certificates: certificates, Policies: policies, SingBox: singBox, Sync: syncer,
@@ -275,18 +275,15 @@ func newAlertNotifier(events *controlevents.Bus, configProvider func() config.Ru
 
 // securityHeaders sets baseline response-hardening headers. The CSP allows
 // antd's runtime-injected inline styles but no inline scripts and no
-// cross-origin connects; it is skipped in frontend dev-proxy mode because
-// the Vite dev server needs inline scripts and a WebSocket to itself.
-func securityHeaders(devProxy bool) gin.HandlerFunc {
+// cross-origin connects.
+func securityHeaders() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Header("X-Content-Type-Options", "nosniff")
 		c.Header("X-Frame-Options", "DENY")
 		c.Header("Referrer-Policy", "same-origin")
-		if !devProxy {
-			// fonts.googleapis/gstatic 是内嵌 index.html 唯一的跨源引用；
-			// 若要收敛到 'self'，需先自托管字体并移除 index.html 的引用。
-			c.Header("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'")
-		}
+		// fonts.googleapis/gstatic 是内嵌 index.html 唯一的跨源引用；
+		// 若要收敛到 'self'，需先自托管字体并移除 index.html 的引用。
+		c.Header("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'")
 		c.Next()
 	}
 }

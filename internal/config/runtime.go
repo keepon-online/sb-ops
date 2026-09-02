@@ -2,7 +2,6 @@ package config
 
 import (
 	"fmt"
-	"net/url"
 	"path/filepath"
 	"strings"
 	"time"
@@ -110,12 +109,9 @@ type PanelConfig struct {
 	SessionTTL time.Duration `mapstructure:"session_ttl"`
 }
 
-// DevelopmentConfig holds development-only toggles. FrontendDevProxy is empty
-// by default (embedded dist is served); set it to a Vite dev server URL to
-// proxy frontend requests during local development.
+// DevelopmentConfig holds development-only toggles.
 type DevelopmentConfig struct {
-	FrontendDevProxy    string `mapstructure:"frontend_dev_proxy"`
-	AllowPrivateAddress bool   `mapstructure:"allow_private_address"`
+	AllowPrivateAddress bool `mapstructure:"allow_private_address"`
 }
 
 func DefaultRuntimeConfig() RuntimeConfig {
@@ -200,8 +196,6 @@ func NormalizeRuntimeConfig(cfg RuntimeConfig) RuntimeConfig {
 		cfg.Panel.SessionTTL = defaults.Panel.SessionTTL
 	}
 
-	cfg.Development.FrontendDevProxy = strings.TrimSpace(cfg.Development.FrontendDevProxy)
-
 	return cfg
 }
 
@@ -222,11 +216,6 @@ func ValidateRuntimeConfig(cfg RuntimeConfig) error {
 	case "", "NORMAL", "FULL":
 	default:
 		return fmt.Errorf("server.db_synchronous 必须是 NORMAL 或 FULL")
-	}
-	if cfg.Development.FrontendDevProxy != "" {
-		if _, err := url.ParseRequestURI(cfg.Development.FrontendDevProxy); err != nil {
-			return fmt.Errorf("development.frontend_dev_proxy 无效: %w", err)
-		}
 	}
 	if cfg.Updates.Repo != "" && !validGitHubRepo(cfg.Updates.Repo) {
 		return fmt.Errorf("updates.repo 必须是 owner/repo 形式的 GitHub 仓库标识")

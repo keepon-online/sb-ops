@@ -30,13 +30,6 @@ func registerStaticRoutes(router *gin.Engine, assets FrontendAssets) {
 	})
 }
 
-func newFrontendAssets(cfg *config.RuntimeConfigHolder) FrontendAssets {
-	if cfg != nil && strings.TrimSpace(cfg.Current().Development.FrontendDevProxy) != "" {
-		return newDevProxyAssets(cfg)
-	}
-	return newEmbeddedAssets(cfg)
-}
-
 type embeddedAssets struct {
 	config *config.RuntimeConfigHolder
 	files  fs.FS
