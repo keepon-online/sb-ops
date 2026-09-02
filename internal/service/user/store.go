@@ -411,7 +411,7 @@ func (s *Store) SetStatus(ctx context.Context, ids []string, enabled bool, now t
 }
 
 // IssueUserToken signs a fresh user-level subscription token (does not persist).
-func (s *Store) IssueUserToken(ctx context.Context, userID string, now time.Time) (userToken, error) {
+func (s *Store) IssueUserToken(ctx context.Context) (userToken, error) {
 	token, err := randomHex(24)
 	if err != nil {
 		return userToken{}, err
@@ -435,7 +435,7 @@ func (s *Store) UserToken(ctx context.Context, userID string) (string, error) {
 		return "", err
 	}
 	if len(ciphertext) == 0 {
-		token, err := s.IssueUserToken(ctx, userID, time.Now().UTC())
+		token, err := s.IssueUserToken(ctx)
 		if err != nil {
 			return "", err
 		}
@@ -456,7 +456,7 @@ func (s *Store) RotateUserToken(ctx context.Context, userID string) (string, err
 	if err := s.ensureUser(ctx, userID); err != nil {
 		return "", err
 	}
-	token, err := s.IssueUserToken(ctx, userID, time.Now().UTC())
+	token, err := s.IssueUserToken(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -775,7 +775,7 @@ func (s *Store) setTraffic(ctx context.Context, id, mode string, bytes int64, no
 		if changed, _ := result.RowsAffected(); changed == 0 {
 			return &common.ValidationError{Fields: map[string]string{"bytes": "used traffic must not be negative"}}
 		}
-		if err := distributeDeviceTraffic(ctx, tx, id, bytes, now); err != nil {
+		if err := distributeDeviceTraffic(ctx, tx, id, bytes); err != nil {
 			return err
 		}
 		return tx.Commit()
@@ -795,7 +795,7 @@ func (s *Store) setTraffic(ctx context.Context, id, mode string, bytes int64, no
 			}
 			return &common.ValidationError{Fields: map[string]string{"bytes": "used traffic must not be negative"}}
 		}
-		if err := distributeDeviceTrafficByDelta(ctx, tx, id, bytes, now); err != nil {
+		if err := distributeDeviceTrafficByDelta(ctx, tx, id, bytes); err != nil {
 			return err
 		}
 		return tx.Commit()
@@ -805,7 +805,7 @@ func (s *Store) setTraffic(ctx context.Context, id, mode string, bytes int64, no
 }
 
 // distributeDeviceTraffic 按设备当前用量占比分摊新的用户级总量。
-func distributeDeviceTraffic(ctx context.Context, tx *sql.Tx, userID string, totalBytes int64, now time.Time) error {
+func distributeDeviceTraffic(ctx context.Context, tx *sql.Tx, userID string, totalBytes int64) error {
 	type deviceUsage struct {
 		id   string
 		used int64
@@ -846,7 +846,7 @@ func distributeDeviceTraffic(ctx context.Context, tx *sql.Tx, userID string, tot
 }
 
 // distributeDeviceTrafficByDelta 按设备当前用量占比分摊增量值。
-func distributeDeviceTrafficByDelta(ctx context.Context, tx *sql.Tx, userID string, delta int64, now time.Time) error {
+func distributeDeviceTrafficByDelta(ctx context.Context, tx *sql.Tx, userID string, delta int64) error {
 	type deviceUsage struct {
 		id   string
 		used int64

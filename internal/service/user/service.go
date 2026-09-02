@@ -43,7 +43,7 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (User, string, 
 		next := now.AddDate(0, 0, value.ResetIntervalDays)
 		value.NextResetAt = &next
 	}
-	token, err := s.store.IssueUserToken(ctx, value.ID, now)
+	token, err := s.store.IssueUserToken(ctx)
 	if err != nil {
 		return User{}, "", err
 	}

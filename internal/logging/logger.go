@@ -18,7 +18,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/gookit/color"
 	"github.com/gookit/slog"
@@ -109,12 +108,6 @@ func (e *Entry) Int(key string, value int) *Entry {
 func (e *Entry) Int64(key string, value int64) *Entry {
 	e.init()
 	e.fields[key] = value
-	return e
-}
-
-func (e *Entry) Dur(key string, value time.Duration) *Entry {
-	e.init()
-	e.fields[key] = value.String()
 	return e
 }
 

@@ -38,22 +38,14 @@ import (
 )
 
 type OpsApp struct {
-	Auth          *identity.Service
 	IdentityStore *identity.Store
-	Users         *serviceuser.Service
-	Protocols     *serviceprotocol.Service
 	Certificates  *servicecertificate.Service
 	Policies      *servicepolicy.Service
-	SingBox       *servicesingbox.Service
 	Sync          *deployment.SyncService
-	Overview      *controloverview.Service
-	AuditLogs     *controlaudit.Service
-	Subscriptions *serviceshare.Service
 	Traffic       *controltraffic.Service
 	Events        *controlevents.Bus
 	Alerts        *controlobservability.Service
 	Health        *controlobservability.HealthState
-	Upgrade       *controlupgrade.Service
 	Router        *gin.Engine
 	db            *sql.DB
 	cancel        context.CancelFunc
@@ -142,9 +134,9 @@ func newOps(db *sql.DB, sessionTTL time.Duration, apply deployment.ApplyConfig, 
 	})
 	background, cancel := context.WithCancel(context.Background())
 	value := &OpsApp{
-		Auth: auth, IdentityStore: identityStore, Users: users, Protocols: protocols,
-		Certificates: certificates, Policies: policies, SingBox: singBox, Sync: syncer, Overview: overview, AuditLogs: auditLogs, Subscriptions: subscriptions, Traffic: traffic, Events: events, Alerts: alerts,
-		Router: router, db: db, cancel: cancel, Health: health, Upgrade: upgradeService, logger: logger, config: configProvider, argo: argoManager,
+		IdentityStore: identityStore, Certificates: certificates, Policies: policies, Sync: syncer,
+		Traffic: traffic, Events: events, Alerts: alerts,
+		Router: router, db: db, cancel: cancel, Health: health, logger: logger, config: configProvider, argo: argoManager,
 		activeConnections: kernelConnections(syncer),
 	}
 	if err := syncer.Start(context.Background()); err != nil {

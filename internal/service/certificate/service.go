@@ -7,7 +7,6 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -141,7 +140,7 @@ func (s *Service) Update(ctx context.Context, input WriteInput) (Certificate, er
 	if len(fields) > 0 {
 		return Certificate{}, &common.ValidationError{Fields: fields}
 	}
-	value.ID, value.Revision, value.CreatedAt, value.UpdatedAt = current.ID, current.Revision, current.CreatedAt, s.now()
+	value.ID, value.CreatedAt, value.UpdatedAt = current.ID, current.CreatedAt, s.now()
 	if err := s.store.Update(ctx, record{Certificate: value, CertificatePEM: strings.TrimSpace(input.CertificatePEM), PrivateKeyEncrypted: encrypted}, input.Revision); err != nil {
 		return Certificate{}, err
 	}
@@ -224,11 +223,6 @@ func parseMaterial(certificatePEM, privateKeyPEM string) (*x509.Certificate, cry
 	if !ok {
 		fields["privateKeyPem"] = "contains an unsupported private key"
 		return nil, nil, fields
-	}
-	switch signer.(type) {
-	case *rsa.PrivateKey, *ecdsa.PrivateKey:
-	default:
-		// Ed25519 and other crypto.Signer implementations are supported by X.509.
 	}
 	return certificate, signer, fields
 }

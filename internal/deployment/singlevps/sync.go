@@ -76,13 +76,6 @@ func NewSyncService(db *sql.DB, apply ApplyConfig, logSinks ...runtimebox.LogSin
 	return &SyncService{db: db, apply: apply, runtime: runtimebox.New(logSinks...), now: func() time.Time { return time.Now().UTC() }}
 }
 
-func StoreCompiled(ctx context.Context, db *sql.DB, compiled deploymentcompiler.Result, appliedAt time.Time) (SyncResult, error) {
-	result := SyncResult{ArtifactCount: len(compiled.Subscriptions), AppliedAt: appliedAt}
-	digest := sha256.Sum256(compiled.ServerConfig)
-	result.ConfigDigest = hex.EncodeToString(digest[:])
-	return result, saveApplied(ctx, db, result, compiled.Subscriptions)
-}
-
 func (s *SyncService) RuntimeStatus(ctx context.Context) RuntimeStatus {
 	core := s.runtime.Status()
 	canObserveConns := false

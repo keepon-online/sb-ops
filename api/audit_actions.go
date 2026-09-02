@@ -101,7 +101,6 @@ const (
 	actionUserQuotaAdjust   = "user.quota.adjust"
 
 	// 用户设备
-	actionDeviceCreate = "user.device.create"
 	actionDeviceUpdate = "user.device.update"
 	actionDeviceDelete = "user.device.delete"
 	actionDeviceRotate = "user.device.rotate"

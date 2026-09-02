@@ -79,7 +79,7 @@ func mustCreateUser(t *testing.T, users *serviceuser.Service) (userID, userToken
 	return created.ID, token
 }
 
-func TestDeviceKeyFromUserAgent(t *testing.T) {
+func TestParseUserAgentKeyLabel(t *testing.T) {
 	cases := []struct {
 		ua, key, label string
 	}{
@@ -92,9 +92,9 @@ func TestDeviceKeyFromUserAgent(t *testing.T) {
 		{"", "", ""},
 	}
 	for _, tc := range cases {
-		key, label := DeviceKeyFromUserAgent(tc.ua)
-		if key != tc.key || label != tc.label {
-			t.Fatalf("UA %q → (%q,%q), want (%q,%q)", tc.ua, key, label, tc.key, tc.label)
+		info := ParseUserAgent(tc.ua)
+		if info.Key != tc.key || info.Label != tc.label {
+			t.Fatalf("UA %q → (%q,%q), want (%q,%q)", tc.ua, info.Key, info.Label, tc.key, tc.label)
 		}
 	}
 }

@@ -17,8 +17,6 @@ const (
 	TypeTrojan      Type = "trojan"
 )
 
-var Types = []Type{TypeVLESS, TypeVMess, TypeHysteria2, TypeTUIC, TypeAnyTLS, TypeShadowsocks, TypeTrojan}
-
 type Protocol struct {
 	ID            string         `json:"id"`
 	Name          string         `json:"name"`

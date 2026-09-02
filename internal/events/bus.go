@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"sync"
 	"time"
 
@@ -162,5 +161,3 @@ func optionalString(value string) any {
 	}
 	return value
 }
-
-var ErrReset = errors.New("事件游标已不再保留")

@@ -8,17 +8,16 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/keepon-online/sb-ops/internal/config"
 	"github.com/keepon-online/sb-ops/internal/httpx"
 
 	"github.com/gin-gonic/gin"
 )
 
-type FrontendAssets interface {
-	Serve(c *gin.Context)
+func RegisterFrontendRoutes(router *gin.Engine) {
+	registerStaticRoutes(router, newEmbeddedAssets())
 }
 
-func registerStaticRoutes(router *gin.Engine, assets FrontendAssets) {
+func registerStaticRoutes(router *gin.Engine, assets *embeddedAssets) {
 	router.NoRoute(func(c *gin.Context) {
 		requestPath := c.Request.URL.Path
 		if requestPath == "/api" || strings.HasPrefix(requestPath, "/api/") {
@@ -30,14 +29,12 @@ func registerStaticRoutes(router *gin.Engine, assets FrontendAssets) {
 }
 
 type embeddedAssets struct {
-	config *config.RuntimeConfigHolder
-	files  fs.FS
+	files fs.FS
 }
 
-func newEmbeddedAssets(cfg *config.RuntimeConfigHolder) FrontendAssets {
+func newEmbeddedAssets() *embeddedAssets {
 	return &embeddedAssets{
-		config: cfg,
-		files:  embeddedFrontendAssets(),
+		files: embeddedFrontendAssets(),
 	}
 }
 

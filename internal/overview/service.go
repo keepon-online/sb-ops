@@ -57,14 +57,6 @@ type Service struct {
 	traffic *controltraffic.Service
 }
 
-func NewService(db *sql.DB, syncers ...*deployment.SyncService) *Service {
-	var syncer *deployment.SyncService
-	if len(syncers) > 0 {
-		syncer = syncers[0]
-	}
-	return &Service{db: db, sync: syncer}
-}
-
 func NewServiceWithTraffic(db *sql.DB, syncer *deployment.SyncService, traffic *controltraffic.Service) *Service {
 	return &Service{db: db, sync: syncer, traffic: traffic}
 }

@@ -54,7 +54,7 @@ func (r githubRelease) asset(name string) (releaseAsset, bool) {
 }
 
 func (g *githubClient) latestRelease(ctx context.Context, repo, token string) (githubRelease, error) {
-	req, err := g.newRequest(ctx, repo, token, "application/vnd.github+json", "/repos/"+repo+"/releases/latest")
+	req, err := g.newRequest(ctx, token, "application/vnd.github+json", "/repos/"+repo+"/releases/latest")
 	if err != nil {
 		return githubRelease{}, err
 	}
@@ -77,7 +77,7 @@ func (g *githubClient) latestRelease(ctx context.Context, repo, token string) (g
 }
 
 func (g *githubClient) downloadAsset(ctx context.Context, repo, token string, assetID int64, dst io.Writer) error {
-	req, err := g.newRequest(ctx, repo, token, "application/octet-stream", "/repos/"+repo+"/releases/assets/"+strconv.FormatInt(assetID, 10))
+	req, err := g.newRequest(ctx, token, "application/octet-stream", "/repos/"+repo+"/releases/assets/"+strconv.FormatInt(assetID, 10))
 	if err != nil {
 		return err
 	}
@@ -93,7 +93,7 @@ func (g *githubClient) downloadAsset(ctx context.Context, repo, token string, as
 	return err
 }
 
-func (g *githubClient) newRequest(ctx context.Context, repo, token, accept, path string) (*http.Request, error) {
+func (g *githubClient) newRequest(ctx context.Context, token, accept, path string) (*http.Request, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, g.apiBase+path, nil)
 	if err != nil {
 		return nil, err

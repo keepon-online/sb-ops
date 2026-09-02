@@ -48,12 +48,6 @@ func ParseUserAgent(userAgent string) UAInfo {
 	}
 }
 
-// DeviceKeyFromUserAgent 保留旧 API，调用方只需要自动设备 key/label 时继续使用。
-func DeviceKeyFromUserAgent(userAgent string) (key, label string) {
-	info := ParseUserAgent(userAgent)
-	return info.Key, info.Label
-}
-
 var versionPattern = regexp.MustCompile(`(?i)(?:^|[/ _-])v?([0-9]+(?:\.[0-9A-Za-z-]+)+)`)
 
 func extractVersion(userAgent, token string) string {

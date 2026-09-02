@@ -11,7 +11,7 @@ import (
 	deploymentcompiler "github.com/keepon-online/sb-ops/internal/deployment/compiler"
 )
 
-func TestStoreCompiledReplacesCurrentArtifacts(t *testing.T) {
+func TestSaveAppliedReplacesCurrentArtifacts(t *testing.T) {
 	db := testSyncDatabase(t)
 	now := time.Date(2026, 7, 28, 12, 0, 0, 0, time.UTC)
 	first := SyncResult{ConfigDigest: "first", ArtifactCount: 1, AppliedAt: now}

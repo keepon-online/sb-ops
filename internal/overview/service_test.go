@@ -23,7 +23,7 @@ func TestGetExplainsUnconfiguredRuntimeAndOnboarding(t *testing.T) {
 		t.Fatalf("migrate: %v", err)
 	}
 
-	service := NewService(db, deployment.NewSyncService(db, deployment.ApplyConfig{}))
+	service := NewServiceWithTraffic(db, deployment.NewSyncService(db, deployment.ApplyConfig{}), nil)
 	result, err := service.Get(t.Context())
 	if err != nil {
 		t.Fatalf("get overview: %v", err)
@@ -51,7 +51,7 @@ func TestGetPrioritizesRecentSyncFailureOverUnconfiguredAddress(t *testing.T) {
 		t.Fatalf("store failed runtime state: %v", err)
 	}
 
-	result, err := NewService(db, deployment.NewSyncService(db, deployment.ApplyConfig{})).Get(t.Context())
+	result, err := NewServiceWithTraffic(db, deployment.NewSyncService(db, deployment.ApplyConfig{}), nil).Get(t.Context())
 	if err != nil {
 		t.Fatalf("get overview: %v", err)
 	}

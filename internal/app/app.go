@@ -18,7 +18,6 @@ import (
 )
 
 type App struct {
-	Config *config.RuntimeConfigHolder
 	Ops    *OpsApp
 	Router *gin.Engine
 	stop   func()
@@ -59,9 +58,9 @@ func New(cfg *config.RuntimeConfigHolder, stop func(), logger *logging.Logger, v
 		_ = db.Close()
 		return nil, err
 	}
-	web.RegisterFrontendRoutes(opsApp.Router, cfg)
+	web.RegisterFrontendRoutes(opsApp.Router)
 	logger.Info().Msg("控制面板应用初始化完成")
-	return &App{Config: cfg, Ops: opsApp, Router: opsApp.Router, stop: stop}, nil
+	return &App{Ops: opsApp, Router: opsApp.Router, stop: stop}, nil
 }
 
 // BeginShutdown stops SSE streams and background loops ahead of the HTTP
