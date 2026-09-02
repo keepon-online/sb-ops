@@ -1,6 +1,8 @@
 package protocol
 
 import (
+	"slices"
+
 	"context"
 	"crypto/ecdh"
 	"crypto/rand"
@@ -203,7 +205,7 @@ func (s *Service) prepare(ctx context.Context, input WriteInput, current *Protoc
 		if field.Required && isEmpty(settings[field.Name]) {
 			fields["settings."+field.Name] = "is required"
 		}
-		if len(field.Options) > 0 && !isEmpty(settings[field.Name]) && !contains(field.Options, stringValue(settings[field.Name])) {
+		if len(field.Options) > 0 && !isEmpty(settings[field.Name]) && !slices.Contains(field.Options, stringValue(settings[field.Name])) {
 			fields["settings."+field.Name] = "has an unsupported value"
 		}
 	}
@@ -312,15 +314,6 @@ func numberValue(value any) float64 {
 	default:
 		return 0
 	}
-}
-
-func contains(values []string, target string) bool {
-	for _, value := range values {
-		if value == target {
-			return true
-		}
-	}
-	return false
 }
 
 func randomHex(size int) (string, error) {

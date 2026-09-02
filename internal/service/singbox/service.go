@@ -40,7 +40,7 @@ func (s *Service) GetConfig(ctx context.Context) (Config, error) {
 }
 
 func (s *Service) ClashAPISecret(ctx context.Context) (string, error) {
-	if _, err := s.GetConfig(ctx); err != nil {
+	if err := s.store.EnsureConfig(ctx, s.now()); err != nil {
 		return "", err
 	}
 	return s.store.ClashAPISecret(ctx)
@@ -316,20 +316,7 @@ func (s *Service) DeleteRule(ctx context.Context, id string) error {
 }
 
 func (s *Service) OrderRules(ctx context.Context, input OrderInput) ([]RouteRule, error) {
-	current, err := s.store.ListRules(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if len(current) != len(input.IDs) {
-		return nil, validation("ids", "must contain every route rule exactly once")
-	}
-	seen := map[string]bool{}
-	for _, id := range input.IDs {
-		if seen[id] {
-			return nil, validation("ids", "contains duplicate rule IDs")
-		}
-		seen[id] = true
-	}
+	// 完整性/去重校验由 store 层在事务内完成（同文案 ValidationError）。
 	if err := s.store.OrderRules(ctx, input.IDs, s.now()); err != nil {
 		return nil, err
 	}

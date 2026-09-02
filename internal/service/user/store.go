@@ -804,34 +804,41 @@ func (s *Store) setTraffic(ctx context.Context, id, mode string, bytes int64, no
 	}
 }
 
-// distributeDeviceTraffic 按设备当前用量占比分摊新的用户级总量。
-func distributeDeviceTraffic(ctx context.Context, tx *sql.Tx, userID string, totalBytes int64) error {
-	type deviceUsage struct {
-		id   string
-		used int64
-	}
+type deviceUsage struct {
+	id   string
+	used int64
+}
+
+// loadDeviceUsage 装载用户各设备当前用量并求和；无设备返回空列表。
+func loadDeviceUsage(ctx context.Context, tx *sql.Tx, userID string) ([]deviceUsage, int64, error) {
 	rows, err := tx.QueryContext(ctx, `SELECT id,used_bytes FROM devices WHERE user_id=?`, userID)
 	if err != nil {
-		return err
+		return nil, 0, err
 	}
 	var devices []deviceUsage
 	for rows.Next() {
 		var d deviceUsage
 		if err := rows.Scan(&d.id, &d.used); err != nil {
 			rows.Close()
-			return err
+			return nil, 0, err
 		}
 		devices = append(devices, d)
 	}
 	if err := rows.Close(); err != nil {
-		return err
+		return nil, 0, err
 	}
-	if len(devices) == 0 {
-		return nil
-	}
-	var currentTotal int64
+	var total int64
 	for _, d := range devices {
-		currentTotal += d.used
+		total += d.used
+	}
+	return devices, total, nil
+}
+
+// distributeDeviceTraffic 按设备当前用量占比分摊新的用户级总量。
+func distributeDeviceTraffic(ctx context.Context, tx *sql.Tx, userID string, totalBytes int64) error {
+	devices, currentTotal, err := loadDeviceUsage(ctx, tx, userID)
+	if err != nil {
+		return err
 	}
 	for _, d := range devices {
 		share := int64(0)
@@ -847,32 +854,9 @@ func distributeDeviceTraffic(ctx context.Context, tx *sql.Tx, userID string, tot
 
 // distributeDeviceTrafficByDelta 按设备当前用量占比分摊增量值。
 func distributeDeviceTrafficByDelta(ctx context.Context, tx *sql.Tx, userID string, delta int64) error {
-	type deviceUsage struct {
-		id   string
-		used int64
-	}
-	rows, err := tx.QueryContext(ctx, `SELECT id,used_bytes FROM devices WHERE user_id=?`, userID)
+	devices, currentTotal, err := loadDeviceUsage(ctx, tx, userID)
 	if err != nil {
 		return err
-	}
-	var devices []deviceUsage
-	for rows.Next() {
-		var d deviceUsage
-		if err := rows.Scan(&d.id, &d.used); err != nil {
-			rows.Close()
-			return err
-		}
-		devices = append(devices, d)
-	}
-	if err := rows.Close(); err != nil {
-		return err
-	}
-	if len(devices) == 0 {
-		return nil
-	}
-	var currentTotal int64
-	for _, d := range devices {
-		currentTotal += d.used
 	}
 	for _, d := range devices {
 		deviceDelta := delta

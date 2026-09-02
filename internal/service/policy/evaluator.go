@@ -1,6 +1,8 @@
 package policy
 
 import (
+	"slices"
+
 	"context"
 	"net/netip"
 	"strings"
@@ -109,7 +111,7 @@ func matches(conditions Conditions, input DryRunInput) (bool, string) {
 			return false, "IP CIDR did not match"
 		}
 	}
-	if len(conditions.Ports) > 0 && !containsInt(conditions.Ports, input.Port) {
+	if len(conditions.Ports) > 0 && !slices.Contains(conditions.Ports, input.Port) {
 		return false, "port did not match"
 	}
 	if len(conditions.Networks) > 0 && !containsString(conditions.Networks, strings.ToLower(input.Network)) {
@@ -125,15 +127,6 @@ func containsString(values []string, target string) bool {
 	target = strings.ToLower(strings.TrimSpace(target))
 	for _, value := range values {
 		if strings.ToLower(strings.TrimSpace(value)) == target {
-			return true
-		}
-	}
-	return false
-}
-
-func containsInt(values []int, target int) bool {
-	for _, value := range values {
-		if value == target {
 			return true
 		}
 	}

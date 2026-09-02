@@ -150,10 +150,11 @@ func (s *Service) DeviceForKey(ctx context.Context, userID, uaKey, label string,
 	if uaKey == "" {
 		return Device{}, false, false, nil
 	}
-	if existing, ok, err := s.store.FindDeviceByUAKey(ctx, userID, uaKey, metadata.SourceIP); err != nil || ok {
-		if err != nil || !ok {
-			return existing, false, ok, err
-		}
+	existing, ok, err := s.store.FindDeviceByUAKey(ctx, userID, uaKey, metadata.SourceIP)
+	if err != nil {
+		return existing, false, ok, err
+	}
+	if ok {
 		// 来源地址变化（含认领 source_ip 为空的历史设备）后把名字同步为
 		// 「客户端 · 新IP」，避免名字残留旧地址；来源不可观测（自环拉取）时
 		// 跳过改名，防止把名字里的地址后缀剥掉。best-effort：撞名等失败

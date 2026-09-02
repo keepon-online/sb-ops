@@ -59,7 +59,9 @@ func (s *Store) UpdateConfig(ctx context.Context, value Config, revision int64, 
 	if err != nil {
 		return err
 	}
-	secret := any(nil)
+	query := `UPDATE singbox_config SET log_level=?,log_timestamp=?,dns_servers_json=?,dns_final=?,clash_api_enabled=?,clash_api_listen=?,`
+	args := []any{value.LogLevel, boolInt(value.LogTimestamp), string(servers), value.DNSFinal, boolInt(value.ClashAPIEnabled), value.ClashAPIListen}
+	var secret any
 	if secretValue != nil {
 		if *secretValue != "" {
 			secret, err = s.secrets.Encrypt(ctx, "singbox-clash-api-secret", []byte(*secretValue))
@@ -67,18 +69,12 @@ func (s *Store) UpdateConfig(ctx context.Context, value Config, revision int64, 
 				return err
 			}
 		}
-		result, err := s.db.ExecContext(ctx, `UPDATE singbox_config SET log_level=?,log_timestamp=?,dns_servers_json=?,dns_final=?,clash_api_enabled=?,clash_api_listen=?,clash_api_secret_ciphertext=?,v2ray_api_enabled=?,v2ray_api_listen=?,default_outbound_tag=?,revision=revision+1,updated_at=? WHERE id=1 AND revision=?`,
-			value.LogLevel, boolInt(value.LogTimestamp), string(servers), value.DNSFinal, boolInt(value.ClashAPIEnabled), value.ClashAPIListen, secret, boolInt(value.V2RayAPIEnabled), value.V2RayAPIListen, value.DefaultOutboundTag, common.UnixTime(now), revision)
-		if err != nil {
-			return err
-		}
-		if changed, _ := result.RowsAffected(); changed == 0 {
-			return common.ErrRevisionConflict
-		}
-		return nil
+		query += `clash_api_secret_ciphertext=?,`
+		args = append(args, secret)
 	}
-	result, err := s.db.ExecContext(ctx, `UPDATE singbox_config SET log_level=?,log_timestamp=?,dns_servers_json=?,dns_final=?,clash_api_enabled=?,clash_api_listen=?,v2ray_api_enabled=?,v2ray_api_listen=?,default_outbound_tag=?,revision=revision+1,updated_at=? WHERE id=1 AND revision=?`,
-		value.LogLevel, boolInt(value.LogTimestamp), string(servers), value.DNSFinal, boolInt(value.ClashAPIEnabled), value.ClashAPIListen, boolInt(value.V2RayAPIEnabled), value.V2RayAPIListen, value.DefaultOutboundTag, common.UnixTime(now), revision)
+	query += `v2ray_api_enabled=?,v2ray_api_listen=?,default_outbound_tag=?,revision=revision+1,updated_at=? WHERE id=1 AND revision=?`
+	args = append(args, boolInt(value.V2RayAPIEnabled), value.V2RayAPIListen, value.DefaultOutboundTag, common.UnixTime(now), revision)
+	result, err := s.db.ExecContext(ctx, query, args...)
 	if err != nil {
 		return err
 	}
