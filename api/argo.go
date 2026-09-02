@@ -25,7 +25,7 @@ type argoTunnelRequest struct {
 }
 
 func (h *handler) listArgoTunnels(c *gin.Context) {
-	values, err := h.argo.List(c.Request.Context())
+	values, err := h.Argo.List(c.Request.Context())
 	if err != nil {
 		writeResourceError(c, err)
 		return
@@ -38,7 +38,7 @@ func (h *handler) createArgoTunnel(c *gin.Context) {
 	if !ok {
 		return
 	}
-	value, err := h.argo.Create(c.Request.Context(), request)
+	value, err := h.Argo.Create(c.Request.Context(), request)
 	if !h.mutate(c, err, actionArgoTunnelCreate, resourceArgoTunnel, "", value.ID) {
 		return
 	}
@@ -51,7 +51,7 @@ func (h *handler) updateArgoTunnel(c *gin.Context) {
 		return
 	}
 	request.ID = c.Param("id")
-	value, err := h.argo.Update(c.Request.Context(), request)
+	value, err := h.Argo.Update(c.Request.Context(), request)
 	if !h.mutate(c, err, actionArgoTunnelUpdate, resourceArgoTunnel, c.Param("id"), value.ID) {
 		return
 	}
@@ -59,7 +59,7 @@ func (h *handler) updateArgoTunnel(c *gin.Context) {
 }
 
 func (h *handler) deleteArgoTunnel(c *gin.Context) {
-	err := h.argo.Delete(c.Request.Context(), c.Param("id"))
+	err := h.Argo.Delete(c.Request.Context(), c.Param("id"))
 	if !h.mutate(c, err, actionArgoTunnelDelete, resourceArgoTunnel, c.Param("id"), c.Param("id")) {
 		return
 	}
@@ -67,18 +67,18 @@ func (h *handler) deleteArgoTunnel(c *gin.Context) {
 }
 
 func (h *handler) restartArgoTunnel(c *gin.Context) {
-	if h.argoManager == nil {
+	if h.ArgoManager == nil {
 		httpx.Error(c, http.StatusServiceUnavailable, httpx.CodeInternalError, "Argo 隧道管理器不可用", nil)
 		return
 	}
-	values, err := h.argo.List(c.Request.Context())
+	values, err := h.Argo.List(c.Request.Context())
 	if err != nil {
 		writeResourceError(c, err)
 		return
 	}
 	for _, value := range values {
 		if value.ID == c.Param("id") {
-			h.argoManager.RestartTunnel(value.ID)
+			h.ArgoManager.RestartTunnel(value.ID)
 			c.Status(http.StatusNoContent)
 			return
 		}

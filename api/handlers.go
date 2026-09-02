@@ -21,7 +21,7 @@ import (
 func (h *handler) authenticate() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		token := bearerToken(c.GetHeader("Authorization"))
-		principal, err := h.identity.Authenticate(c.Request.Context(), token)
+		principal, err := h.Identity.Authenticate(c.Request.Context(), token)
 		if err != nil {
 			httpx.Error(c, http.StatusUnauthorized, httpx.CodeUnauthorized, "请先登录", nil)
 			return
@@ -55,7 +55,7 @@ func (h *handler) auditChanges(c *gin.Context, action, resourceType, resourceID 
 }
 
 func (h *handler) appendAuditLog(c *gin.Context, action, resourceType, resourceID, result, detailsJSON string) {
-	if h.store == nil {
+	if h.Store == nil {
 		return
 	}
 	// 审计写库剥离请求取消：客户端断开后（同步收尾阶段常见）审计仍必须
@@ -66,7 +66,7 @@ func (h *handler) appendAuditLog(c *gin.Context, action, resourceType, resourceI
 		principal := value.(identity.Principal)
 		actorID = &principal.AccountID
 	}
-	if err := h.store.AppendAuditLog(auditCtx, identity.AuditLog{
+	if err := h.Store.AppendAuditLog(auditCtx, identity.AuditLog{
 		ID: uuid.NewString(), ActorID: actorID, Action: action,
 		ResourceType: resourceType, ResourceID: resourceID, Result: result,
 		RequestID: httpx.RequestID(c), ClientIP: clientAddress(c), DetailsJSON: detailsJSON,

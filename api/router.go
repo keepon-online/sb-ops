@@ -50,43 +50,15 @@ type Dependencies struct {
 	ArgoManager interface{ RestartTunnel(id string) }
 }
 
-type handler struct {
-	identity     *identity.Service
-	store        *identity.Store
-	users        *serviceuser.Service
-	protocols    *serviceprotocol.Service
-	certificates *servicecertificate.Service
-	policies     *servicepolicy.Service
-	singbox      *servicesingbox.Service
-	sync         *deployment.SyncService
-	overview     *controloverview.Service
-	auditLogs    *controlaudit.Service
-	share        *serviceshare.Service
-	traffic      *controltraffic.Service
-	events       *controlevents.Bus
-	alerts       *controlobservability.Service
-	monitor      *controlmonitor.Service
-	config       func() config.RuntimeConfig
-	argo         *serviceargo.Service
-	upgrade      *controlupgrade.Service
-	argoManager  interface{ RestartTunnel(id string) }
-}
+// handler 直接以 Dependencies 为载体：字段清单只在 Dependencies 一处维护，
+// 新增服务不再需要 handler 镜像拷贝。
+type handler Dependencies
 
 func RegisterRoutes(router *gin.Engine, dependencies Dependencies) {
-	configProvider := dependencies.Config
-	if configProvider == nil {
-		configProvider = func() config.RuntimeConfig { return config.DefaultRuntimeConfig() }
+	if dependencies.Config == nil {
+		dependencies.Config = func() config.RuntimeConfig { return config.DefaultRuntimeConfig() }
 	}
-	h := &handler{
-		identity: dependencies.Identity, store: dependencies.Store, users: dependencies.Users,
-		protocols: dependencies.Protocols, certificates: dependencies.Certificates,
-		policies: dependencies.Policies, singbox: dependencies.SingBox, argo: dependencies.Argo, argoManager: dependencies.ArgoManager,
-		upgrade:  dependencies.Upgrade,
-		sync:     dependencies.Sync,
-		overview: dependencies.Overview, auditLogs: dependencies.AuditLogs, share: dependencies.Share, traffic: dependencies.Traffic, events: dependencies.Events, alerts: dependencies.Alerts,
-		monitor: dependencies.Monitor,
-		config:  configProvider,
-	}
+	h := handler(dependencies)
 	h.registerPublicRoutes(router)
 
 	api := router.Group("/api/v1")
@@ -99,11 +71,11 @@ func RegisterRoutes(router *gin.Engine, dependencies Dependencies) {
 	authenticated.GET("/auth/me", h.me)
 	authenticated.POST("/auth/change-password", h.changePassword)
 	authenticated.POST("/auth/logout", h.logout)
-	if h.events != nil {
+	if h.Events != nil {
 		authenticated.GET("/events", h.streamEvents)
 	}
 
-	if h.users != nil {
+	if h.Users != nil {
 		users := authenticated.Group("/users")
 		users.GET("", h.listUsers)
 		users.GET("/:id", h.getUser)
@@ -127,7 +99,7 @@ func RegisterRoutes(router *gin.Engine, dependencies Dependencies) {
 		traffic.POST("/:id/quota/adjust", h.adjustUserQuota)
 	}
 
-	if h.protocols != nil && h.certificates != nil {
+	if h.Protocols != nil && h.Certificates != nil {
 		resourceRead := authenticated.Group("")
 		resourceRead.GET("/protocol-schemas/:type", h.protocolSchema)
 		resourceRead.GET("/protocols", h.listProtocols)
@@ -152,7 +124,7 @@ func RegisterRoutes(router *gin.Engine, dependencies Dependencies) {
 		resourceWrite.DELETE("/certificates/:id", h.deleteCertificate)
 	}
 
-	if h.policies != nil {
+	if h.Policies != nil {
 		policyRead := authenticated.Group("/policies")
 		policyRead.GET("", h.listPolicies)
 		policyRead.GET("/rule-sets", h.listPolicyRuleSets)
@@ -172,7 +144,7 @@ func RegisterRoutes(router *gin.Engine, dependencies Dependencies) {
 		policyWrite.PUT("/:id/rules/order", h.orderPolicyRules)
 	}
 
-	if h.singbox != nil {
+	if h.SingBox != nil {
 		singBoxRead := authenticated.Group("/singbox")
 		singBoxRead.GET("", h.getSingBoxConfig)
 		singBoxRead.GET("/runtime", h.getSingBoxRuntime)
@@ -210,25 +182,25 @@ func RegisterRoutes(router *gin.Engine, dependencies Dependencies) {
 		runtimeOperate.DELETE("/connections/:id", h.closeSingBoxConnection)
 	}
 
-	if h.overview != nil {
+	if h.Overview != nil {
 		overview := authenticated.Group("")
 		overview.GET("/overview", h.getOverview)
 	}
-	if h.monitor != nil {
+	if h.Monitor != nil {
 		monitor := authenticated.Group("")
 		monitor.GET("/monitor", h.getMonitorStatus)
 	}
-	if h.auditLogs != nil {
+	if h.AuditLogs != nil {
 		auditLogs := authenticated.Group("")
 		auditLogs.GET("/audit-logs", h.listAuditLogs)
 	}
-	if h.alerts != nil {
+	if h.Alerts != nil {
 		alertsRead := authenticated.Group("/alerts")
 		alertsRead.GET("", h.listAlerts)
 		alertsWrite := authenticated.Group("/alerts")
 		alertsWrite.POST("/:id/acknowledge", h.acknowledgeAlert)
 	}
-	if h.traffic != nil {
+	if h.Traffic != nil {
 		trafficRead := authenticated.Group("/traffic")
 		trafficRead.GET("/series", h.trafficSeries)
 		trafficRead.GET("/rankings", h.trafficRankings)
@@ -236,7 +208,7 @@ func RegisterRoutes(router *gin.Engine, dependencies Dependencies) {
 		trafficRead.GET("/active-users", h.trafficActiveUsers)
 		trafficRead.GET("/protocol-shares", h.trafficProtocolShares)
 	}
-	if h.upgrade != nil {
+	if h.Upgrade != nil {
 		systemUpgrade := authenticated.Group("/system/upgrade")
 		systemUpgrade.GET("/status", h.getUpgradeStatus)
 		systemUpgrade.POST("/check", h.checkUpgrade)
@@ -247,7 +219,7 @@ func RegisterRoutes(router *gin.Engine, dependencies Dependencies) {
 // registerPublicRoutes 注册无需管理员认证的公开路由。订阅拉取是全项目
 // 唯一一条匿名动态路由——新增公开路由前先评估攻击面（限速、脱敏、枚举）。
 func (h *handler) registerPublicRoutes(router *gin.Engine) {
-	if h.share == nil {
+	if h.Share == nil {
 		return
 	}
 	router.GET("/subscribe/:token/:format", h.downloadSubscription)

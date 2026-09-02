@@ -33,7 +33,7 @@ func (h *handler) suggestProtocolPort(c *gin.Context) {
 	if !httpx.BindJSON(c, &request, "请选择协议类型") {
 		return
 	}
-	value, err := h.protocols.SuggestPort(c.Request.Context(), request.Type)
+	value, err := h.Protocols.SuggestPort(c.Request.Context(), request.Type)
 	if err != nil {
 		writeResourceError(c, err)
 		return
@@ -42,7 +42,7 @@ func (h *handler) suggestProtocolPort(c *gin.Context) {
 }
 
 func (h *handler) protocolSchema(c *gin.Context) {
-	value, err := h.protocols.Schema(serviceprotocol.Type(c.Param("type")))
+	value, err := h.Protocols.Schema(serviceprotocol.Type(c.Param("type")))
 	if err != nil {
 		writeResourceError(c, err)
 		return
@@ -51,7 +51,7 @@ func (h *handler) protocolSchema(c *gin.Context) {
 }
 
 func (h *handler) listProtocols(c *gin.Context) {
-	values, err := h.protocols.List(c.Request.Context())
+	values, err := h.Protocols.List(c.Request.Context())
 	if err != nil {
 		writeResourceError(c, err)
 		return
@@ -60,11 +60,11 @@ func (h *handler) listProtocols(c *gin.Context) {
 }
 
 func (h *handler) protocolRuntimeStatus(c *gin.Context) {
-	if h.sync == nil {
+	if h.Sync == nil {
 		writeRuntimeUnavailable(c)
 		return
 	}
-	value, err := h.sync.ProtocolRuntimeStatus(c.Request.Context())
+	value, err := h.Sync.ProtocolRuntimeStatus(c.Request.Context())
 	if err != nil {
 		slog.Error("获取协议运行状态失败", "error", err)
 		writeRuntimeFailed(c, "获取协议运行状态失败")
@@ -78,7 +78,7 @@ func (h *handler) createProtocol(c *gin.Context) {
 	if !ok {
 		return
 	}
-	value, err := h.protocols.Create(c.Request.Context(), request)
+	value, err := h.Protocols.Create(c.Request.Context(), request)
 	if !h.mutate(c, err, actionProtocolCreate, resourceProtocol, "", value.ID) {
 		return
 	}
@@ -86,7 +86,7 @@ func (h *handler) createProtocol(c *gin.Context) {
 }
 
 func (h *handler) getProtocol(c *gin.Context) {
-	value, err := h.protocols.Get(c.Request.Context(), c.Param("id"))
+	value, err := h.Protocols.Get(c.Request.Context(), c.Param("id"))
 	if err != nil {
 		writeResourceError(c, err)
 		return
@@ -100,7 +100,7 @@ func (h *handler) updateProtocol(c *gin.Context) {
 		return
 	}
 	request.ID = c.Param("id")
-	value, err := h.protocols.Update(c.Request.Context(), request)
+	value, err := h.Protocols.Update(c.Request.Context(), request)
 	if !h.mutate(c, err, actionProtocolUpdate, resourceProtocol, request.ID, value.ID) {
 		return
 	}
@@ -108,7 +108,7 @@ func (h *handler) updateProtocol(c *gin.Context) {
 }
 
 func (h *handler) deleteProtocol(c *gin.Context) {
-	err := h.protocols.Delete(c.Request.Context(), c.Param("id"))
+	err := h.Protocols.Delete(c.Request.Context(), c.Param("id"))
 	if !h.mutate(c, err, actionProtocolDelete, resourceProtocol, c.Param("id"), c.Param("id")) {
 		return
 	}
@@ -120,7 +120,7 @@ func (h *handler) cloneProtocol(c *gin.Context) {
 	if !httpx.BindJSON(c, &request, "请输入名称与监听端口") {
 		return
 	}
-	value, err := h.protocols.Clone(c.Request.Context(), c.Param("id"), request)
+	value, err := h.Protocols.Clone(c.Request.Context(), c.Param("id"), request)
 	if !h.mutate(c, err, actionProtocolClone, resourceProtocol, c.Param("id"), value.ID) {
 		return
 	}
@@ -128,7 +128,7 @@ func (h *handler) cloneProtocol(c *gin.Context) {
 }
 
 func (h *handler) rotateProtocolSecret(c *gin.Context) {
-	value, err := h.protocols.RotateSecret(c.Request.Context(), c.Param("id"))
+	value, err := h.Protocols.RotateSecret(c.Request.Context(), c.Param("id"))
 	if !h.mutate(c, err, actionProtocolSecretRotate, resourceProtocol, c.Param("id"), c.Param("id")) {
 		return
 	}

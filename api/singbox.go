@@ -75,11 +75,11 @@ func writeRuntimeFailed(c *gin.Context, message string) {
 }
 
 func (h *handler) listSingBoxConnections(c *gin.Context) {
-	if h.sync == nil {
+	if h.Sync == nil {
 		writeRuntimeUnavailable(c)
 		return
 	}
-	value, err := h.sync.Connections(c.Request.Context())
+	value, err := h.Sync.Connections(c.Request.Context())
 	if err != nil {
 		slog.Error("获取实时连接失败", "error", err)
 		writeRuntimeFailed(c, "获取实时连接失败")
@@ -89,11 +89,11 @@ func (h *handler) listSingBoxConnections(c *gin.Context) {
 }
 
 func (h *handler) closeSingBoxConnection(c *gin.Context) {
-	if h.sync == nil {
+	if h.Sync == nil {
 		writeRuntimeUnavailable(c)
 		return
 	}
-	if err := h.sync.CloseConnection(c.Request.Context(), c.Param("id")); err != nil {
+	if err := h.Sync.CloseConnection(c.Request.Context(), c.Param("id")); err != nil {
 		h.audit(c, actionSingBoxConnectionClose, resourceSingBoxConnection, c.Param("id"), resultFailure)
 		slog.Error("关闭连接失败", "error", err, "connectionId", c.Param("id"))
 		writeRuntimeFailed(c, "关闭连接失败")
@@ -104,19 +104,19 @@ func (h *handler) closeSingBoxConnection(c *gin.Context) {
 }
 
 func (h *handler) getSingBoxRuntime(c *gin.Context) {
-	if h.sync == nil {
+	if h.Sync == nil {
 		writeRuntimeUnavailable(c)
 		return
 	}
-	httpx.OK(c, h.sync.RuntimeStatus(c.Request.Context()))
+	httpx.OK(c, h.Sync.RuntimeStatus(c.Request.Context()))
 }
 
 func (h *handler) checkSingBoxRuntime(c *gin.Context) {
-	if h.sync == nil {
+	if h.Sync == nil {
 		writeRuntimeUnavailable(c)
 		return
 	}
-	value, err := h.sync.Check(c.Request.Context())
+	value, err := h.Sync.Check(c.Request.Context())
 	if err != nil {
 		h.audit(c, actionSingBoxRuntimeCheck, resourceSingBoxRuntime, localRuntimeID, resultFailure)
 		httpx.Error(c, http.StatusUnprocessableEntity, httpx.CodeRuntimeFailed, value.Message, nil)
@@ -127,11 +127,11 @@ func (h *handler) checkSingBoxRuntime(c *gin.Context) {
 }
 
 func (h *handler) reconcileSingBoxRuntime(c *gin.Context) {
-	if h.sync == nil {
+	if h.Sync == nil {
 		writeRuntimeUnavailable(c)
 		return
 	}
-	value, err := h.sync.Reconcile(c.Request.Context())
+	value, err := h.Sync.Reconcile(c.Request.Context())
 	if err != nil {
 		h.audit(c, actionSingBoxRuntimeReconcile, resourceSingBoxRuntime, localRuntimeID, resultFailure)
 		slog.Error("同步 sing-box 配置失败", "error", err)
@@ -143,11 +143,11 @@ func (h *handler) reconcileSingBoxRuntime(c *gin.Context) {
 }
 
 func (h *handler) restartSingBoxRuntime(c *gin.Context) {
-	if h.sync == nil {
+	if h.Sync == nil {
 		writeRuntimeUnavailable(c)
 		return
 	}
-	if err := h.sync.Restart(c.Request.Context()); err != nil {
+	if err := h.Sync.Restart(c.Request.Context()); err != nil {
 		h.audit(c, actionSingBoxRuntimeRestart, resourceSingBoxRuntime, localRuntimeID, resultFailure)
 		slog.Error("重启 sing-box 失败", "error", err)
 		writeRuntimeFailed(c, "重启 sing-box 失败")
@@ -158,7 +158,7 @@ func (h *handler) restartSingBoxRuntime(c *gin.Context) {
 }
 
 func (h *handler) getSingBoxConfig(c *gin.Context) {
-	value, err := h.singbox.GetConfig(c.Request.Context())
+	value, err := h.SingBox.GetConfig(c.Request.Context())
 	if err != nil {
 		writeResourceError(c, err)
 		return
@@ -171,7 +171,7 @@ func (h *handler) updateSingBoxConfig(c *gin.Context) {
 	if !ok {
 		return
 	}
-	value, err := h.singbox.UpdateConfig(c.Request.Context(), request)
+	value, err := h.SingBox.UpdateConfig(c.Request.Context(), request)
 	if !h.mutate(c, err, actionSingBoxConfigUpdate, resourceSingBoxConfig, singBoxConfigID, singBoxConfigID) {
 		return
 	}
@@ -187,7 +187,7 @@ func (h *handler) applySingBoxAITemplate(c *gin.Context) {
 	if !httpx.BindJSON(c, &request, "AI 解锁模板无效") {
 		return
 	}
-	value, err := h.singbox.ApplyAIUnlockTemplate(c.Request.Context(), request.OutboundTag)
+	value, err := h.SingBox.ApplyAIUnlockTemplate(c.Request.Context(), request.OutboundTag)
 	if !h.mutate(c, err, actionSingBoxRouteRuleCreate, resourceSingBoxRouteRule, "", value.ID) {
 		return
 	}
@@ -195,7 +195,7 @@ func (h *handler) applySingBoxAITemplate(c *gin.Context) {
 }
 
 func (h *handler) listSingBoxOutbounds(c *gin.Context) {
-	values, err := h.singbox.ListOutbounds(c.Request.Context())
+	values, err := h.SingBox.ListOutbounds(c.Request.Context())
 	if err != nil {
 		writeResourceError(c, err)
 		return
@@ -208,7 +208,7 @@ func (h *handler) createSingBoxOutbound(c *gin.Context) {
 	if !ok {
 		return
 	}
-	value, err := h.singbox.CreateOutbound(c.Request.Context(), request)
+	value, err := h.SingBox.CreateOutbound(c.Request.Context(), request)
 	if !h.mutate(c, err, actionSingBoxOutboundCreate, resourceSingBoxOutbound, "", value.ID) {
 		return
 	}
@@ -219,7 +219,7 @@ func (h *handler) createSingBoxOutbound(c *gin.Context) {
 // ready-to-save outbound settings; persistence happens through the normal
 // outbound write path, so this endpoint is side-effect free.
 func (h *handler) registerSingBoxWarp(c *gin.Context) {
-	settings, err := h.singbox.RegisterWarp(c.Request.Context())
+	settings, err := h.SingBox.RegisterWarp(c.Request.Context())
 	if err != nil {
 		writeResourceError(c, err)
 		return
@@ -233,8 +233,8 @@ func (h *handler) updateSingBoxOutbound(c *gin.Context) {
 		return
 	}
 	request.ID = c.Param("id")
-	before, beforeErr := h.singbox.GetOutbound(c.Request.Context(), request.ID)
-	value, err := h.singbox.UpdateOutbound(c.Request.Context(), request)
+	before, beforeErr := h.SingBox.GetOutbound(c.Request.Context(), request.ID)
+	value, err := h.SingBox.UpdateOutbound(c.Request.Context(), request)
 	if !h.mutate(c, err, actionSingBoxOutboundUpdate, resourceSingBoxOutbound, request.ID, value.ID, diffable(beforeErr, err, before, value)) {
 		return
 	}
@@ -243,7 +243,7 @@ func (h *handler) updateSingBoxOutbound(c *gin.Context) {
 
 func (h *handler) deleteSingBoxOutbound(c *gin.Context) {
 	id := c.Param("id")
-	err := h.singbox.DeleteOutbound(c.Request.Context(), id)
+	err := h.SingBox.DeleteOutbound(c.Request.Context(), id)
 	if !h.mutate(c, err, actionSingBoxOutboundDelete, resourceSingBoxOutbound, id, id) {
 		return
 	}
@@ -251,7 +251,7 @@ func (h *handler) deleteSingBoxOutbound(c *gin.Context) {
 }
 
 func (h *handler) listSingBoxRouteRules(c *gin.Context) {
-	values, err := h.singbox.ListRules(c.Request.Context())
+	values, err := h.SingBox.ListRules(c.Request.Context())
 	if err != nil {
 		writeResourceError(c, err)
 		return
@@ -264,7 +264,7 @@ func (h *handler) createSingBoxRouteRule(c *gin.Context) {
 	if !ok {
 		return
 	}
-	value, err := h.singbox.CreateRule(c.Request.Context(), request)
+	value, err := h.SingBox.CreateRule(c.Request.Context(), request)
 	if !h.mutate(c, err, actionSingBoxRouteRuleCreate, resourceSingBoxRouteRule, "", value.ID) {
 		return
 	}
@@ -277,8 +277,8 @@ func (h *handler) updateSingBoxRouteRule(c *gin.Context) {
 		return
 	}
 	request.ID = c.Param("id")
-	before, beforeErr := h.singbox.GetRule(c.Request.Context(), request.ID)
-	value, err := h.singbox.UpdateRule(c.Request.Context(), request)
+	before, beforeErr := h.SingBox.GetRule(c.Request.Context(), request.ID)
+	value, err := h.SingBox.UpdateRule(c.Request.Context(), request)
 	if !h.mutate(c, err, actionSingBoxRouteRuleUpdate, resourceSingBoxRouteRule, request.ID, value.ID, diffable(beforeErr, err, before, value)) {
 		return
 	}
@@ -287,7 +287,7 @@ func (h *handler) updateSingBoxRouteRule(c *gin.Context) {
 
 func (h *handler) deleteSingBoxRouteRule(c *gin.Context) {
 	id := c.Param("id")
-	err := h.singbox.DeleteRule(c.Request.Context(), id)
+	err := h.SingBox.DeleteRule(c.Request.Context(), id)
 	if !h.mutate(c, err, actionSingBoxRouteRuleDelete, resourceSingBoxRouteRule, id, id) {
 		return
 	}
@@ -299,7 +299,7 @@ func (h *handler) orderSingBoxRouteRules(c *gin.Context) {
 	if !httpx.BindJSON(c, &request, "请选择要处理的数据") {
 		return
 	}
-	values, err := h.singbox.OrderRules(c.Request.Context(), request)
+	values, err := h.SingBox.OrderRules(c.Request.Context(), request)
 	if !h.mutate(c, err, actionSingBoxRouteRuleOrder, resourceSingBoxConfig, singBoxConfigID, singBoxConfigID) {
 		return
 	}
@@ -311,7 +311,7 @@ func (h *handler) dryRunSingBoxRoutes(c *gin.Context) {
 	if !httpx.BindJSON(c, &request, "测试输入无效") {
 		return
 	}
-	value, err := h.singbox.DryRun(c.Request.Context(), request)
+	value, err := h.SingBox.DryRun(c.Request.Context(), request)
 	if err != nil {
 		writeResourceError(c, err)
 		return
@@ -320,7 +320,7 @@ func (h *handler) dryRunSingBoxRoutes(c *gin.Context) {
 }
 
 func (h *handler) listSingBoxRuleSets(c *gin.Context) {
-	values, err := h.singbox.ListRuleSets(c.Request.Context())
+	values, err := h.SingBox.ListRuleSets(c.Request.Context())
 	if err != nil {
 		writeResourceError(c, err)
 		return
@@ -333,7 +333,7 @@ func (h *handler) createSingBoxRuleSet(c *gin.Context) {
 	if !ok {
 		return
 	}
-	value, err := h.singbox.CreateRuleSet(c.Request.Context(), request)
+	value, err := h.SingBox.CreateRuleSet(c.Request.Context(), request)
 	if !h.mutate(c, err, actionSingBoxRuleSetCreate, resourceSingBoxRuleSet, "", value.ID) {
 		return
 	}
@@ -346,7 +346,7 @@ func (h *handler) updateSingBoxRuleSet(c *gin.Context) {
 		return
 	}
 	request.ID = c.Param("id")
-	value, err := h.singbox.UpdateRuleSet(c.Request.Context(), request)
+	value, err := h.SingBox.UpdateRuleSet(c.Request.Context(), request)
 	if !h.mutate(c, err, actionSingBoxRuleSetUpdate, resourceSingBoxRuleSet, request.ID, value.ID) {
 		return
 	}
@@ -355,7 +355,7 @@ func (h *handler) updateSingBoxRuleSet(c *gin.Context) {
 
 func (h *handler) deleteSingBoxRuleSet(c *gin.Context) {
 	id := c.Param("id")
-	err := h.singbox.DeleteRuleSet(c.Request.Context(), id)
+	err := h.SingBox.DeleteRuleSet(c.Request.Context(), id)
 	if !h.mutate(c, err, actionSingBoxRuleSetDelete, resourceSingBoxRuleSet, id, id) {
 		return
 	}
@@ -363,7 +363,7 @@ func (h *handler) deleteSingBoxRuleSet(c *gin.Context) {
 }
 
 func (h *handler) validateSingBox(c *gin.Context) {
-	value, err := h.singbox.Validate(c.Request.Context())
+	value, err := h.SingBox.Validate(c.Request.Context())
 	if err != nil {
 		writeResourceError(c, err)
 		return

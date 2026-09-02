@@ -30,7 +30,7 @@ func (h *handler) trafficSeries(c *gin.Context) {
 	if !ok {
 		return
 	}
-	value, err := h.traffic.Series(c.Request.Context(), filter)
+	value, err := h.Traffic.Series(c.Request.Context(), filter)
 	if err != nil {
 		writeTrafficError(c, err)
 		return
@@ -43,7 +43,7 @@ func (h *handler) trafficSummary(c *gin.Context) {
 	if !ok {
 		return
 	}
-	value, err := h.traffic.Summary(c.Request.Context(), filter)
+	value, err := h.Traffic.Summary(c.Request.Context(), filter)
 	if err != nil {
 		writeTrafficError(c, err)
 		return
@@ -57,7 +57,7 @@ func (h *handler) trafficRankings(c *gin.Context) {
 		return
 	}
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
-	value, err := h.traffic.Rankings(c.Request.Context(), filter, c.Query("dimension"), limit)
+	value, err := h.Traffic.Rankings(c.Request.Context(), filter, c.Query("dimension"), limit)
 	if err != nil {
 		writeTrafficError(c, err)
 		return
@@ -70,7 +70,7 @@ func (h *handler) trafficActiveUsers(c *gin.Context) {
 	if !ok {
 		return
 	}
-	value, err := h.traffic.ActiveUsers(c.Request.Context(), filter)
+	value, err := h.Traffic.ActiveUsers(c.Request.Context(), filter)
 	if err != nil {
 		writeTrafficError(c, err)
 		return
@@ -83,7 +83,7 @@ func (h *handler) trafficProtocolShares(c *gin.Context) {
 	if !ok {
 		return
 	}
-	value, err := h.traffic.ProtocolShares(c.Request.Context(), filter)
+	value, err := h.Traffic.ProtocolShares(c.Request.Context(), filter)
 	if err != nil {
 		writeTrafficError(c, err)
 		return

@@ -31,7 +31,7 @@ func TestStreamEventsEndsOnBusShutdown(t *testing.T) {
 	}
 	bus := controlevents.NewBus(db)
 	router := gin.New()
-	h := &handler{events: bus}
+	h := &handler{Events: bus}
 	router.GET("/events", h.streamEvents)
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

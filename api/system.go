@@ -11,12 +11,12 @@ import (
 
 // getUpgradeStatus 返回自升级服务快照；只读、不会失败，无需新增业务码。
 func (h *handler) getUpgradeStatus(c *gin.Context) {
-	httpx.OK(c, h.upgrade.Status())
+	httpx.OK(c, h.Upgrade.Status())
 }
 
 // checkUpgrade 同步查询 GitHub 最新 Release（升级进行中会被拒绝）。
 func (h *handler) checkUpgrade(c *gin.Context) {
-	release, err := h.upgrade.Check(c.Request.Context())
+	release, err := h.Upgrade.Check(c.Request.Context())
 	if err != nil {
 		h.audit(c, actionSystemUpgradeCheck, resourceSystemUpgrade, "", resultFailure, err)
 		writeUpgradeError(c, err)
@@ -29,17 +29,17 @@ func (h *handler) checkUpgrade(c *gin.Context) {
 // startUpgrade 校验守卫后把下载/校验/替换放到后台执行并立即返回；面板
 // 重生由升级服务经 restart 钩子触发，响应里只回当前阶段。
 func (h *handler) startUpgrade(c *gin.Context) {
-	if err := h.upgrade.Start(c.Request.Context()); err != nil {
+	if err := h.Upgrade.Start(c.Request.Context()); err != nil {
 		h.audit(c, actionSystemUpgradeStart, resourceSystemUpgrade, "", resultFailure, err)
 		writeUpgradeError(c, err)
 		return
 	}
 	resourceID := ""
-	if latest := h.upgrade.Status().Latest; latest != nil {
+	if latest := h.Upgrade.Status().Latest; latest != nil {
 		resourceID = latest.Version
 	}
 	h.audit(c, actionSystemUpgradeStart, resourceSystemUpgrade, resourceID, resultSuccess)
-	httpx.OK(c, h.upgrade.Status())
+	httpx.OK(c, h.Upgrade.Status())
 }
 
 func writeUpgradeError(c *gin.Context, err error) {

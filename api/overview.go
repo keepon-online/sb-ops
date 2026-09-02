@@ -6,7 +6,7 @@ import (
 )
 
 func (h *handler) getOverview(c *gin.Context) {
-	value, err := h.overview.Get(c.Request.Context())
+	value, err := h.Overview.Get(c.Request.Context())
 	if err != nil {
 		writeResourceError(c, err)
 		return

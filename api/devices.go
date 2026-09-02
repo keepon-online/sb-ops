@@ -18,12 +18,12 @@ type deviceMutationResponse struct {
 }
 
 func (h *handler) listUserDevices(c *gin.Context) {
-	devices, err := h.users.ListDevices(c.Request.Context(), c.Param("id"))
+	devices, err := h.Users.ListDevices(c.Request.Context(), c.Param("id"))
 	if err != nil {
 		writeResourceError(c, err)
 		return
 	}
-	token, err := h.users.SubscriptionToken(c.Request.Context(), c.Param("id"))
+	token, err := h.Users.SubscriptionToken(c.Request.Context(), c.Param("id"))
 	if err != nil {
 		writeResourceError(c, err)
 		return
@@ -34,7 +34,7 @@ func (h *handler) listUserDevices(c *gin.Context) {
 
 // rotateUserSubscription re-issues the user-level subscription link.
 func (h *handler) rotateUserSubscription(c *gin.Context) {
-	token, err := h.users.RotateSubscriptionToken(c.Request.Context(), c.Param("id"))
+	token, err := h.Users.RotateSubscriptionToken(c.Request.Context(), c.Param("id"))
 	if err != nil {
 		writeResourceError(c, err)
 		return
@@ -48,7 +48,7 @@ func (h *handler) updateUserDevice(c *gin.Context) {
 	if !httpx.BindJSON(c, &request, "设备信息无效") {
 		return
 	}
-	err := h.users.SetDeviceEnabled(c.Request.Context(), c.Param("id"), c.Param("did"), *request.Enabled)
+	err := h.Users.SetDeviceEnabled(c.Request.Context(), c.Param("id"), c.Param("did"), *request.Enabled)
 	if !h.mutate(c, err, actionDeviceUpdate, resourceDevice, c.Param("id"), c.Param("did")) {
 		return
 	}
@@ -56,7 +56,7 @@ func (h *handler) updateUserDevice(c *gin.Context) {
 }
 
 func (h *handler) deleteUserDevice(c *gin.Context) {
-	err := h.users.DeleteDevice(c.Request.Context(), c.Param("id"), c.Param("did"))
+	err := h.Users.DeleteDevice(c.Request.Context(), c.Param("id"), c.Param("did"))
 	if !h.mutate(c, err, actionDeviceDelete, resourceDevice, c.Param("id"), c.Param("did")) {
 		return
 	}
@@ -64,7 +64,7 @@ func (h *handler) deleteUserDevice(c *gin.Context) {
 }
 
 func (h *handler) rotateUserDevice(c *gin.Context) {
-	device, credential, err := h.users.RotateDevice(c.Request.Context(), c.Param("id"), c.Param("did"))
+	device, credential, err := h.Users.RotateDevice(c.Request.Context(), c.Param("id"), c.Param("did"))
 	if !h.mutate(c, err, actionDeviceRotate, resourceDevice, c.Param("id"), c.Param("did")) {
 		return
 	}

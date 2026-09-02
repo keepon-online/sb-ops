@@ -54,7 +54,7 @@ type setupStatusResponse struct {
 }
 
 func (h *handler) setupStatus(c *gin.Context) {
-	initialized, err := h.store.Initialized(c.Request.Context())
+	initialized, err := h.Store.Initialized(c.Request.Context())
 	if err != nil {
 		writeInternalError(c, "内部服务器错误")
 		return
@@ -67,7 +67,7 @@ func (h *handler) initializeAdmin(c *gin.Context) {
 	if !httpx.BindJSON(c, &request, "请输入用户名和密码") {
 		return
 	}
-	account, err := h.identity.InitializeAdmin(c.Request.Context(), request.Username, request.Password)
+	account, err := h.Identity.InitializeAdmin(c.Request.Context(), request.Username, request.Password)
 	if err != nil {
 		if errors.Is(err, identity.ErrAlreadyInitialized) {
 			httpx.Error(c, http.StatusConflict, httpx.CodeAlreadyInitialized, "管理员已初始化", nil)
@@ -86,7 +86,7 @@ func (h *handler) login(c *gin.Context) {
 	if !httpx.BindJSON(c, &request, "请输入用户名和密码") {
 		return
 	}
-	result, err := h.identity.Login(c.Request.Context(), request.Username, request.Password, identity.LoginMeta{
+	result, err := h.Identity.Login(c.Request.Context(), request.Username, request.Password, identity.LoginMeta{
 		ClientIP: clientAddress(c), UserAgent: c.GetHeader("User-Agent"),
 	})
 	if err != nil {
@@ -112,7 +112,7 @@ func (h *handler) changePassword(c *gin.Context) {
 		return
 	}
 	principal := currentPrincipal(c)
-	account, err := h.identity.ChangePassword(c.Request.Context(), principal.AccountID, request.CurrentPassword, request.NewPassword)
+	account, err := h.Identity.ChangePassword(c.Request.Context(), principal.AccountID, request.CurrentPassword, request.NewPassword)
 	if err != nil {
 		h.audit(c, actionAuthPasswordChange, resourceAccount, principal.AccountID, resultFailure)
 		writeIdentityError(c, err)
@@ -124,7 +124,7 @@ func (h *handler) changePassword(c *gin.Context) {
 
 func (h *handler) logout(c *gin.Context) {
 	token, _ := c.Get(tokenKey)
-	if err := h.identity.Logout(c.Request.Context(), token.(string)); err != nil {
+	if err := h.Identity.Logout(c.Request.Context(), token.(string)); err != nil {
 		writeIdentityError(c, err)
 		return
 	}

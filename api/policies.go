@@ -42,7 +42,7 @@ func (h *handler) listPolicyRuleSets(c *gin.Context) {
 }
 
 func (h *handler) listPolicies(c *gin.Context) {
-	values, err := h.policies.List(c.Request.Context())
+	values, err := h.Policies.List(c.Request.Context())
 	if err != nil {
 		writeResourceError(c, err)
 		return
@@ -55,7 +55,7 @@ func (h *handler) createPolicy(c *gin.Context) {
 	if !ok {
 		return
 	}
-	value, err := h.policies.Create(c.Request.Context(), request)
+	value, err := h.Policies.Create(c.Request.Context(), request)
 	if !h.mutate(c, err, actionPolicyCreate, resourcePolicy, "", value.ID) {
 		return
 	}
@@ -63,7 +63,7 @@ func (h *handler) createPolicy(c *gin.Context) {
 }
 
 func (h *handler) getPolicy(c *gin.Context) {
-	value, err := h.policies.Get(c.Request.Context(), c.Param("id"))
+	value, err := h.Policies.Get(c.Request.Context(), c.Param("id"))
 	if err != nil {
 		writeResourceError(c, err)
 		return
@@ -77,8 +77,8 @@ func (h *handler) updatePolicy(c *gin.Context) {
 		return
 	}
 	request.ID = c.Param("id")
-	before, beforeErr := h.policies.Get(c.Request.Context(), request.ID)
-	value, err := h.policies.Update(c.Request.Context(), request)
+	before, beforeErr := h.Policies.Get(c.Request.Context(), request.ID)
+	value, err := h.Policies.Update(c.Request.Context(), request)
 	if !h.mutate(c, err, actionPolicyUpdate, resourcePolicy, request.ID, value.ID, diffable(beforeErr, err, before, value)) {
 		return
 	}
@@ -86,7 +86,7 @@ func (h *handler) updatePolicy(c *gin.Context) {
 }
 
 func (h *handler) deletePolicy(c *gin.Context) {
-	err := h.policies.Delete(c.Request.Context(), c.Param("id"))
+	err := h.Policies.Delete(c.Request.Context(), c.Param("id"))
 	if !h.mutate(c, err, actionPolicyDelete, resourcePolicy, c.Param("id"), c.Param("id")) {
 		return
 	}
@@ -98,7 +98,7 @@ func (h *handler) clonePolicy(c *gin.Context) {
 	if !httpx.BindJSON(c, &request, "请输入名称") {
 		return
 	}
-	value, err := h.policies.Clone(c.Request.Context(), c.Param("id"), request)
+	value, err := h.Policies.Clone(c.Request.Context(), c.Param("id"), request)
 	if !h.mutate(c, err, actionPolicyClone, resourcePolicy, c.Param("id"), value.ID) {
 		return
 	}
@@ -106,7 +106,7 @@ func (h *handler) clonePolicy(c *gin.Context) {
 }
 
 func (h *handler) listPolicyRules(c *gin.Context) {
-	values, err := h.policies.ListRules(c.Request.Context(), c.Param("id"))
+	values, err := h.Policies.ListRules(c.Request.Context(), c.Param("id"))
 	if err != nil {
 		writeResourceError(c, err)
 		return
@@ -120,7 +120,7 @@ func (h *handler) createPolicyRule(c *gin.Context) {
 		return
 	}
 	request.PolicyID = c.Param("id")
-	value, err := h.policies.CreateRule(c.Request.Context(), request)
+	value, err := h.Policies.CreateRule(c.Request.Context(), request)
 	if !h.mutate(c, err, actionRuleCreate, resourceRule, request.PolicyID, value.ID) {
 		return
 	}
@@ -133,8 +133,8 @@ func (h *handler) updatePolicyRule(c *gin.Context) {
 		return
 	}
 	request.PolicyID, request.ID = c.Param("id"), c.Param("ruleId")
-	before, beforeErr := h.policies.GetRule(c.Request.Context(), request.PolicyID, request.ID)
-	value, err := h.policies.UpdateRule(c.Request.Context(), request)
+	before, beforeErr := h.Policies.GetRule(c.Request.Context(), request.PolicyID, request.ID)
+	value, err := h.Policies.UpdateRule(c.Request.Context(), request)
 	if !h.mutate(c, err, actionRuleUpdate, resourceRule, request.ID, value.ID, diffable(beforeErr, err, before, value)) {
 		return
 	}
@@ -142,7 +142,7 @@ func (h *handler) updatePolicyRule(c *gin.Context) {
 }
 
 func (h *handler) deletePolicyRule(c *gin.Context) {
-	err := h.policies.DeleteRule(c.Request.Context(), c.Param("id"), c.Param("ruleId"))
+	err := h.Policies.DeleteRule(c.Request.Context(), c.Param("id"), c.Param("ruleId"))
 	if !h.mutate(c, err, actionRuleDelete, resourceRule, c.Param("ruleId"), c.Param("ruleId")) {
 		return
 	}
@@ -154,7 +154,7 @@ func (h *handler) orderPolicyRules(c *gin.Context) {
 	if !httpx.BindJSON(c, &request, "请选择要处理的数据") {
 		return
 	}
-	values, err := h.policies.OrderRules(c.Request.Context(), c.Param("id"), request)
+	values, err := h.Policies.OrderRules(c.Request.Context(), c.Param("id"), request)
 	if !h.mutate(c, err, actionRuleOrder, resourcePolicy, c.Param("id"), c.Param("id")) {
 		return
 	}
@@ -166,7 +166,7 @@ func (h *handler) dryRunPolicy(c *gin.Context) {
 	if !httpx.BindJSON(c, &request, "测试输入无效") {
 		return
 	}
-	value, err := h.policies.DryRun(c.Request.Context(), c.Param("id"), request)
+	value, err := h.Policies.DryRun(c.Request.Context(), c.Param("id"), request)
 	if err != nil {
 		writeResourceError(c, err)
 		return
@@ -175,7 +175,7 @@ func (h *handler) dryRunPolicy(c *gin.Context) {
 }
 
 func (h *handler) validatePolicy(c *gin.Context) {
-	value, err := h.policies.Validate(c.Request.Context(), c.Param("id"))
+	value, err := h.Policies.Validate(c.Request.Context(), c.Param("id"))
 	if err != nil {
 		writeResourceError(c, err)
 		return

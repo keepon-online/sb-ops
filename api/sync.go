@@ -18,7 +18,7 @@ import (
 const syncTimeout = 5 * time.Minute
 
 func (h *handler) synchronize(c *gin.Context, resourceType, resourceID string) bool {
-	if h.sync == nil {
+	if h.Sync == nil {
 		return true
 	}
 	// 资源此刻已落库，同步是它的必然后续：客户端断开（网络抖动、关页
@@ -27,7 +27,7 @@ func (h *handler) synchronize(c *gin.Context, resourceType, resourceID string) b
 	// 到内核）。用剥离取消的 context 继续跑完，超时兜底。
 	syncCtx, cancel := context.WithTimeout(context.WithoutCancel(c.Request.Context()), syncTimeout)
 	defer cancel()
-	if _, err := h.sync.Sync(syncCtx); err != nil {
+	if _, err := h.Sync.Sync(syncCtx); err != nil {
 		h.audit(c, actionRuntimeSync, resourceType, resourceID, resultFailure, err)
 		slog.Error("内嵌 sing-box 同步失败", "error", err, "resourceType", resourceType, "resourceId", resourceID)
 		httpx.Error(c, http.StatusConflict, httpx.CodeSyncFailed, "内嵌 sing-box 同步失败，上一份成功配置仍在运行", nil)

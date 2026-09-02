@@ -10,12 +10,12 @@ import (
 )
 
 func (h *handler) listAlerts(c *gin.Context) {
-	values, err := h.alerts.List(c.Request.Context(), c.Query("status"), c.Query("severity"), c.Query("type"))
+	values, err := h.Alerts.List(c.Request.Context(), c.Query("status"), c.Query("severity"), c.Query("type"))
 	if err != nil {
 		writeInternalError(c, "查询告警失败")
 		return
 	}
-	stats, err := h.alerts.NotificationStats(c.Request.Context())
+	stats, err := h.Alerts.NotificationStats(c.Request.Context())
 	if err != nil {
 		writeInternalError(c, "读取通知状态失败")
 		return
@@ -24,7 +24,7 @@ func (h *handler) listAlerts(c *gin.Context) {
 }
 
 func (h *handler) acknowledgeAlert(c *gin.Context) {
-	value, err := h.alerts.Acknowledge(c.Request.Context(), c.Param("id"), currentPrincipal(c).AccountID)
+	value, err := h.Alerts.Acknowledge(c.Request.Context(), c.Param("id"), currentPrincipal(c).AccountID)
 	if err != nil {
 		if errors.Is(err, common.ErrNotFound) {
 			httpx.Error(c, http.StatusNotFound, httpx.CodeNotFound, "告警不存在", nil)

@@ -36,7 +36,7 @@ type batchStatusRequest struct {
 
 func (h *handler) listUsers(c *gin.Context) {
 	limit, _ := strconv.Atoi(c.Query("limit"))
-	page, err := h.users.List(c.Request.Context(), serviceuser.ListInput{
+	page, err := h.Users.List(c.Request.Context(), serviceuser.ListInput{
 		Cursor: c.Query("cursor"), Limit: limit, Query: c.Query("query"),
 		Status: serviceuser.Status(c.Query("status")), Sort: c.Query("sort"),
 	})
@@ -52,7 +52,7 @@ func (h *handler) createUser(c *gin.Context) {
 	if !httpx.BindJSON(c, &request, "用户信息无效") {
 		return
 	}
-	value, token, err := h.users.Create(c.Request.Context(), serviceuser.CreateInput{
+	value, token, err := h.Users.Create(c.Request.Context(), serviceuser.CreateInput{
 		Name: request.Name, Enabled: *request.Enabled, QuotaBytes: request.QuotaBytes,
 		ExpiresAt: request.ExpiresAt, ResetIntervalDays: request.ResetIntervalDays,
 		ProtocolIDs: request.ProtocolIDs, PolicyIDs: request.PolicyIDs,
@@ -64,7 +64,7 @@ func (h *handler) createUser(c *gin.Context) {
 }
 
 func (h *handler) getUser(c *gin.Context) {
-	value, err := h.users.Get(c.Request.Context(), c.Param("id"))
+	value, err := h.Users.Get(c.Request.Context(), c.Param("id"))
 	if err != nil {
 		writeResourceError(c, err)
 		return
@@ -77,7 +77,7 @@ func (h *handler) updateUser(c *gin.Context) {
 	if !httpx.BindJSON(c, &request, "用户信息无效") {
 		return
 	}
-	value, err := h.users.Update(c.Request.Context(), serviceuser.UpdateInput{
+	value, err := h.Users.Update(c.Request.Context(), serviceuser.UpdateInput{
 		ID: c.Param("id"), Revision: request.Revision, Name: request.Name, Enabled: *request.Enabled,
 		QuotaBytes: request.QuotaBytes, ExpiresAt: request.ExpiresAt,
 		ResetIntervalDays: request.ResetIntervalDays, ProtocolIDs: request.ProtocolIDs, PolicyIDs: request.PolicyIDs,
@@ -89,7 +89,7 @@ func (h *handler) updateUser(c *gin.Context) {
 }
 
 func (h *handler) deleteUser(c *gin.Context) {
-	err := h.users.Delete(c.Request.Context(), c.Param("id"))
+	err := h.Users.Delete(c.Request.Context(), c.Param("id"))
 	if !h.mutate(c, err, actionUserDelete, resourceUser, c.Param("id"), c.Param("id")) {
 		return
 	}
@@ -101,7 +101,7 @@ func (h *handler) batchUserStatus(c *gin.Context) {
 	if !httpx.BindJSON(c, &request, "请选择用户并指定状态") {
 		return
 	}
-	err := h.users.BatchStatus(c.Request.Context(), request.IDs, *request.Enabled)
+	err := h.Users.BatchStatus(c.Request.Context(), request.IDs, *request.Enabled)
 	if !h.mutate(c, err, actionUserBatchStatus, resourceUser, "", "") {
 		return
 	}
@@ -109,7 +109,7 @@ func (h *handler) batchUserStatus(c *gin.Context) {
 }
 
 func (h *handler) resetUserTraffic(c *gin.Context) {
-	value, err := h.users.ResetTraffic(c.Request.Context(), c.Param("id"))
+	value, err := h.Users.ResetTraffic(c.Request.Context(), c.Param("id"))
 	if err != nil {
 		writeResourceError(c, err)
 		return
@@ -123,7 +123,7 @@ func (h *handler) adjustUserTraffic(c *gin.Context) {
 	if !httpx.BindJSON(c, &request, "请选择方式并填写字节数") {
 		return
 	}
-	value, err := h.users.AdjustTraffic(c.Request.Context(), c.Param("id"), request)
+	value, err := h.Users.AdjustTraffic(c.Request.Context(), c.Param("id"), request)
 	if err != nil {
 		writeResourceError(c, err)
 		return
@@ -137,7 +137,7 @@ func (h *handler) adjustUserQuota(c *gin.Context) {
 	if !httpx.BindJSON(c, &request, "请选择方式并填写字节数") {
 		return
 	}
-	value, err := h.users.AdjustQuota(c.Request.Context(), c.Param("id"), request)
+	value, err := h.Users.AdjustQuota(c.Request.Context(), c.Param("id"), request)
 	if err != nil {
 		writeResourceError(c, err)
 		return

@@ -30,7 +30,7 @@ type certificatesResponse struct {
 }
 
 func (h *handler) listCertificates(c *gin.Context) {
-	values, err := h.certificates.List(c.Request.Context())
+	values, err := h.Certificates.List(c.Request.Context())
 	if err != nil {
 		writeResourceError(c, err)
 		return
@@ -43,7 +43,7 @@ func (h *handler) createSelfSignedCertificate(c *gin.Context) {
 	if !httpx.BindJSON(c, &request, "请输入名称与服务器名称") {
 		return
 	}
-	value, err := h.certificates.CreateSelfSigned(c.Request.Context(), servicecertificate.SelfSignedInput{Name: request.Name, ServerName: request.ServerName})
+	value, err := h.Certificates.CreateSelfSigned(c.Request.Context(), servicecertificate.SelfSignedInput{Name: request.Name, ServerName: request.ServerName})
 	if !h.mutate(c, err, actionCertificateSelfSignedCreate, resourceCertificate, "", value.ID) {
 		return
 	}
@@ -55,7 +55,7 @@ func (h *handler) regenerateSelfSignedCertificate(c *gin.Context) {
 	if !httpx.BindJSON(c, &request, "请提供修订号与服务器名称") {
 		return
 	}
-	value, err := h.certificates.RegenerateSelfSigned(c.Request.Context(), servicecertificate.RegenerateInput{ID: c.Param("id"), Revision: request.Revision, ServerName: request.ServerName})
+	value, err := h.Certificates.RegenerateSelfSigned(c.Request.Context(), servicecertificate.RegenerateInput{ID: c.Param("id"), Revision: request.Revision, ServerName: request.ServerName})
 	if !h.mutate(c, err, actionCertificateSelfSignedRegenerate, resourceCertificate, c.Param("id"), value.ID) {
 		return
 	}
@@ -67,7 +67,7 @@ func (h *handler) createCertificate(c *gin.Context) {
 	if !ok {
 		return
 	}
-	value, err := h.certificates.Create(c.Request.Context(), request)
+	value, err := h.Certificates.Create(c.Request.Context(), request)
 	if !h.mutate(c, err, actionCertificateCreate, resourceCertificate, "", value.ID) {
 		return
 	}
@@ -82,8 +82,8 @@ func (h *handler) createAcmeCertificate(c *gin.Context) {
 	if !httpx.BindJSON(c, &request, "请输入名称与域名") {
 		return
 	}
-	cfg := h.config()
-	value, err := h.certificates.IssueACME(c.Request.Context(), servicecertificate.AcmeInput{Name: request.Name, Domain: request.Domain}, servicecertificate.AcmeOptions{Email: cfg.Acme.Email, Provider: cfg.Acme.DNSProvider, APIToken: cfg.Acme.APIToken})
+	cfg := h.Config()
+	value, err := h.Certificates.IssueACME(c.Request.Context(), servicecertificate.AcmeInput{Name: request.Name, Domain: request.Domain}, servicecertificate.AcmeOptions{Email: cfg.Acme.Email, Provider: cfg.Acme.DNSProvider, APIToken: cfg.Acme.APIToken})
 	if !h.mutate(c, err, actionCertificateAcmeCreate, resourceCertificate, "", value.ID) {
 		return
 	}
@@ -91,8 +91,8 @@ func (h *handler) createAcmeCertificate(c *gin.Context) {
 }
 
 func (h *handler) renewAcmeCertificate(c *gin.Context) {
-	cfg := h.config()
-	value, err := h.certificates.RenewACME(c.Request.Context(), c.Param("id"), servicecertificate.AcmeOptions{Email: cfg.Acme.Email, Provider: cfg.Acme.DNSProvider, APIToken: cfg.Acme.APIToken})
+	cfg := h.Config()
+	value, err := h.Certificates.RenewACME(c.Request.Context(), c.Param("id"), servicecertificate.AcmeOptions{Email: cfg.Acme.Email, Provider: cfg.Acme.DNSProvider, APIToken: cfg.Acme.APIToken})
 	if !h.mutate(c, err, actionCertificateAcmeRenew, resourceCertificate, c.Param("id"), value.ID) {
 		return
 	}
@@ -100,7 +100,7 @@ func (h *handler) renewAcmeCertificate(c *gin.Context) {
 }
 
 func (h *handler) getCertificate(c *gin.Context) {
-	value, err := h.certificates.Get(c.Request.Context(), c.Param("id"))
+	value, err := h.Certificates.Get(c.Request.Context(), c.Param("id"))
 	if err != nil {
 		writeResourceError(c, err)
 		return
@@ -114,7 +114,7 @@ func (h *handler) updateCertificate(c *gin.Context) {
 		return
 	}
 	request.ID = c.Param("id")
-	value, err := h.certificates.Update(c.Request.Context(), request)
+	value, err := h.Certificates.Update(c.Request.Context(), request)
 	if !h.mutate(c, err, actionCertificateUpdate, resourceCertificate, request.ID, value.ID) {
 		return
 	}
@@ -122,7 +122,7 @@ func (h *handler) updateCertificate(c *gin.Context) {
 }
 
 func (h *handler) deleteCertificate(c *gin.Context) {
-	err := h.certificates.Delete(c.Request.Context(), c.Param("id"))
+	err := h.Certificates.Delete(c.Request.Context(), c.Param("id"))
 	if !h.mutate(c, err, actionCertificateDelete, resourceCertificate, c.Param("id"), c.Param("id")) {
 		return
 	}

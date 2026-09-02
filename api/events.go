@@ -14,7 +14,7 @@ import (
 func (h *handler) streamEvents(c *gin.Context) {
 	after, _ := strconv.ParseInt(c.GetHeader("Last-Event-ID"), 10, 64)
 	allowAll := func(string) bool { return true }
-	backlog, reset, err := h.events.Since(c.Request.Context(), after, allowAll)
+	backlog, reset, err := h.Events.Since(c.Request.Context(), after, allowAll)
 	if err != nil {
 		c.Status(http.StatusInternalServerError)
 		return
@@ -36,7 +36,7 @@ func (h *handler) streamEvents(c *gin.Context) {
 		writeSSE(c, event)
 	}
 	flusher.Flush()
-	channel, cancel := h.events.Subscribe(allowAll)
+	channel, cancel := h.Events.Subscribe(allowAll)
 	defer cancel()
 	heartbeat := time.NewTicker(15 * time.Second)
 	defer heartbeat.Stop()
@@ -54,7 +54,7 @@ func (h *handler) streamEvents(c *gin.Context) {
 			flusher.Flush()
 		case <-heartbeat.C:
 			token, _ := c.Get(tokenKey)
-			if _, err := h.identity.Authenticate(c.Request.Context(), token.(string)); err != nil {
+			if _, err := h.Identity.Authenticate(c.Request.Context(), token.(string)); err != nil {
 				return
 			}
 			_, _ = fmt.Fprint(c.Writer, ": heartbeat\n\n")
