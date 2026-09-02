@@ -26,10 +26,6 @@ type ruleWriteRequest struct {
 	NoResolve  bool                     `json:"noResolve"`
 }
 
-type policiesResponse struct {
-	Items []servicepolicy.Policy `json:"items"`
-}
-
 func (h *handler) listPolicyRuleSets(c *gin.Context) {
 	httpx.OK(c, itemsResponse[servicepolicy.RuleSetOption]{Items: servicepolicy.RuleSetOptions()})
 }
