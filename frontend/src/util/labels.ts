@@ -21,7 +21,9 @@ export const resourceTypeLabels: Record<string, string> = {
   system: '系统',
   system_upgrade: '面板升级',
   database: '数据库',
-  control_plane: '控制面'
+  control_plane: '控制面',
+  singbox_rule_set: '服务器规则集',
+  argo_tunnel: 'Argo 隧道'
 };
 
 const auditSegmentLabels: Record<string, string> = {
@@ -62,7 +64,14 @@ const auditSegmentLabels: Record<string, string> = {
   config: '配置',
   connection: '连接',
   outbound: '出站',
-  secret: '密钥'
+  secret: '密钥',
+  argo: 'Argo',
+  tunnel: '隧道',
+  'route-rule': '分流规则',
+  'rule-set': '规则集',
+  'batch-status': '批量状态',
+  acme: 'ACME',
+  self_signed: '自签'
 };
 
 const auditActionOverrides: Record<string, string> = {
@@ -149,3 +158,37 @@ export function configStatusLabel(value: string): string {
 export function kernelStatusLabel(value: string): string {
   return kernelStatusLabels[value] || value;
 }
+
+// 审计过滤下拉的值清单，对齐 api/audit_actions.go 注册表（契约：只增不改，
+// 新增动作时同步这里）。user.device.list 是已废弃的读操作审计，不再产生
+// 新记录，不进下拉。
+export const auditResourceTypeValues = [
+  'account', 'session', 'user', 'protocol', 'certificate', 'policy', 'rule',
+  'singbox_config', 'singbox_outbound', 'singbox_route_rule', 'singbox_rule_set',
+  'singbox_runtime', 'singbox_connection', 'argo_tunnel', 'system_upgrade', 'alert'
+];
+
+export const auditActionValues = [
+  'setup.admin.initialize',
+  'auth.login', 'auth.logout', 'auth.password.change',
+  'user.create', 'user.update', 'user.delete', 'user.batch-status',
+  'user.traffic.reset', 'user.traffic.adjust', 'user.quota.adjust',
+  'user.subscription.rotate',
+  'user.device.update', 'user.device.delete', 'user.device.rotate',
+  'protocol.create', 'protocol.update', 'protocol.delete', 'protocol.clone', 'protocol.secret.rotate',
+  'certificate.create', 'certificate.update', 'certificate.delete',
+  'certificate.self_signed.create', 'certificate.self_signed.regenerate',
+  'certificate.acme.create', 'certificate.acme.renew',
+  'policy.create', 'policy.update', 'policy.delete', 'policy.clone',
+  'rule.create', 'rule.update', 'rule.delete', 'rule.order',
+  'singbox.config.update',
+  'singbox.outbound.create', 'singbox.outbound.update', 'singbox.outbound.delete',
+  'singbox.route-rule.create', 'singbox.route-rule.update', 'singbox.route-rule.delete', 'singbox.route-rule.order',
+  'singbox.rule-set.create', 'singbox.rule-set.update', 'singbox.rule-set.delete',
+  'singbox.runtime.check', 'singbox.runtime.reconcile', 'singbox.runtime.restart',
+  'singbox.connection.close',
+  'argo.tunnel.create', 'argo.tunnel.update', 'argo.tunnel.delete', 'argo.tunnel.restart',
+  'runtime.sync',
+  'system.upgrade.check', 'system.upgrade.start',
+  'alert.acknowledge'
+];
