@@ -133,35 +133,22 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 	if _, err := tx.ExecContext(ctx, dropAgentSchema); err != nil {
 		return fmt.Errorf("移除旧版 agent schema: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx,
-		`INSERT OR IGNORE INTO schema_versions (version, applied_at) VALUES (?, ?)`,
-		identitySchemaVersion, time.Now().Unix(),
-	); err != nil {
-		return fmt.Errorf("记录 schema 版本: %w", err)
-	}
-	if _, err := tx.ExecContext(ctx,
-		`INSERT OR IGNORE INTO schema_versions (version, applied_at) VALUES (?, ?)`,
-		resource.SchemaVersion, time.Now().Unix(),
-	); err != nil {
-		return fmt.Errorf("记录 resource schema 版本: %w", err)
-	}
-	if _, err := tx.ExecContext(ctx,
-		`INSERT OR IGNORE INTO schema_versions (version, applied_at) VALUES (?, ?)`,
-		traffic.SchemaVersion, time.Now().Unix(),
-	); err != nil {
-		return fmt.Errorf("记录 traffic schema 版本: %w", err)
-	}
-	if _, err := tx.ExecContext(ctx,
-		`INSERT OR IGNORE INTO schema_versions (version, applied_at) VALUES (?, ?)`,
-		events.SchemaVersion, time.Now().Unix(),
-	); err != nil {
-		return fmt.Errorf("记录 event schema 版本: %w", err)
-	}
-	if _, err := tx.ExecContext(ctx,
-		`INSERT OR IGNORE INTO schema_versions (version, applied_at) VALUES (?, ?)`,
-		observability.SchemaVersion, time.Now().Unix(),
-	); err != nil {
-		return fmt.Errorf("记录 observability schema 版本: %w", err)
+	for _, entry := range []struct {
+		version int
+		label   string
+	}{
+		{identitySchemaVersion, "schema"},
+		{resource.SchemaVersion, "resource schema"},
+		{traffic.SchemaVersion, "traffic schema"},
+		{events.SchemaVersion, "event schema"},
+		{observability.SchemaVersion, "observability schema"},
+	} {
+		if _, err := tx.ExecContext(ctx,
+			`INSERT OR IGNORE INTO schema_versions (version, applied_at) VALUES (?, ?)`,
+			entry.version, time.Now().Unix(),
+		); err != nil {
+			return fmt.Errorf("记录 %s 版本: %w", entry.label, err)
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("提交迁移: %w", err)
@@ -233,13 +220,6 @@ var defaultRuleSets = func() []struct {
 // dropLegacyRuntimeSchema clears retired template and release data before
 // applying the current runtime synchronization schema.
 func dropLegacyRuntimeSchema(ctx context.Context, tx *sql.Tx) error {
-	var exists bool
-	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name IN ('templates', 'releases'))`).Scan(&exists); err != nil {
-		return err
-	}
-	if !exists {
-		return nil
-	}
 	_, err := tx.ExecContext(ctx, `
 DROP TABLE IF EXISTS release_artifacts;
 DROP TABLE IF EXISTS releases;
@@ -250,17 +230,17 @@ DROP TABLE IF EXISTS templates;
 }
 
 func resetManagedSingBoxConfig(ctx context.Context, tx *sql.Tx) error {
-	var columnCount int
-	if err := tx.QueryRowContext(ctx, `SELECT COUNT(1) FROM pragma_table_info('singbox_config') WHERE name='clash_api_secret_ciphertext'`).Scan(&columnCount); err != nil {
+	hasColumn, err := tableHasColumn(ctx, tx, "singbox_config", "clash_api_secret_ciphertext")
+	if err != nil {
 		return err
 	}
-	if columnCount == 0 {
+	if !hasColumn {
 		if _, err := tx.ExecContext(ctx, `ALTER TABLE singbox_config ADD COLUMN clash_api_secret_ciphertext BLOB`); err != nil {
 			return err
 		}
 	}
 	var applied int
-	err := tx.QueryRowContext(ctx, `SELECT COUNT(1) FROM schema_versions WHERE version=?`, resource.SchemaVersion).Scan(&applied)
+	err = tx.QueryRowContext(ctx, `SELECT COUNT(1) FROM schema_versions WHERE version=?`, resource.SchemaVersion).Scan(&applied)
 	if err != nil || applied > 0 {
 		return err
 	}
@@ -338,11 +318,11 @@ func tableHasColumn(ctx context.Context, tx *sql.Tx, table, column string) (bool
 // manually managed devices (including the default device, whose token doubles
 // as the user-level link), so the uniqueness guard only covers auto devices.
 func migrateDeviceUAKey(ctx context.Context, tx *sql.Tx) error {
-	var columnCount int
-	if err := tx.QueryRowContext(ctx, `SELECT COUNT(1) FROM pragma_table_info('devices') WHERE name='ua_key'`).Scan(&columnCount); err != nil {
+	hasColumn, err := tableHasColumn(ctx, tx, "devices", "ua_key")
+	if err != nil {
 		return err
 	}
-	if columnCount == 0 {
+	if !hasColumn {
 		if _, err := tx.ExecContext(ctx, `ALTER TABLE devices ADD COLUMN ua_key TEXT NOT NULL DEFAULT ''`); err != nil {
 			return err
 		}
@@ -418,11 +398,11 @@ func migrateDeviceSourceIP(ctx context.Context, tx *sql.Tx) error {
 // the outbound table. SOCKS rows keep using the legacy columns; WARP rows
 // store their wireguard parameters (including the private key) encrypted here.
 func migrateOutboundSettings(ctx context.Context, tx *sql.Tx) error {
-	var columnCount int
-	if err := tx.QueryRowContext(ctx, `SELECT COUNT(1) FROM pragma_table_info('singbox_outbounds') WHERE name='settings_json'`).Scan(&columnCount); err != nil {
+	hasColumn, err := tableHasColumn(ctx, tx, "singbox_outbounds", "settings_json")
+	if err != nil {
 		return err
 	}
-	if columnCount == 0 {
+	if !hasColumn {
 		if _, err := tx.ExecContext(ctx, `ALTER TABLE singbox_outbounds ADD COLUMN settings_json BLOB`); err != nil {
 			return err
 		}

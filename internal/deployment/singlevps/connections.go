@@ -67,19 +67,26 @@ func clashInboundTag(inbound, connectionType string) string {
 	return ""
 }
 
+// clashRequest 构造带 Bearer 鉴权的本地 Clash API 请求；每次调用使用独立
+// http.Client（与既有行为一致，不引入跨调用连接复用）。请求构造失败与
+// 发送失败统一返回 error，由调用方按各自语义翻译。
+func clashRequest(ctx context.Context, endpoint, secret, method, path string) (*http.Response, error) {
+	request, err := http.NewRequestWithContext(ctx, method, strings.TrimRight(endpoint, "/")+path, nil)
+	if err != nil {
+		return nil, err
+	}
+	if secret != "" {
+		request.Header.Set("Authorization", "Bearer "+secret)
+	}
+	return (&http.Client{Timeout: 5 * time.Second}).Do(request)
+}
+
 func (s *SyncService) Connections(ctx context.Context) (ConnectionsResult, error) {
 	endpoint, secret, err := s.clashAPI(ctx)
 	if err != nil {
 		return ConnectionsResult{Available: false, Items: []Connection{}, Reason: err.Error()}, nil
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(endpoint, "/")+"/connections", nil)
-	if err != nil {
-		return ConnectionsResult{}, err
-	}
-	if secret != "" {
-		request.Header.Set("Authorization", "Bearer "+secret)
-	}
-	response, err := (&http.Client{Timeout: 5 * time.Second}).Do(request)
+	response, err := clashRequest(ctx, endpoint, secret, http.MethodGet, "/connections")
 	if err != nil {
 		return ConnectionsResult{Available: false, Items: []Connection{}, Reason: "无法连接本地 Clash API"}, nil
 	}
@@ -112,14 +119,7 @@ func (s *SyncService) CloseConnection(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodDelete, strings.TrimRight(endpoint, "/")+"/connections/"+url.PathEscape(id), nil)
-	if err != nil {
-		return err
-	}
-	if secret != "" {
-		request.Header.Set("Authorization", "Bearer "+secret)
-	}
-	response, err := (&http.Client{Timeout: 5 * time.Second}).Do(request)
+	response, err := clashRequest(ctx, endpoint, secret, http.MethodDelete, "/connections/"+url.PathEscape(id))
 	if err != nil {
 		return fmt.Errorf("关闭 Clash 连接: %w", err)
 	}
@@ -142,14 +142,7 @@ func (s *SyncService) VerifyKernel(ctx context.Context) (bool, error) {
 	if err != nil {
 		return false, nil
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(endpoint, "/")+"/version", nil)
-	if err != nil {
-		return true, err
-	}
-	if secret != "" {
-		request.Header.Set("Authorization", "Bearer "+secret)
-	}
-	response, err := (&http.Client{Timeout: 5 * time.Second}).Do(request)
+	response, err := clashRequest(ctx, endpoint, secret, http.MethodGet, "/version")
 	if err != nil {
 		return true, fmt.Errorf("探测 Clash API 失败: %w", err)
 	}

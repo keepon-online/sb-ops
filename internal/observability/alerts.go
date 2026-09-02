@@ -218,7 +218,7 @@ func getAlertTx(ctx context.Context, tx *sql.Tx, id string) (Alert, error) {
 	return scanAlert(tx.QueryRowContext(ctx, `SELECT id,fingerprint,type,severity,resource_type,resource_id,message,status,first_seen_at,last_seen_at,acknowledged_at,acknowledged_by,resolved_at FROM operational_alerts WHERE id=?`, id))
 }
 
-func scanAlert(row interface{ Scan(...any) error }) (Alert, error) {
+func scanAlert(row common.Scanner) (Alert, error) {
 	var value Alert
 	var first, last common.Time
 	var acknowledgedAt, resolvedAt common.Time

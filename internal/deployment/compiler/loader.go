@@ -27,6 +27,31 @@ type Deployment struct {
 	AllowPrivateAddress bool
 }
 
+// loadAssignments 装载 user→resource 两列分配表（user_protocols 与
+// user_policies 的同构查询）。
+func loadAssignments(ctx context.Context, db *sql.DB, query string) (map[string]map[string]bool, error) {
+	assignments := map[string]map[string]bool{}
+	rows, err := db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var owner, resource string
+		if err := rows.Scan(&owner, &resource); err != nil {
+			return nil, err
+		}
+		if assignments[owner] == nil {
+			assignments[owner] = map[string]bool{}
+		}
+		assignments[owner][resource] = true
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return assignments, nil
+}
+
 func LoadInput(ctx context.Context, db *sql.DB, deployment Deployment, certificateDirs ...string) (Input, error) {
 	certificateDir := ""
 	if len(certificateDirs) > 0 {
@@ -47,23 +72,8 @@ func LoadInput(ctx context.Context, db *sql.DB, deployment Deployment, certifica
 	if err != nil {
 		return Input{}, err
 	}
-	assignments := map[string]map[string]bool{}
-	rows, err := db.QueryContext(ctx, `SELECT user_id,protocol_id FROM user_protocols ORDER BY user_id,protocol_id`)
+	assignments, err := loadAssignments(ctx, db, `SELECT user_id,protocol_id FROM user_protocols ORDER BY user_id,protocol_id`)
 	if err != nil {
-		return Input{}, err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var userID, protocolID string
-		if err := rows.Scan(&userID, &protocolID); err != nil {
-			return Input{}, err
-		}
-		if assignments[userID] == nil {
-			assignments[userID] = map[string]bool{}
-		}
-		assignments[userID][protocolID] = true
-	}
-	if err := rows.Err(); err != nil {
 		return Input{}, err
 	}
 	policyStore := servicepolicy.NewStore(db)
@@ -79,23 +89,8 @@ func LoadInput(ctx context.Context, db *sql.DB, deployment Deployment, certifica
 		}
 		policyRules[policy.ID] = rules
 	}
-	userPolicies := map[string]map[string]bool{}
-	policyRows, err := db.QueryContext(ctx, `SELECT user_id,policy_id FROM user_policies ORDER BY user_id,policy_id`)
+	userPolicies, err := loadAssignments(ctx, db, `SELECT user_id,policy_id FROM user_policies ORDER BY user_id,policy_id`)
 	if err != nil {
-		return Input{}, err
-	}
-	defer policyRows.Close()
-	for policyRows.Next() {
-		var userID, policyID string
-		if err := policyRows.Scan(&userID, &policyID); err != nil {
-			return Input{}, err
-		}
-		if userPolicies[userID] == nil {
-			userPolicies[userID] = map[string]bool{}
-		}
-		userPolicies[userID][policyID] = true
-	}
-	if err := policyRows.Err(); err != nil {
 		return Input{}, err
 	}
 	certificatePaths, err := writeCertificatePaths(ctx, db, certificateDir, protocols)

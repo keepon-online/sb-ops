@@ -14,6 +14,11 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// realityOpts 生成 Clash 订阅的 reality-opts 片段（vless/trojan 共用）。
+func realityOpts(protocol serviceprotocol.Protocol) map[string]any {
+	return map[string]any{"public-key": setting(protocol, "realityPublicKey"), "short-id": setting(protocol, "shortId")}
+}
+
 func clashSubscription(input Input, protocols []serviceprotocol.Protocol, user serviceuser.ArtifactUser, device serviceuser.ArtifactDevice) ([]byte, error) {
 	proxies := make([]any, 0, len(protocols))
 	names := make([]string, 0, len(protocols))
@@ -48,7 +53,7 @@ func clashSubscription(input Input, protocols []serviceprotocol.Protocol, user s
 				proxy["flow"] = "xtls-rprx-vision"
 			}
 			if setting(protocol, "tlsMode") == "reality" {
-				proxy["reality-opts"] = map[string]any{"public-key": setting(protocol, "realityPublicKey"), "short-id": setting(protocol, "shortId")}
+				proxy["reality-opts"] = realityOpts(protocol)
 			}
 			proxies = append(proxies, proxy)
 		case serviceprotocol.TypeVMess:
@@ -91,7 +96,7 @@ func clashSubscription(input Input, protocols []serviceprotocol.Protocol, user s
 				"client-fingerprint": "chrome",
 			}
 			if setting(protocol, "tlsMode") == "reality" {
-				proxy["reality-opts"] = map[string]any{"public-key": setting(protocol, "realityPublicKey"), "short-id": setting(protocol, "shortId")}
+				proxy["reality-opts"] = realityOpts(protocol)
 			} else {
 				proxy["skip-cert-verify"] = skipCertVerify(setting(protocol, "serverName"))
 			}

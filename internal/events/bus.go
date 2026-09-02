@@ -139,7 +139,7 @@ func (b *Bus) Shutdown() {
 	}
 }
 
-func scanEvent(row interface{ Scan(...any) error }) (Event, error) {
+func scanEvent(row common.Scanner) (Event, error) {
 	var value Event
 	var payload string
 	var created common.Time

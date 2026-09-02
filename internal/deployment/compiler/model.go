@@ -85,10 +85,8 @@ func (i Input) Validate() error {
 		case serviceprotocol.TypeVLESS:
 			switch setting(value, "tlsMode") {
 			case "reality":
-				for _, key := range []string{"serverName", "realityPrivateKey", "realityPublicKey", "shortId"} {
-					if setting(value, key) == "" {
-						return fmt.Errorf("协议 %s 缺少 %s", value.Name, key)
-					}
+				if err := requireRealityKeys(value); err != nil {
+					return err
 				}
 				if port := numberSetting(value, "handshakeServerPort", 443); port < 1 || port > 65535 {
 					return fmt.Errorf("协议 %s 的 Reality 回退端口无效", value.Name)
@@ -120,10 +118,8 @@ func (i Input) Validate() error {
 		case serviceprotocol.TypeTrojan:
 			switch setting(value, "tlsMode") {
 			case "reality":
-				for _, key := range []string{"serverName", "realityPrivateKey", "realityPublicKey", "shortId"} {
-					if setting(value, key) == "" {
-						return fmt.Errorf("协议 %s 缺少 %s", value.Name, key)
-					}
+				if err := requireRealityKeys(value); err != nil {
+					return err
 				}
 			case "certificate":
 				if err := i.validateTLSPaths(value); err != nil {
@@ -293,6 +289,16 @@ func validAddress(value string) bool {
 		return address.Is4() && !address.IsUnspecified()
 	}
 	return len(value) <= 253 && hostnamePattern.MatchString(value)
+}
+
+// requireRealityKeys 校验 Reality 协议的必填设置项（vless/trojan 共用）。
+func requireRealityKeys(value serviceprotocol.Protocol) error {
+	for _, key := range []string{"serverName", "realityPrivateKey", "realityPublicKey", "shortId"} {
+		if setting(value, key) == "" {
+			return fmt.Errorf("协议 %s 缺少 %s", value.Name, key)
+		}
+	}
+	return nil
 }
 
 func setting(value serviceprotocol.Protocol, key string) string {

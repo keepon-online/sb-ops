@@ -284,10 +284,24 @@ func singBoxExperimental(config servicesingbox.Config, clashAPISecret string, us
 		cachePath = "cache.db"
 	}
 	value["cache_file"] = map[string]any{"enabled": true, "path": cachePath}
-	if len(value) == 0 {
-		return nil
-	}
 	return value
+}
+
+// tlsOrReality 生成 vless/trojan 共用的入站 TLS 配置：证书模式指向面板
+// 管理的证书文件，否则构造 Reality（伪装站即 serverName）。
+func tlsOrReality(protocol serviceprotocol.Protocol, paths CertificatePaths) map[string]any {
+	tls := map[string]any{"enabled": true, "server_name": setting(protocol, "serverName")}
+	if setting(protocol, "tlsMode") == "certificate" {
+		tls["certificate_path"] = paths.CertificatePath
+		tls["key_path"] = paths.KeyPath
+	} else {
+		tls["reality"] = map[string]any{
+			"enabled":     true,
+			"handshake":   map[string]any{"server": setting(protocol, "serverName"), "server_port": numberSetting(protocol, "handshakeServerPort", 443)},
+			"private_key": setting(protocol, "realityPrivateKey"), "short_id": []string{setting(protocol, "shortId")},
+		}
+	}
+	return tls
 }
 
 func vlessInbound(protocol serviceprotocol.Protocol, devices []serviceuser.ArtifactDevice, paths CertificatePaths) map[string]any {
@@ -303,17 +317,7 @@ func vlessInbound(protocol serviceprotocol.Protocol, devices []serviceuser.Artif
 		}
 		entries = append(entries, entry)
 	}
-	tls := map[string]any{"enabled": true, "server_name": setting(protocol, "serverName")}
-	if setting(protocol, "tlsMode") == "certificate" {
-		tls["certificate_path"] = paths.CertificatePath
-		tls["key_path"] = paths.KeyPath
-	} else {
-		tls["reality"] = map[string]any{
-			"enabled":     true,
-			"handshake":   map[string]any{"server": setting(protocol, "serverName"), "server_port": numberSetting(protocol, "handshakeServerPort", 443)},
-			"private_key": setting(protocol, "realityPrivateKey"), "short_id": []string{setting(protocol, "shortId")},
-		}
-	}
+	tls := tlsOrReality(protocol, paths)
 	value := map[string]any{
 		"type": "vless", "tag": protocol.InboundTag(), "listen": protocol.Listen, "listen_port": protocol.ListenPort,
 		"users": entries, "tls": tls,
@@ -434,17 +438,7 @@ func trojanInbound(protocol serviceprotocol.Protocol, devices []serviceuser.Arti
 	for _, device := range devices {
 		entries = append(entries, map[string]any{"name": device.DeviceID, "password": device.Password})
 	}
-	tls := map[string]any{"enabled": true, "server_name": setting(protocol, "serverName")}
-	if setting(protocol, "tlsMode") == "certificate" {
-		tls["certificate_path"] = paths.CertificatePath
-		tls["key_path"] = paths.KeyPath
-	} else {
-		tls["reality"] = map[string]any{
-			"enabled":     true,
-			"handshake":   map[string]any{"server": setting(protocol, "serverName"), "server_port": numberSetting(protocol, "handshakeServerPort", 443)},
-			"private_key": setting(protocol, "realityPrivateKey"), "short_id": []string{setting(protocol, "shortId")},
-		}
-	}
+	tls := tlsOrReality(protocol, paths)
 	return map[string]any{
 		"type": "trojan", "tag": protocol.InboundTag(), "listen": protocol.Listen, "listen_port": protocol.ListenPort,
 		"users": entries, "tls": tls,
