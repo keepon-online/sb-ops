@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	controlaudit "github.com/keepon-online/sb-ops/internal/audit"
 	"strings"
 	"time"
 
@@ -64,6 +65,9 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 
 	if _, err := tx.ExecContext(ctx, identitySchema); err != nil {
 		return fmt.Errorf("应用 identity schema: %w", err)
+	}
+	if err := resetAuditLogs(ctx, tx); err != nil {
+		return fmt.Errorf("重建审计日志表: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, dropRbacSchema); err != nil {
 		return fmt.Errorf("删除 RBAC 旧表失败: %w", err)
@@ -142,6 +146,7 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 		{traffic.SchemaVersion, "traffic schema"},
 		{events.SchemaVersion, "event schema"},
 		{observability.SchemaVersion, "observability schema"},
+		{controlaudit.SchemaVersion, "audit schema"},
 	} {
 		if _, err := tx.ExecContext(ctx,
 			`INSERT OR IGNORE INTO schema_versions (version, applied_at) VALUES (?, ?)`,
@@ -305,6 +310,24 @@ func tableExists(ctx context.Context, tx *sql.Tx, table string) (bool, error) {
 	var count int
 	err := tx.QueryRowContext(ctx, `SELECT COUNT(1) FROM sqlite_master WHERE type='table' AND name=?`, table).Scan(&count)
 	return count > 0, err
+}
+
+// resetAuditLogs 把 audit_logs 的所有权迁入 internal/audit 并做一次性破坏
+// 重建：清掉旧版噪音（成功登录、runtime.sync、已废弃读操作的审计记录）；
+// schema_versions 已记录本版本后跳过，正常启动不再触发。
+func resetAuditLogs(ctx context.Context, tx *sql.Tx) error {
+	var recorded int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(1) FROM schema_versions WHERE version=?`, controlaudit.SchemaVersion).Scan(&recorded); err != nil {
+		return err
+	}
+	if recorded > 0 {
+		return nil
+	}
+	if _, err := tx.ExecContext(ctx, `DROP TABLE IF EXISTS audit_logs`); err != nil {
+		return err
+	}
+	_, err := tx.ExecContext(ctx, controlaudit.Schema)
+	return err
 }
 
 func tableHasColumn(ctx context.Context, tx *sql.Tx, table, column string) (bool, error) {
@@ -639,22 +662,4 @@ CREATE TABLE IF NOT EXISTS sessions (
 
 CREATE INDEX IF NOT EXISTS idx_sessions_account_active
   ON sessions (account_id, revoked_at, expires_at);
-
-CREATE TABLE IF NOT EXISTS audit_logs (
-  id TEXT PRIMARY KEY,
-  actor_id TEXT,
-  action TEXT NOT NULL,
-  resource_type TEXT NOT NULL,
-  resource_id TEXT NOT NULL DEFAULT '',
-  result TEXT NOT NULL,
-  request_id TEXT NOT NULL DEFAULT '',
-  client_ip TEXT NOT NULL DEFAULT '',
-  details_json TEXT NOT NULL DEFAULT '{}',
-  created_at INTEGER NOT NULL,
-  FOREIGN KEY (actor_id) REFERENCES accounts(id) ON DELETE SET NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs (created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_audit_logs_actor_created ON audit_logs (actor_id, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_audit_logs_resource_created ON audit_logs (resource_type, resource_id, created_at DESC);
 `

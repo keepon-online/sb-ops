@@ -22,16 +22,3 @@ type Session struct {
 	RevokedAt *time.Time
 	CreatedAt time.Time
 }
-
-type AuditLog struct {
-	ID           string
-	ActorID      *string
-	Action       string
-	ResourceType string
-	ResourceID   string
-	Result       string
-	RequestID    string
-	ClientIP     string
-	DetailsJSON  string
-	CreatedAt    time.Time
-}

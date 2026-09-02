@@ -13,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	controlaudit "github.com/keepon-online/sb-ops/internal/audit"
 	"github.com/keepon-online/sb-ops/internal/httpx"
 	"github.com/keepon-online/sb-ops/internal/identity"
 	common "github.com/keepon-online/sb-ops/internal/service/common"
@@ -60,7 +61,7 @@ func (h *handler) auditChanges(c *gin.Context, action, resourceType, resourceID 
 }
 
 func (h *handler) appendAuditLog(c *gin.Context, action, resourceType, resourceID, result, detailsJSON string) {
-	if h.Store == nil {
+	if h.AuditLogs == nil {
 		return
 	}
 	// 审计写库剥离请求取消：客户端断开后（同步收尾阶段常见）审计仍必须
@@ -71,7 +72,7 @@ func (h *handler) appendAuditLog(c *gin.Context, action, resourceType, resourceI
 		principal := value.(identity.Principal)
 		actorID = &principal.AccountID
 	}
-	if err := h.Store.AppendAuditLog(auditCtx, identity.AuditLog{
+	if err := h.AuditLogs.Append(auditCtx, controlaudit.Record{
 		ID: uuid.NewString(), ActorID: actorID, Action: action,
 		ResourceType: resourceType, ResourceID: resourceID, Result: result,
 		RequestID: httpx.RequestID(c), ClientIP: clientAddress(c), DetailsJSON: detailsJSON,

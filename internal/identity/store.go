@@ -202,22 +202,3 @@ DELETE FROM sessions WHERE expires_at<? OR (revoked_at IS NOT NULL AND revoked_a
 	removed, _ := result.RowsAffected()
 	return removed, nil
 }
-
-func (s *Store) AppendAuditLog(ctx context.Context, entry AuditLog) error {
-	_, err := s.db.ExecContext(ctx, `
-INSERT INTO audit_logs (
-  id, actor_id, action, resource_type, resource_id, result,
-  request_id, client_ip, details_json, created_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		entry.ID, optionalString(entry.ActorID), entry.Action, entry.ResourceType, entry.ResourceID,
-		entry.Result, entry.RequestID, entry.ClientIP, entry.DetailsJSON, common.UnixTime(entry.CreatedAt),
-	)
-	return err
-}
-
-func optionalString(value *string) any {
-	if value == nil {
-		return nil
-	}
-	return *value
-}
