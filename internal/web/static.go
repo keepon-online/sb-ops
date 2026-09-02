@@ -21,8 +21,7 @@ type FrontendAssets interface {
 func registerStaticRoutes(router *gin.Engine, assets FrontendAssets) {
 	router.NoRoute(func(c *gin.Context) {
 		requestPath := c.Request.URL.Path
-		if requestPath == "/api" || strings.HasPrefix(requestPath, "/api/") ||
-			requestPath == "/agent" || strings.HasPrefix(requestPath, "/agent/") {
+		if requestPath == "/api" || strings.HasPrefix(requestPath, "/api/") {
 			httpx.Error(c, stdhttp.StatusNotFound, httpx.CodeNotFound, "接口不存在", nil)
 			return
 		}

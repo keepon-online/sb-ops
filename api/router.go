@@ -1,30 +1,17 @@
 package api
 
 import (
-	"context"
-	"database/sql"
-	"encoding/json"
-	"errors"
-	"log/slog"
-	"net"
-	"net/http"
-	"strings"
-	"time"
-
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	controlaudit "github.com/keepon-online/sb-ops/internal/audit"
 	"github.com/keepon-online/sb-ops/internal/config"
 	deployment "github.com/keepon-online/sb-ops/internal/deployment/singlevps"
 	controlevents "github.com/keepon-online/sb-ops/internal/events"
-	"github.com/keepon-online/sb-ops/internal/httpx"
 	"github.com/keepon-online/sb-ops/internal/identity"
 	controlmonitor "github.com/keepon-online/sb-ops/internal/monitor"
 	controlobservability "github.com/keepon-online/sb-ops/internal/observability"
 	controloverview "github.com/keepon-online/sb-ops/internal/overview"
 	serviceargo "github.com/keepon-online/sb-ops/internal/service/argo"
 	servicecertificate "github.com/keepon-online/sb-ops/internal/service/certificate"
-	common "github.com/keepon-online/sb-ops/internal/service/common"
 	servicepolicy "github.com/keepon-online/sb-ops/internal/service/policy"
 	serviceprotocol "github.com/keepon-online/sb-ops/internal/service/protocol"
 	serviceshare "github.com/keepon-online/sb-ops/internal/service/share"
@@ -100,9 +87,8 @@ func RegisterRoutes(router *gin.Engine, dependencies Dependencies) {
 		monitor: dependencies.Monitor,
 		config:  configProvider,
 	}
-	if h.share != nil {
-		router.GET("/subscribe/:token/:format", h.downloadSubscription)
-	}
+	h.registerPublicRoutes(router)
+
 	api := router.Group("/api/v1")
 	api.GET("/setup/status", h.setupStatus)
 	api.POST("/setup/admin", h.initializeAdmin)
@@ -258,132 +244,11 @@ func RegisterRoutes(router *gin.Engine, dependencies Dependencies) {
 	}
 }
 
-func (h *handler) authenticate() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		token := bearerToken(c.GetHeader("Authorization"))
-		principal, err := h.identity.Authenticate(c.Request.Context(), token)
-		if err != nil {
-			httpx.Error(c, http.StatusUnauthorized, httpx.CodeUnauthorized, "请先登录", nil)
-			return
-		}
-		c.Set(principalKey, principal)
-		c.Set(tokenKey, token)
-		c.Next()
-	}
-}
-
-func (h *handler) audit(c *gin.Context, action, resourceType, resourceID, result string, errDetail ...error) {
-	detailsJSON := "{}"
-	if len(errDetail) > 0 && errDetail[0] != nil {
-		if details := marshalErrorDetails(errDetail[0]); details != "" {
-			detailsJSON = details
-		}
-	}
-	h.appendAuditLog(c, action, resourceType, resourceID, result, detailsJSON)
-}
-
-// auditChanges 落一条带字段级 diff 的审计：details 形如
-// {"changes":{"defaultAction":{"old":"direct","new":"proxy"}}}，让更新类
-// 操作可追溯「改了什么」——此前成功审计只留 {}，排查只能靠猜。
-func (h *handler) auditChanges(c *gin.Context, action, resourceType, resourceID string, changes map[string]any) {
-	payload, err := json.Marshal(map[string]any{"changes": changes})
-	if err != nil {
-		h.appendAuditLog(c, action, resourceType, resourceID, resultSuccess, "{}")
+// registerPublicRoutes 注册无需管理员认证的公开路由。订阅拉取是全项目
+// 唯一一条匿名动态路由——新增公开路由前先评估攻击面（限速、脱敏、枚举）。
+func (h *handler) registerPublicRoutes(router *gin.Engine) {
+	if h.share == nil {
 		return
 	}
-	h.appendAuditLog(c, action, resourceType, resourceID, resultSuccess, string(payload))
-}
-
-func (h *handler) appendAuditLog(c *gin.Context, action, resourceType, resourceID, result, detailsJSON string) {
-	if h.store == nil {
-		return
-	}
-	// 审计写库剥离请求取消：客户端断开后（同步收尾阶段常见）审计仍必须
-	// 落盘，否则合规追溯静默失效。
-	auditCtx := context.WithoutCancel(c.Request.Context())
-	var actorID *string
-	if value, ok := c.Get(principalKey); ok {
-		principal := value.(identity.Principal)
-		actorID = &principal.AccountID
-	}
-	if err := h.store.AppendAuditLog(auditCtx, identity.AuditLog{
-		ID: uuid.NewString(), ActorID: actorID, Action: action,
-		ResourceType: resourceType, ResourceID: resourceID, Result: result,
-		RequestID: httpx.RequestID(c), ClientIP: clientAddress(c), DetailsJSON: detailsJSON,
-		CreatedAt: time.Now().UTC(),
-	}); err != nil {
-		// 审计写入在业务事务之外，失败不影响业务结果，但必须留痕，
-		// 否则合规追溯能力会静默失效。
-		slog.Error("写入审计日志失败",
-			"error", err, "action", action, "resourceType", resourceType,
-			"resourceId", resourceID, "requestId", httpx.RequestID(c),
-		)
-	}
-}
-
-func marshalErrorDetails(err error) string {
-	type fieldError struct {
-		Message string            `json:"message,omitempty"`
-		Fields  map[string]string `json:"fields,omitempty"`
-	}
-	var fe *common.ValidationError
-	if errors.As(err, &fe) {
-		b, _ := json.Marshal(fieldError{Message: err.Error(), Fields: fe.Fields})
-		return string(b)
-	}
-	if err.Error() != "" {
-		b, _ := json.Marshal(fieldError{Message: err.Error()})
-		return string(b)
-	}
-	return ""
-}
-
-func currentPrincipal(c *gin.Context) identity.Principal {
-	value, _ := c.Get(principalKey)
-	principal, _ := value.(identity.Principal)
-	return principal
-}
-
-func bearerToken(header string) string {
-	const prefix = "Bearer "
-	if !strings.HasPrefix(header, prefix) {
-		return ""
-	}
-	return strings.TrimSpace(strings.TrimPrefix(header, prefix))
-}
-
-func clientAddress(c *gin.Context) string {
-	host, _, err := net.SplitHostPort(strings.TrimSpace(c.Request.RemoteAddr))
-	if err == nil {
-		return host
-	}
-	return strings.TrimSpace(c.Request.RemoteAddr)
-}
-
-// writeInternalError 收敛 500 INTERNAL_ERROR 响应；message 描述失败的操作上下文。
-func writeInternalError(c *gin.Context, message string) {
-	httpx.Error(c, http.StatusInternalServerError, httpx.CodeInternalError, message, nil)
-}
-
-func writeIdentityError(c *gin.Context, err error) {
-	switch {
-	case errors.Is(err, identity.ErrInvalidCredentials):
-		httpx.Error(c, http.StatusUnauthorized, httpx.CodeInvalidCredentials, "用户名或密码错误", nil)
-	case errors.Is(err, identity.ErrUnauthorized):
-		httpx.Error(c, http.StatusUnauthorized, httpx.CodeUnauthorized, "请先登录", nil)
-	case errors.Is(err, identity.ErrRateLimited):
-		httpx.Error(c, http.StatusTooManyRequests, httpx.CodeRateLimited, "登录尝试过于频繁，请稍后再试", nil)
-	case errors.Is(err, identity.ErrPasswordPolicy):
-		httpx.Error(c, http.StatusBadRequest, httpx.CodePasswordPolicy, "密码不符合要求", map[string]string{"password": "至少 10 位且须包含字母和数字"})
-	case errors.Is(err, identity.ErrInvalidAccountInput):
-		httpx.Error(c, http.StatusBadRequest, httpx.CodeValidationFailed, "账号信息无效", nil)
-	case errors.Is(err, identity.ErrRevisionConflict):
-		httpx.Error(c, http.StatusConflict, httpx.CodeRevisionConflict, "资源已被修改", nil)
-	case errors.Is(err, sql.ErrNoRows):
-		httpx.Error(c, http.StatusNotFound, httpx.CodeNotFound, "资源不存在", nil)
-	case strings.Contains(strings.ToLower(err.Error()), "unique constraint"):
-		httpx.Error(c, http.StatusConflict, httpx.CodeUsernameConflict, "用户名已存在", map[string]string{"username": "已存在"})
-	default:
-		writeInternalError(c, "内部服务器错误")
-	}
+	router.GET("/subscribe/:token/:format", h.downloadSubscription)
 }
