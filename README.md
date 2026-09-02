@@ -61,7 +61,7 @@ make release VERSION=v2.0.0
 
 ## 运行
 
-复制并编辑 [`config.yaml`](config.yaml)，直接启动二进制（配置路径固定为工作目录下的 `config.yaml`，无命令行 flag、无环境变量覆盖）：
+复制 [`config.example.yaml`](config.example.yaml) 为工作目录下的 `config.yaml` 并按环境编辑（配置路径固定为工作目录下的 `config.yaml`，无命令行 flag、无环境变量覆盖；真实 `config.yaml` 已被 gitignore，不会进入仓库）：
 
 ```bash
 ./dist/sb-ops
@@ -123,6 +123,21 @@ make frontend-check
 ## 部署
 
 生产部署（VPS + Nginx 反代面板、协议端口直连）见 [`docs/deployment.md`](docs/deployment.md)。
+
+## 安全模型
+
+sb-ops 面向**个人自用**场景，以下均为有意的设计取舍而非缺陷，选型前请确认与你的场景匹配：
+
+- **单管理员、无 RBAC/多租户**：整个面板只有一个管理员账号，不存在多用户权限边界。不要把它当作面向不可信用户的多租户服务使用。
+- **单 VPS 单进程**：面板、内嵌内核与流量采集在同一进程，不支持多节点联邦；协议由内核直接监听公网端口。
+- **订阅链接即长期凭证**：掌握用户订阅 URL 即可获取其全部节点凭据，怀疑泄露时在面板轮换订阅 token；设备凭据可独立停用/轮换，设备上限 10 台/用户。
+- **面板必须置于 TLS 反代之后**：进程默认只监听 `127.0.0.1`，应按部署文档经 Nginx 等 TLS 反代对外；管理 API、订阅端点都不应明文暴露在公网。
+
+## 许可证
+
+Copyright (C) 2026 keepon-online
+
+本项目以 [GPL-3.0](LICENSE) 发布。项目以 Go 库形式链接 [sing-box](https://github.com/SagerNet/sing-box)（GPL-3.0）并内嵌于分发二进制，因此 sb-ops 整体采用 GPL 兼容许可证；二次分发时请一并遵守 GPL-3.0 的源码提供义务。
 
 ## 项目结构
 
