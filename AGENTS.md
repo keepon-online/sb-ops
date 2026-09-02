@@ -47,7 +47,7 @@ go test -tags=with_quic,with_utls,with_clash_api,with_v2ray_api,with_wireguard,w
 ## 数据库 / 迁移
 
 - SQLite（mattn/go-sqlite3），DSN 固定 `busy_timeout/foreign_keys/WAL`；打开后 `SetMaxOpenConns(1)`。
-- 迁移集中在 `internal/database/migrate.go`；schema 常量在各自包（`service/schema.go`、`traffic/schema.go`、`observability/schema.go`、`audit/schema.go`、`events/...`）。
+- 迁移集中在 `internal/database/migrate.go`；schema 常量在各自包（`service/schema.go`、`traffic/schema.go`、`observability/schema.go`、`audit/schema.go`、`events/...`）。**schema_versions 的 version 是全局编号**：新迁移取全局下一个空闲值（勿与其它包已记录的号共用——条件迁移判定会恒真导致迁移体永不执行，audit=1 撞 identity=1 即此坑）；改最大版本号时 `CurrentSchemaVersion` 必须同步（readiness 按 `MAX(version)==expected` 严格比较）。
 - 新增列/表用幂等 `ALTER TABLE` / `CREATE TABLE IF NOT EXISTS`，并在 `database_test.go` 补用例（含升级路径）。
 
 ## 契约与生成物
