@@ -87,17 +87,61 @@ $EDITOR config.yaml
 
 ## 配置参考
 
-| 段 | 键 | 说明 |
-|---|---|---|
-| `server` | `listen` / `data_dir` / `db_path` | 监听地址（默认 `127.0.0.1:8030`）、数据目录（默认 `./data`）、数据库路径 |
-| `logging` | `level` / `file_format` / `rotate_max_mb` / `rotate_backups` | 双 sink 日志（stdout + 文件轮转），改动需重启 |
-| `singbox` | `certificate_dir` | 生成证书材料的存放目录 |
-| `traffic` | `interval` / `retention_days` | 流量采集周期（默认 `1m`）、历史保留天数（默认 90，0 为永久） |
-| `deployment` | `public_address` / `tls_cert_path` / `tls_key_path` | 客户端连接的公网地址、可选外部 TLS 证书路径 |
-| `notifications` | `webhook_url` / `webhook_secret` / `telegram_bot_token` / `telegram_chat_id` | 告警外发（Webhook / Telegram，均选填） |
-| `updates` | `repo` / `token` | 面板自升级源（GitHub `owner/repo` 与读取用 PAT，选填，缺省即禁用；公开仓库 token 可留空） |
-| `panel` | `session_ttl` | 会话有效期（默认 `24h`） |
-| `development` | `allow_private_address` / `frontend_dev_proxy` | 允许私网地址作为公网地址（本地测试）、前端开发代理地址 |
+进程固定读取工作目录下的 `config.yaml`（无命令行 flag、无环境变量覆盖），未出现的键取默认值。全部键如下，可从 [`config.example.yaml`](config.example.yaml) 起步按需增删：
+
+```yaml
+server:
+  listen: "127.0.0.1:8030"        # 管理面板监听地址；生产保持只听本机，经 Nginx 反代
+  data_dir: "./data"              # 数据目录：SQLite、证书、运行时产物、日志都在此
+  db_path: ""                     # 数据库路径；留空 = <data_dir>/singbox-web.db
+  # —— HTTP / SQLite 调优项，一般无需修改 ——
+  # read_header_timeout: 10s
+  # read_timeout: 30s
+  # idle_timeout: 2m
+  # max_header_bytes: 1048576
+  # db_mmap_size: 268435456       # 256 MB
+  # db_synchronous: "NORMAL"
+
+logging:                          # 双 sink：stdout 彩色文本 + <data_dir>/logs 尺寸轮转；改动需重启
+  level: "info"                   # debug / info / warn / error
+  file_format: "text"             # 文件格式：text（无色可读）/ json
+  rotate_max_mb: 20               # 单文件超过该尺寸轮转
+  rotate_backups: 5               # 保留的历史份数
+
+singbox:
+  certificate_dir: ""             # 生成的证书材料目录；留空 = <data_dir>/runtime/certificates
+
+traffic:
+  interval: 1m                    # 流量采集周期
+  retention_days: 90              # 历史保留天数；0 = 永久保留
+
+deployment:
+  public_address: "203.0.113.10"  # 必改：客户端订阅里拨打的地址（公网 IPv4 或域名）
+  # tls_cert_path: ""             # 可选外部 TLS 证书；留空 = 面板生成的自签证书
+  # tls_key_path: ""
+
+panel:
+  session_ttl: 24h                # 管理员会话有效期
+
+# notifications:                  # 告警外发（如 traffic_stalled）；缺省即禁用、静默跳过
+#   webhook_url: ""
+#   webhook_secret: ""
+#   telegram_bot_token: ""
+#   telegram_chat_id: ""
+
+# acme:                           # 协议证书自动签发（DNS-01，目前支持 Cloudflare）
+#   email: "you@example.com"
+#   dns_provider: "cloudflare"    # 缺省即 cloudflare
+#   api_token: "<token>"
+
+# updates:                        # 面板自升级源；缺省即禁用，公开仓库 token 可留空
+#   repo: "<owner>/<repo>"
+#   token: "<PAT>"
+
+development:                      # 本地开发专用，生产配置不要出现
+  allow_private_address: false    # true = 允许私网/回环地址作为 public_address（局域网测试）
+  # frontend_dev_proxy: "http://127.0.0.1:5173"   # 前端 Vite 联调代理
+```
 
 > Clash API 与 V2Ray API 的地址与密钥由**面板管理**（「服务端配置 → 基础配置」），是单一事实来源：Clash API 用于实时连接观测，V2Ray API 用于按用户归因的流量采集。`config.yaml` 不包含这两类地址。
 
