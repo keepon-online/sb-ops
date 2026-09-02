@@ -265,7 +265,7 @@ printf '' | openssl s_client -connect panel.example.com:443 \
 
 ### 升级
 
-**推荐：面板自升级**。`config.yaml` 配置 `updates` 段（公开部署的 sb-ops 可不填 token），在「系统 → 系统升级」页一键完成：下载 → sha256 校验 → 备份 `.bak` → 原子替换 → 优雅重启。新版本起不来时手动回滚：
+**推荐：面板自升级**。`config.yaml` 配置 `updates` 段（公开部署的 sb-ops 可不填 token），在「系统 → 系统升级」页一键完成：下载 → sha256 校验 → 备份 `.bak` → 原子替换 → 优雅重启；下载或校验失败时保持旧版本运行并在页面展示原因。新版本起不来时手动回滚：
 
 ```bash
 sudo systemctl stop sb-ops
