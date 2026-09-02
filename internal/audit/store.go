@@ -67,13 +67,21 @@ func (s *Store) List(ctx context.Context, input Query) (Page, error) {
 	add("resource_type", input.Resource)
 	add("action", input.Action)
 	add("result", input.Result)
+	// from/to 是 RFC3339 日期时间，须转 unix 秒再与 INTEGER 列比较——
+	// 直接绑定字符串在 SQLite 跨类型比较中恒真，过滤从未生效过。
+	bound := func(column, value, op string) {
+		parsed, err := time.Parse(time.RFC3339, strings.TrimSpace(value))
+		if err != nil {
+			return
+		}
+		where = append(where, column+op+"?")
+		args = append(args, common.UnixTime(parsed))
+	}
 	if input.From != "" {
-		where = append(where, "created_at>=?")
-		args = append(args, input.From)
+		bound("created_at", input.From, ">=")
 	}
 	if input.To != "" {
-		where = append(where, "created_at<=?")
-		args = append(args, input.To)
+		bound("created_at", input.To, "<=")
 	}
 	filter := strings.Join(where, " AND ")
 	var total int

@@ -33,7 +33,6 @@ func (h *handler) synchronize(c *gin.Context, resourceType, resourceID string) b
 		httpx.Error(c, http.StatusConflict, httpx.CodeSyncFailed, "内嵌 sing-box 同步失败，上一份成功配置仍在运行", nil)
 		return false
 	}
-	h.audit(c, actionRuntimeSync, resourceType, resourceID, resultSuccess)
 	return true
 }
 

@@ -77,6 +77,31 @@ func TestStoreAppendAndList(t *testing.T) {
 	}
 }
 
+func TestStoreListFiltersByTimeRange(t *testing.T) {
+	store := newTestStore(t)
+	base := time.Date(2026, 9, 3, 9, 0, 0, 0, time.UTC)
+	for _, entry := range []Record{
+		{ID: "old-r", Action: "a", ResourceType: "t", Result: "success", CreatedAt: base.Add(-48 * time.Hour)},
+		{ID: "mid-r", Action: "a", ResourceType: "t", Result: "success", CreatedAt: base},
+		{ID: "new-r", Action: "a", ResourceType: "t", Result: "success", CreatedAt: base.Add(48 * time.Hour)},
+	} {
+		if err := store.Append(t.Context(), entry); err != nil {
+			t.Fatalf("Append: %v", err)
+		}
+	}
+	// from/to 为 RFC3339；历史上字符串直比 INTEGER 列恒真，此处锁定修复。
+	page, err := store.List(t.Context(), Query{
+		From: base.Add(-24 * time.Hour).Format(time.RFC3339),
+		To:   base.Add(24 * time.Hour).Format(time.RFC3339),
+	})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if page.Total != 1 || len(page.Items) != 1 || page.Items[0].ID != "mid-r" {
+		t.Fatalf("time filter total=%d items=%+v", page.Total, page.Items)
+	}
+}
+
 func TestStorePurgeBefore(t *testing.T) {
 	store := newTestStore(t)
 	now := time.Date(2026, 9, 3, 9, 0, 0, 0, time.UTC)
