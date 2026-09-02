@@ -23,7 +23,6 @@ import (
 	controlobservability "github.com/keepon-online/sb-ops/internal/observability"
 	controloverview "github.com/keepon-online/sb-ops/internal/overview"
 	argoruntime "github.com/keepon-online/sb-ops/internal/runtime/argo"
-	runtimebox "github.com/keepon-online/sb-ops/internal/runtime/singbox"
 	serviceargo "github.com/keepon-online/sb-ops/internal/service/argo"
 	servicecertificate "github.com/keepon-online/sb-ops/internal/service/certificate"
 	servicepolicy "github.com/keepon-online/sb-ops/internal/service/policy"
@@ -95,12 +94,12 @@ func newOps(db *sql.DB, sessionTTL time.Duration, apply deployment.ApplyConfig, 
 	if _, err := policies.EnsureDefaultClashPolicy(context.Background()); err != nil {
 		return nil, err
 	}
-	syncer := deployment.NewSyncService(db, apply, kernelLogSink(logger))
+	syncer := deployment.NewSyncService(db, apply, componentLogSink(logger, "sing-box", true))
 	argoStore := serviceargo.NewStore(db, secrets)
 	argoService := serviceargo.NewService(argoStore, protocolStore)
 	// Argo 隧道域名变化（临时隧道重启换址/固定隧道上线）会重新生成订阅产物。
 	argoBinaryDir := filepath.Join(filepath.Dir(apply.CacheFilePath), "bin")
-	argoManager := argoruntime.NewManager(argoStore, protocolStore, argoBinaryDir, argoLogSink(logger), func(ctx context.Context) {
+	argoManager := argoruntime.NewManager(argoStore, protocolStore, argoBinaryDir, componentLogSink(logger, "argo", false), func(ctx context.Context) {
 		if _, err := syncer.Sync(ctx); err != nil {
 			logger.Error().Err(err).Msg("Argo 域名变化后重新同步失败")
 		}
@@ -523,10 +522,10 @@ func (a *OpsApp) Close() error {
 	return err
 }
 
-// kernelLogSink routes embedded sing-box log lines into the panel logger so
-// kernel output shares the panel's timestamp format, colors, and rotating
-// file sink instead of sing-box's own stderr format.
-func kernelLogSink(logger *logging.Logger) runtimebox.LogSink {
+// componentLogSink routes a subprocess's log lines into the panel logger
+// under the given component tag. dropDebug controls whether debug lines are
+// discarded (kernel, chatty) or downgraded to info (argo).
+func componentLogSink(logger *logging.Logger, component string, dropDebug bool) func(level, message string) {
 	return func(level, message string) {
 		var entry *logging.Entry
 		switch level {
@@ -535,27 +534,13 @@ func kernelLogSink(logger *logging.Logger) runtimebox.LogSink {
 		case "error":
 			entry = logger.Error()
 		case "debug":
-			return
+			if dropDebug {
+				return
+			}
+			entry = logger.Info()
 		default:
 			entry = logger.Info()
 		}
-		entry.Str("component", "sing-box").Msg(message)
-	}
-}
-
-// argoLogSink routes cloudflared supervisor messages into the panel logger
-// under the argo component tag.
-func argoLogSink(logger *logging.Logger) argoruntime.LogFunc {
-	return func(level, message string) {
-		var entry *logging.Entry
-		switch level {
-		case "warn":
-			entry = logger.Warn()
-		case "error":
-			entry = logger.Error()
-		default:
-			entry = logger.Info()
-		}
-		entry.Str("component", "argo").Msg(message)
+		entry.Str("component", component).Msg(message)
 	}
 }

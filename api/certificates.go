@@ -25,8 +25,9 @@ type certificateWriteRequest struct {
 	PrivateKeyPEM  string `json:"privateKeyPem" binding:"required"`
 }
 
-type certificatesResponse struct {
-	Items []servicecertificate.Certificate `json:"items"`
+func (h *handler) acmeOptions() servicecertificate.AcmeOptions {
+	cfg := h.Config()
+	return servicecertificate.AcmeOptions{Email: cfg.Acme.Email, Provider: cfg.Acme.DNSProvider, APIToken: cfg.Acme.APIToken}
 }
 
 func (h *handler) listCertificates(c *gin.Context) {
@@ -35,7 +36,7 @@ func (h *handler) listCertificates(c *gin.Context) {
 		writeResourceError(c, err)
 		return
 	}
-	httpx.OK(c, certificatesResponse{Items: values})
+	httpx.OK(c, itemsResponse[servicecertificate.Certificate]{Items: values})
 }
 
 func (h *handler) createSelfSignedCertificate(c *gin.Context) {
@@ -82,8 +83,7 @@ func (h *handler) createAcmeCertificate(c *gin.Context) {
 	if !httpx.BindJSON(c, &request, "请输入名称与域名") {
 		return
 	}
-	cfg := h.Config()
-	value, err := h.Certificates.IssueACME(c.Request.Context(), servicecertificate.AcmeInput{Name: request.Name, Domain: request.Domain}, servicecertificate.AcmeOptions{Email: cfg.Acme.Email, Provider: cfg.Acme.DNSProvider, APIToken: cfg.Acme.APIToken})
+	value, err := h.Certificates.IssueACME(c.Request.Context(), servicecertificate.AcmeInput{Name: request.Name, Domain: request.Domain}, h.acmeOptions())
 	if !h.mutate(c, err, actionCertificateAcmeCreate, resourceCertificate, "", value.ID) {
 		return
 	}
@@ -91,8 +91,7 @@ func (h *handler) createAcmeCertificate(c *gin.Context) {
 }
 
 func (h *handler) renewAcmeCertificate(c *gin.Context) {
-	cfg := h.Config()
-	value, err := h.Certificates.RenewACME(c.Request.Context(), c.Param("id"), servicecertificate.AcmeOptions{Email: cfg.Acme.Email, Provider: cfg.Acme.DNSProvider, APIToken: cfg.Acme.APIToken})
+	value, err := h.Certificates.RenewACME(c.Request.Context(), c.Param("id"), h.acmeOptions())
 	if !h.mutate(c, err, actionCertificateAcmeRenew, resourceCertificate, c.Param("id"), value.ID) {
 		return
 	}

@@ -18,6 +18,11 @@ import (
 	common "github.com/keepon-online/sb-ops/internal/service/common"
 )
 
+// itemsResponse 是各资源列表的同形响应包装（wire 格式 {"items": [...]}）。
+type itemsResponse[T any] struct {
+	Items []T `json:"items"`
+}
+
 func (h *handler) authenticate() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		token := bearerToken(c.GetHeader("Authorization"))

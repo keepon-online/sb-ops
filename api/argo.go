@@ -9,10 +9,6 @@ import (
 	"github.com/keepon-online/sb-ops/internal/service/common"
 )
 
-type argoTunnelsResponse struct {
-	Items []serviceargo.Tunnel `json:"items"`
-}
-
 type argoTunnelRequest struct {
 	Revision         int64   `json:"revision"`
 	Name             string  `json:"name" binding:"required"`
@@ -30,7 +26,7 @@ func (h *handler) listArgoTunnels(c *gin.Context) {
 		writeResourceError(c, err)
 		return
 	}
-	httpx.OK(c, argoTunnelsResponse{Items: values})
+	httpx.OK(c, itemsResponse[serviceargo.Tunnel]{Items: values})
 }
 
 func (h *handler) createArgoTunnel(c *gin.Context) {

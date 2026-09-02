@@ -43,24 +43,12 @@ type singBoxRouteRuleRequest struct {
 	OutboundTag string                         `json:"outboundTag" binding:"required"`
 }
 
-type singBoxOutboundsResponse struct {
-	Items []servicesingbox.Outbound `json:"items"`
-}
-
-type singBoxRouteRulesResponse struct {
-	Items []servicesingbox.RouteRule `json:"items"`
-}
-
 type singBoxRuleSetRequest struct {
 	Revision       int64  `json:"revision"`
 	Tag            string `json:"tag" binding:"required"`
 	Format         string `json:"format" binding:"required"`
 	URL            string `json:"url" binding:"required"`
 	DownloadDetour string `json:"downloadDetour"`
-}
-
-type singBoxRuleSetsResponse struct {
-	Items []servicesingbox.RuleSet `json:"items"`
 }
 
 // writeRuntimeUnavailable 收敛「sing-box 运行时未装配」的 503 响应。
@@ -200,7 +188,7 @@ func (h *handler) listSingBoxOutbounds(c *gin.Context) {
 		writeResourceError(c, err)
 		return
 	}
-	httpx.OK(c, singBoxOutboundsResponse{Items: values})
+	httpx.OK(c, itemsResponse[servicesingbox.Outbound]{Items: values})
 }
 
 func (h *handler) createSingBoxOutbound(c *gin.Context) {
@@ -256,7 +244,7 @@ func (h *handler) listSingBoxRouteRules(c *gin.Context) {
 		writeResourceError(c, err)
 		return
 	}
-	httpx.OK(c, singBoxRouteRulesResponse{Items: values})
+	httpx.OK(c, itemsResponse[servicesingbox.RouteRule]{Items: values})
 }
 
 func (h *handler) createSingBoxRouteRule(c *gin.Context) {
@@ -303,7 +291,7 @@ func (h *handler) orderSingBoxRouteRules(c *gin.Context) {
 	if !h.mutate(c, err, actionSingBoxRouteRuleOrder, resourceSingBoxConfig, singBoxConfigID, singBoxConfigID) {
 		return
 	}
-	httpx.OK(c, singBoxRouteRulesResponse{Items: values})
+	httpx.OK(c, itemsResponse[servicesingbox.RouteRule]{Items: values})
 }
 
 func (h *handler) dryRunSingBoxRoutes(c *gin.Context) {
@@ -325,7 +313,7 @@ func (h *handler) listSingBoxRuleSets(c *gin.Context) {
 		writeResourceError(c, err)
 		return
 	}
-	httpx.OK(c, singBoxRuleSetsResponse{Items: values})
+	httpx.OK(c, itemsResponse[servicesingbox.RuleSet]{Items: values})
 }
 
 func (h *handler) createSingBoxRuleSet(c *gin.Context) {

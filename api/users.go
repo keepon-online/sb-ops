@@ -1,6 +1,8 @@
 package api
 
 import (
+	"context"
+
 	"errors"
 	"net/http"
 	"strconv"
@@ -118,32 +120,27 @@ func (h *handler) resetUserTraffic(c *gin.Context) {
 	httpx.OK(c, value)
 }
 
-func (h *handler) adjustUserTraffic(c *gin.Context) {
+// adjustUser 收敛流量/额度调整：两者仅 service 方法与审计动作不同。
+func (h *handler) adjustUser(c *gin.Context, action string, call func(context.Context, string, serviceuser.TrafficInput) (serviceuser.User, error)) {
 	var request serviceuser.TrafficInput
 	if !httpx.BindJSON(c, &request, "请选择方式并填写字节数") {
 		return
 	}
-	value, err := h.Users.AdjustTraffic(c.Request.Context(), c.Param("id"), request)
+	value, err := call(c.Request.Context(), c.Param("id"), request)
 	if err != nil {
 		writeResourceError(c, err)
 		return
 	}
-	h.audit(c, actionUserTrafficAdjust, resourceUser, value.ID, resultSuccess)
+	h.audit(c, action, resourceUser, value.ID, resultSuccess)
 	httpx.OK(c, value)
 }
 
+func (h *handler) adjustUserTraffic(c *gin.Context) {
+	h.adjustUser(c, actionUserTrafficAdjust, h.Users.AdjustTraffic)
+}
+
 func (h *handler) adjustUserQuota(c *gin.Context) {
-	var request serviceuser.TrafficInput
-	if !httpx.BindJSON(c, &request, "请选择方式并填写字节数") {
-		return
-	}
-	value, err := h.Users.AdjustQuota(c.Request.Context(), c.Param("id"), request)
-	if err != nil {
-		writeResourceError(c, err)
-		return
-	}
-	h.audit(c, actionUserQuotaAdjust, resourceUser, value.ID, resultSuccess)
-	httpx.OK(c, value)
+	h.adjustUser(c, actionUserQuotaAdjust, h.Users.AdjustQuota)
 }
 
 func writeResourceError(c *gin.Context, err error) {

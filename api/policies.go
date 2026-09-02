@@ -29,16 +29,9 @@ type ruleWriteRequest struct {
 type policiesResponse struct {
 	Items []servicepolicy.Policy `json:"items"`
 }
-type rulesResponse struct {
-	Items []servicepolicy.Rule `json:"items"`
-}
-
-type ruleSetOptionsResponse struct {
-	Items []servicepolicy.RuleSetOption `json:"items"`
-}
 
 func (h *handler) listPolicyRuleSets(c *gin.Context) {
-	httpx.OK(c, ruleSetOptionsResponse{Items: servicepolicy.RuleSetOptions()})
+	httpx.OK(c, itemsResponse[servicepolicy.RuleSetOption]{Items: servicepolicy.RuleSetOptions()})
 }
 
 func (h *handler) listPolicies(c *gin.Context) {
@@ -47,7 +40,7 @@ func (h *handler) listPolicies(c *gin.Context) {
 		writeResourceError(c, err)
 		return
 	}
-	httpx.OK(c, policiesResponse{Items: values})
+	httpx.OK(c, itemsResponse[servicepolicy.Policy]{Items: values})
 }
 
 func (h *handler) createPolicy(c *gin.Context) {
@@ -111,7 +104,7 @@ func (h *handler) listPolicyRules(c *gin.Context) {
 		writeResourceError(c, err)
 		return
 	}
-	httpx.OK(c, rulesResponse{Items: values})
+	httpx.OK(c, itemsResponse[servicepolicy.Rule]{Items: values})
 }
 
 func (h *handler) createPolicyRule(c *gin.Context) {
@@ -158,7 +151,7 @@ func (h *handler) orderPolicyRules(c *gin.Context) {
 	if !h.mutate(c, err, actionRuleOrder, resourcePolicy, c.Param("id"), c.Param("id")) {
 		return
 	}
-	httpx.OK(c, rulesResponse{Items: values})
+	httpx.OK(c, itemsResponse[servicepolicy.Rule]{Items: values})
 }
 
 func (h *handler) dryRunPolicy(c *gin.Context) {

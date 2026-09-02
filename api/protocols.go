@@ -24,10 +24,6 @@ type protocolWriteRequest struct {
 	CertificateID *string              `json:"certificateId"`
 }
 
-type protocolsResponse struct {
-	Items []serviceprotocol.Protocol `json:"items"`
-}
-
 func (h *handler) suggestProtocolPort(c *gin.Context) {
 	var request protocolPortSuggestionRequest
 	if !httpx.BindJSON(c, &request, "请选择协议类型") {
@@ -56,7 +52,7 @@ func (h *handler) listProtocols(c *gin.Context) {
 		writeResourceError(c, err)
 		return
 	}
-	httpx.OK(c, protocolsResponse{Items: values})
+	httpx.OK(c, itemsResponse[serviceprotocol.Protocol]{Items: values})
 }
 
 func (h *handler) protocolRuntimeStatus(c *gin.Context) {
