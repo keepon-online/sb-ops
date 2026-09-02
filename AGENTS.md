@@ -27,7 +27,7 @@ go test -tags=with_quic,with_utls,with_clash_api,with_v2ray_api,with_wireguard,w
 - `internal/traffic`：V2Ray 采集、历史聚合、保留清理；`internal/observability`：告警评估、readiness、设备平台画像、Webhook/Telegram 外发。
 - `internal/deployment/compiler` + `singlevps`：资源 → `sb.json` 编译、同步与回滚；`internal/runtime/singbox`：内核生命周期。**内核日志统一进面板日志**——`kernelLogWriter` 经 sing-box 的 `log.PlatformWriter` 转发进 `internal/logging` 门面（剥 `INFO[  12]` 前缀与 ANSI 色码，级别映射 debug/info/warn/error），内核自身输出重定向 `/dev/null`；不要让内核直接写 stderr（硬编码 `+0800 …` 时间戳格式）。
 - `internal/database`：SQLite 打开与迁移。
-- 分层规则：HTTP handler 调 service，service 调 store；store 持有 `*sql.DB`（`internal/identity` 的 `h.store` 审计直连是例外）。**写操作收尾统一走 `h.mutate`**（审计 + 内核同步一体，勿绕开）；更新类 handler 先取改前快照再传 `diffable(beforeErr, err, before, value)`，成功审计的 details 会带字段级 `{old,new}` diff（`resourceChanges` 自动忽略 revision/updatedAt；出站快照走脱敏视图）——新增更新端点照此接，别再退回只留 `{}`。
+- 分层规则：HTTP handler 调 service，service 调 store；store 持有 `*sql.DB`。**写操作收尾统一走 `h.mutate`**（审计 + 内核同步一体，勿绕开）；更新类 handler 先取改前快照再传 `diffable(beforeErr, err, before, value)`，成功审计的 details 会带字段级 `{old,new}` diff（`resourceChanges` 自动忽略 revision/updatedAt；出站快照走脱敏视图）——新增更新端点照此接，别再退回只留 `{}`。审计读写统一在 `internal/audit`（Service 门面 + Store；留存走 `audit.retention_days`，0=永久），identity 只管账号与会话。
 
 ## 领域约定（勿破坏）
 
@@ -47,7 +47,7 @@ go test -tags=with_quic,with_utls,with_clash_api,with_v2ray_api,with_wireguard,w
 ## 数据库 / 迁移
 
 - SQLite（mattn/go-sqlite3），DSN 固定 `busy_timeout/foreign_keys/WAL`；打开后 `SetMaxOpenConns(1)`。
-- 迁移集中在 `internal/database/migrate.go`；schema 常量在各自包（`service/schema.go`、`traffic/schema.go`、`observability/schema.go`、`events/...`）。
+- 迁移集中在 `internal/database/migrate.go`；schema 常量在各自包（`service/schema.go`、`traffic/schema.go`、`observability/schema.go`、`audit/schema.go`、`events/...`）。
 - 新增列/表用幂等 `ALTER TABLE` / `CREATE TABLE IF NOT EXISTS`，并在 `database_test.go` 补用例（含升级路径）。
 
 ## 契约与生成物

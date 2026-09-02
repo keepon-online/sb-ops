@@ -1,7 +1,8 @@
 # sb-ops 配置样例（复制为工作目录下的 config.yaml 后按环境修改）。
 # 仅保留与默认值不同的键；其余键及默认值见 internal/config/runtime.go 的 DefaultRuntimeConfig。
 # 可选段(未配置时自动禁用):notifications(告警外发)、acme(证书签发)、
-# updates(面板自升级,repo+token)、traffic.retention_days(默认 90,0 为永久保留)。
+# updates(面板自升级,repo+token)、traffic.retention_days(默认 90)、
+# audit.retention_days(审计日志保留,默认 180;0 均为永久保留)。
 server:
   listen: ":8030"
   # 默认在 data_dir(./data)下建库;如需放仓库根可显式指定。

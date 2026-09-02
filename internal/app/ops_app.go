@@ -38,6 +38,7 @@ import (
 
 type OpsApp struct {
 	IdentityStore *identity.Store
+	AuditLogs     *controlaudit.Service
 	Certificates  *servicecertificate.Service
 	Policies      *servicepolicy.Service
 	Sync          *deployment.SyncService
@@ -133,7 +134,7 @@ func newOps(db *sql.DB, sessionTTL time.Duration, apply deployment.ApplyConfig, 
 	})
 	background, cancel := context.WithCancel(context.Background())
 	value := &OpsApp{
-		IdentityStore: identityStore, Certificates: certificates, Policies: policies, Sync: syncer,
+		IdentityStore: identityStore, AuditLogs: auditLogs, Certificates: certificates, Policies: policies, Sync: syncer,
 		Traffic: traffic, Events: events, Alerts: alerts,
 		Router: router, db: db, cancel: cancel, Health: health, logger: logger, config: configProvider, argo: argoManager,
 		activeConnections: kernelConnections(syncer),
@@ -345,6 +346,7 @@ const notificationRetention = 7 * 24 * time.Hour
 // notifications older than the notification retention window.
 func (a *OpsApp) runHousekeeping(ctx context.Context) {
 	a.runTrafficRetention(ctx)
+	a.runAuditRetention(ctx)
 	if a.IdentityStore != nil {
 		removed, err := a.IdentityStore.DeleteStaleSessions(ctx, time.Now().UTC())
 		if err != nil {
@@ -366,6 +368,25 @@ func (a *OpsApp) runHousekeeping(ctx context.Context) {
 // runTrafficRetention ages out traffic history and raw ingestion batches older
 // than the configured retention window (traffic.retention_days; 0 or unset keeps
 // everything forever).
+func (a *OpsApp) runAuditRetention(ctx context.Context) {
+	if a.AuditLogs == nil {
+		return
+	}
+	days := a.config().Audit.RetentionDays
+	if days <= 0 {
+		return
+	}
+	cutoff := time.Now().UTC().AddDate(0, 0, -days)
+	removed, err := a.AuditLogs.PurgeBefore(ctx, cutoff)
+	if err != nil {
+		a.logger.Error().Err(err).Msg("审计日志留存清理失败")
+		return
+	}
+	if removed > 0 {
+		a.logger.Info().Int64("removed", removed).Msg("审计日志留存清理完成")
+	}
+}
+
 func (a *OpsApp) runTrafficRetention(ctx context.Context) {
 	if a.Traffic == nil {
 		return

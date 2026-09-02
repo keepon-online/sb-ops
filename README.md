@@ -115,6 +115,9 @@ traffic:
   interval: 1m                    # 流量采集周期
   retention_days: 90              # 历史保留天数；0 = 永久保留
 
+audit:
+  retention_days: 180             # 审计日志保留天数；0 = 永久保留
+
 deployment:
   public_address: "203.0.113.10"  # 必改：客户端订阅里拨打的地址（公网 IPv4 或域名）
   # tls_cert_path: ""             # 可选外部 TLS 证书；留空 = 面板生成的自签证书

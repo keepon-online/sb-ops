@@ -12,6 +12,7 @@ type RuntimeConfig struct {
 	Logging       LoggingConfig          `mapstructure:"logging"`
 	SingBox       SingBoxApplyConfig     `mapstructure:"singbox"`
 	Traffic       TrafficCollectorConfig `mapstructure:"traffic"`
+	Audit         AuditConfig            `mapstructure:"audit"`
 	Deployment    DeploymentConfig       `mapstructure:"deployment"`
 	Notifications NotificationsConfig    `mapstructure:"notifications"`
 	Updates       UpdatesConfig          `mapstructure:"updates"`
@@ -50,6 +51,11 @@ type TrafficCollectorConfig struct {
 // DeploymentConfig holds deployment parameters that subscription compilation
 // needs: the public address clients dial and optional TLS certificate paths.
 // These are startup configuration (config.yaml), not panel-managed settings.
+// AuditConfig 配置审计日志留存（retention_days=0 表示永久保留）。
+type AuditConfig struct {
+	RetentionDays int `mapstructure:"retention_days"`
+}
+
 type DeploymentConfig struct {
 	PublicAddress string `mapstructure:"public_address"`
 	TLSCertPath   string `mapstructure:"tls_cert_path"`
@@ -132,6 +138,7 @@ func DefaultRuntimeConfig() RuntimeConfig {
 	cfg.SingBox.CertificateDir = ""
 	cfg.Traffic.Interval = time.Minute
 	cfg.Traffic.RetentionDays = 90
+	cfg.Audit.RetentionDays = 180
 	cfg.Panel.SessionTTL = 24 * time.Hour
 	return cfg
 }
