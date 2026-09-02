@@ -140,7 +140,6 @@ panel:
 
 development:                      # 本地开发专用，生产配置不要出现
   allow_private_address: false    # true = 允许私网/回环地址作为 public_address（局域网测试）
-  # frontend_dev_proxy: "http://127.0.0.1:5173"   # 前端 Vite 联调代理
 ```
 
 > Clash API 与 V2Ray API 的地址与密钥由**面板管理**（「服务端配置 → 基础配置」），是单一事实来源：Clash API 用于实时连接观测，V2Ray API 用于按用户归因的流量采集。`config.yaml` 不包含这两类地址。
@@ -174,7 +173,7 @@ make vet
 make frontend-check # openapi lint + tsc + vite build
 ```
 
-本地联调前端：`npm --prefix frontend run dev`，并在 `config.yaml` 配 `development.frontend_dev_proxy: "http://127.0.0.1:5173"`。
+本地联调前端：`npm --prefix frontend run dev`，访问 `http://127.0.0.1:5173`（Vite 已将 `/api` 代理到后端）。
 
 管理 API 契约见 [`docs/api/openapi.management.yaml`](docs/api/openapi.management.yaml)，前端类型由契约生成（`make api` 更新）。全部命令与约定见 [AGENTS.md](AGENTS.md)。
 
