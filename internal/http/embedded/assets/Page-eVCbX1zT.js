@@ -1,1 +1,0 @@
-import{j as e}from"./vendor-query-CLQZNGCf.js";import{o as t,v as i}from"./vendor-antd-Bf7RNvRt.js";const{Title:a}=i;function l({title:s,children:r}){return e.jsxs(t,{direction:"vertical",size:16,className:"page",style:{width:"100%"},children:[e.jsx(a,{level:2,children:s}),r]})}export{l as P};
