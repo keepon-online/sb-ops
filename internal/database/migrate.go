@@ -21,7 +21,7 @@ const identitySchemaVersion = 1
 
 // CurrentSchemaVersion is the highest schema version recorded after a fresh
 // migration. It reflects the single-VPS layout (agent/node tables removed).
-const CurrentSchemaVersion = observability.SchemaVersion
+const CurrentSchemaVersion = controlaudit.SchemaVersion
 
 // dropAgentSchema removes the legacy agent/node/rollout tables. These are
 // idempotent DROPs so fresh databases (which never had them) are unaffected.

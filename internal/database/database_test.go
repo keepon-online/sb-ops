@@ -5,6 +5,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	controlaudit "github.com/keepon-online/sb-ops/internal/audit"
+	"github.com/keepon-online/sb-ops/internal/events"
+	"github.com/keepon-online/sb-ops/internal/observability"
+	"github.com/keepon-online/sb-ops/internal/service"
+	"github.com/keepon-online/sb-ops/internal/traffic"
 )
 
 func TestOpenConfiguresWALAndPrivateFilePermissions(t *testing.T) {
@@ -623,5 +629,68 @@ INSERT INTO devices(id,user_id,name,ua_key,source_ip,rotated_at,created_at) VALU
 	}
 	if ipIndex != 1 {
 		t.Fatalf("idx_devices_user_ua_ip count=%d, want 1", ipIndex)
+	}
+}
+
+// TestAuditSchemaVersionIsExclusive 锁定不变量：resetAuditLogs 依赖
+// schema_versions 判定「一次性破坏重建」是否已执行，audit 的版本号必须
+// 与其它包已记录的版本互不占用——首版 audit=1 撞 identity=1 时判定恒真，
+// 重建从未执行，旧版噪音（成功登录、runtime.sync、已废弃读操作）全部幸存。
+func TestAuditSchemaVersionIsExclusive(t *testing.T) {
+	for name, version := range map[string]int{
+		"identity":      identitySchemaVersion,
+		"resource":      resource.SchemaVersion,
+		"traffic":       traffic.SchemaVersion,
+		"events":        events.SchemaVersion,
+		"observability": observability.SchemaVersion,
+	} {
+		if version == controlaudit.SchemaVersion {
+			t.Fatalf("audit SchemaVersion=%d 与 %s 的版本号相同，一次性迁移判定会恒真", version, name)
+		}
+	}
+}
+
+// TestMigrateRebuildsAuditLogsOnce 验证审计表破坏重建只发生一次：版本未
+// 记录时清空旧数据，记录后再次迁移不得触碰新数据。
+func TestMigrateRebuildsAuditLogsOnce(t *testing.T) {
+	db, err := Open(Options{Path: filepath.Join(t.TempDir(), "control.db")})
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	if err := Migrate(t.Context(), db); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+	// 回到「audit 版本未记录」的升级前状态，并塞入一条旧版噪音。
+	if _, err := db.Exec(`DELETE FROM schema_versions WHERE version=?`, controlaudit.SchemaVersion); err != nil {
+		t.Fatalf("unset audit version: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO audit_logs (id,action,resource_type,result,created_at) VALUES
+		('legacy-1','user.device.list','user_device','success',1)`); err != nil {
+		t.Fatalf("seed legacy audit row: %v", err)
+	}
+	if err := Migrate(t.Context(), db); err != nil {
+		t.Fatalf("upgrade migrate: %v", err)
+	}
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(1) FROM audit_logs`).Scan(&count); err != nil {
+		t.Fatalf("count audit rows: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("legacy audit rows survived rebuild: %d", count)
+	}
+	// 版本已记录后的常规启动不得再清数据。
+	if _, err := db.Exec(`INSERT INTO audit_logs (id,action,resource_type,result,created_at) VALUES
+		('fresh-1','policy.update','policy','success',2)`); err != nil {
+		t.Fatalf("seed fresh audit row: %v", err)
+	}
+	if err := Migrate(t.Context(), db); err != nil {
+		t.Fatalf("second migrate: %v", err)
+	}
+	if err := db.QueryRow(`SELECT COUNT(1) FROM audit_logs`).Scan(&count); err != nil {
+		t.Fatalf("recount audit rows: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("rebuild re-fired on recorded version, rows=%d", count)
 	}
 }
