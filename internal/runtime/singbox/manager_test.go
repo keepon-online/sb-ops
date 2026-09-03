@@ -34,7 +34,7 @@ func TestApplyStartsCompiledShadowsocks2022Configuration(t *testing.T) {
 		},
 		Protocols: []serviceprotocol.Protocol{{
 			ID: "shadowsocks", Name: "Shadowsocks 2022", Type: serviceprotocol.TypeShadowsocks,
-			Enabled: true, Listen: "::", ListenPort: 18080,
+			Enabled: true, Listen: "::", ListenPort: 18980,
 			Settings: map[string]any{"method": "2022-blake3-aes-128-gcm", "password": password},
 		}},
 	})
