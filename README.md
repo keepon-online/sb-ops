@@ -29,6 +29,7 @@
 - 七种接入协议：VLESS（含 Reality）/ VMess / Trojan / Hysteria2 / TUIC / AnyTLS / Shadowsocks 2022，支持协议克隆与密钥轮换。
 - 证书：自签（IP / DNS）与 ACME（Cloudflare DNS-01，自动续期）两种来源；Hysteria2 / TUIC 支持端口跳跃（iptables REDIRECT）。
 - 协议运行状态监控：每个协议的端口监听状态（TCP LISTEN / UDP 绑定 / 跳跃规则）与按入站聚合的活跃连接数。
+- 协议端到端拨测：每 5 分钟以真实凭据穿过协议入站实测链路连通与延迟（也支持手动触发），失败自动触发 critical 告警——「端口在听但链路不通」（Reality 握手失败、证书过期、出站故障等）不再隐形。
 
 ### 分流（两套概念，作用域不同）
 
