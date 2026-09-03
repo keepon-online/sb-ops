@@ -7,6 +7,7 @@
 ### 新增
 
 - **拨测增强配置**：新增 `probe.target_url` 与 `probe.interval`，支持在 `config.yaml` 中自定义端到端拨测目标和周期，热加载后下一轮生效；新增 `certificates.expiry_warning`，证书进入提醒窗口时自动产生中文到期告警。
+- **订阅自环保护**：订阅产物默认将面板域名 `panel.example.com` 置于最前的 `DIRECT` 规则；即使 `deployment.public_address` 配置为 IP，TUN/系统代理下访问面板和更新订阅也不会再次进入代理隧道。
 
 ### 运维
 

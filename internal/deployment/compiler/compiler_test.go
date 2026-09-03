@@ -205,7 +205,7 @@ func TestCompileClashSubscriptionIncludesCommonRules(t *testing.T) {
 	for i, rule := range rules {
 		actualRules[i] = rule.(string)
 	}
-	wantRules := append([]string{"IP-CIDR,1.1.1.1/32,DIRECT,no-resolve"}, defaultClashRules()...)
+	wantRules := append([]string{"DOMAIN,panel.example.com,DIRECT", "IP-CIDR,1.1.1.1/32,DIRECT,no-resolve"}, defaultClashRules()...)
 	if !reflect.DeepEqual(actualRules, wantRules) || !containsRule(actualRules, "RULE-SET,category-ads-all,"+clashAdsGroup) || !containsRule(actualRules, "RULE-SET,cn,"+clashChinaGroup+",no-resolve") || actualRules[len(actualRules)-1] != "MATCH,"+clashFinalGroup {
 		t.Fatalf("rules = %#v", actualRules)
 	}
@@ -220,14 +220,14 @@ func TestClashRulesPinPanelAddressDirect(t *testing.T) {
 	if err != nil {
 		t.Fatalf("clashRules(domain): %v", err)
 	}
-	if domainRules[0] != "DOMAIN,panel.example.com,DIRECT" || domainRules[len(domainRules)-1] != "MATCH,"+clashFinalGroup {
+	if domainRules[0] != "DOMAIN,panel.example.com,DIRECT" || domainRules[1] != "DOMAIN,panel.example.com,DIRECT" || domainRules[len(domainRules)-1] != "MATCH,"+clashFinalGroup {
 		t.Fatalf("domain rules = %#v, want panel DIRECT first and MATCH last", domainRules)
 	}
 	ipRules, err := clashRules(input("203.0.113.7"), user)
 	if err != nil {
 		t.Fatalf("clashRules(ip): %v", err)
 	}
-	if ipRules[0] != "IP-CIDR,203.0.113.7/32,DIRECT,no-resolve" {
+	if ipRules[0] != "DOMAIN,panel.example.com,DIRECT" || ipRules[1] != "IP-CIDR,203.0.113.7/32,DIRECT,no-resolve" {
 		t.Fatalf("ip rules = %#v, want panel IP-CIDR first", ipRules)
 	}
 	// 有策略规则的订阅同样把面板地址钉在最前，避免被用户规则覆盖。
@@ -238,7 +238,7 @@ func TestClashRulesPinPanelAddressDirect(t *testing.T) {
 	if err != nil {
 		t.Fatalf("clashRules(policy): %v", err)
 	}
-	if policyRules[0] != "DOMAIN,panel.example.com,DIRECT" || policyRules[1] != "DOMAIN,corp.example.com,DIRECT" {
+	if policyRules[0] != "DOMAIN,panel.example.com,DIRECT" || policyRules[1] != "DOMAIN,panel.example.com,DIRECT" || policyRules[2] != "DOMAIN,corp.example.com,DIRECT" {
 		t.Fatalf("policy rules = %#v, want panel DIRECT before user rules", policyRules)
 	}
 }
@@ -266,7 +266,7 @@ func TestClashRulesUseAssignedPolicy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compile policy rules: %v", err)
 	}
-	want := []string{"RULE-SET,openai," + clashAIGroup, "RULE-SET,claude," + clashAIGroup, "RULE-SET,china,DIRECT", "RULE-SET,private," + clashPrivateGroup + ",no-resolve", "IP-CIDR,10.0.0.0/8,DIRECT,no-resolve", "MATCH," + clashProxyGroup}
+	want := []string{"DOMAIN,panel.example.com,DIRECT", "RULE-SET,openai," + clashAIGroup, "RULE-SET,claude," + clashAIGroup, "RULE-SET,china,DIRECT", "RULE-SET,private," + clashPrivateGroup + ",no-resolve", "IP-CIDR,10.0.0.0/8,DIRECT,no-resolve", "MATCH," + clashProxyGroup}
 	if !reflect.DeepEqual(rules, want) {
 		t.Fatalf("rules = %#v, want %#v", rules, want)
 	}
