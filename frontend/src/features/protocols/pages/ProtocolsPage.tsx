@@ -6,7 +6,8 @@ import {
   PlusOutlined,
   RedoOutlined,
   ReloadOutlined,
-  SafetyCertificateOutlined
+  SafetyCertificateOutlined,
+  ThunderboltOutlined
 } from '@ant-design/icons';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import {
@@ -77,6 +78,14 @@ const runtimeStatusColors: Record<string, string> = {
   listening: 'success', not_listening: 'error', kernel_down: 'warning', disabled: 'default', unknown: 'default'
 };
 
+const probeStatusLabels: Record<string, string> = {
+  ok: '链路正常', failed: '链路失败', skipped: '未拨测'
+};
+
+const probeStatusColors: Record<string, string> = {
+  ok: 'success', failed: 'error', skipped: 'default'
+};
+
 const portHopRuleLabels: Record<string, string> = {
   missing: '端口跳跃 iptables 规则缺失，跳跃端口外部不可达；重新保存协议或手动触发同步可重建。',
   mismatched: '端口跳跃规则与当前配置不一致（改过跳跃范围后未同步）；重新保存协议可重建。',
@@ -102,6 +111,7 @@ export function ProtocolsPage() {
   const [cloneForm] = Form.useForm<CloneFormValues>();
   const protocols = useQuery({ queryKey: ['resources', 'protocols'], queryFn: protocolsApi.list, retry: false });
   const runtime = useQuery({ queryKey: ['resources', 'protocols-runtime'], queryFn: protocolsApi.runtimeStatus, enabled: tab === 'protocols', retry: false, refetchInterval: 15000 });
+  const probe = useQuery({ queryKey: ['resources', 'protocols-probe'], queryFn: protocolsApi.probeResults, enabled: tab === 'protocols', retry: false, refetchInterval: 60000 });
   const certificates = useQuery({ queryKey: ['resources', 'certificates'], queryFn: certificatesApi.list, retry: false });
   const schema = useQuery({ queryKey: ['resources', 'protocol-schema', protocolType], queryFn: () => protocolsApi.schema(protocolType), enabled: protocolDrawer, retry: false });
   const suggestedPortQuery = useQuery({ queryKey: ['resources', 'protocol-port', protocolType], queryFn: () => protocolsApi.suggestPort(protocolType), enabled: protocolDrawer && !editingProtocol, retry: false });
@@ -111,7 +121,8 @@ export function ProtocolsPage() {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['resources', 'protocols'] }),
       queryClient.invalidateQueries({ queryKey: ['resources', 'protocol-port'] }),
-      queryClient.invalidateQueries({ queryKey: ['resources', 'protocols-runtime'] })
+      queryClient.invalidateQueries({ queryKey: ['resources', 'protocols-runtime'] }),
+      queryClient.invalidateQueries({ queryKey: ['resources', 'protocols-probe'] })
     ]);
   };
   const refreshCertificates = () => queryClient.invalidateQueries({ queryKey: ['resources', 'certificates'] });
@@ -177,6 +188,19 @@ export function ProtocolsPage() {
     onError: (error: Error) => { void refreshProtocols(); if (reportError(error, protocolForm)) closeProtocol(); }
   });
   const removeProtocol = useMutation({ mutationFn: protocolsApi.remove, onSuccess: () => { void refreshProtocols(); message.success('协议已删除'); }, onError: (error: Error) => reportError(error) });
+  const runProbe = useMutation({
+    mutationFn: () => protocolsApi.runProbe(),
+    onSuccess: (result) => {
+      void queryClient.invalidateQueries({ queryKey: ['resources', 'protocols-probe'] });
+      const ok = result.items.filter((item) => item.status === 'ok').length;
+      const failed = result.items.filter((item) => item.status === 'failed').length;
+      const skipped = result.items.length - ok - failed;
+      const summary = `${ok} 正常${failed ? `、${failed} 失败` : ''}${skipped ? `、${skipped} 跳过` : ''}`;
+      if (failed > 0) message.warning(`拨测完成：${summary}`);
+      else message.success(`拨测完成：${summary}`);
+    },
+    onError: (error: Error) => reportError(error)
+  });
   const rotateSecret = useMutation({
     mutationFn: protocolsApi.rotateSecret,
     onSuccess: (result) => {
@@ -273,6 +297,24 @@ export function ProtocolsPage() {
         );
       }
     },
+    {
+      title: '链路拨测', width: 150,
+      render: (_, value) => {
+        const item = probe.data?.items.find((entry) => entry.protocolId === value.id);
+        if (!item) return <Tooltip title="还没有拨测记录：周期拨测每 5 分钟一轮，或点工具栏「立即拨测」。"><Tag>未拨测</Tag></Tooltip>;
+        const tooltip = item.status === 'failed'
+          ? `端到端拨测失败：${item.error}`
+          : item.status === 'skipped' ? `跳过原因：${item.error}` : `全链路实测延迟 ${item.latencyMs ?? '-'}ms（${new Date(item.checkedAt).toLocaleTimeString()}）`;
+        return (
+          <Tooltip title={tooltip}>
+            <Space size={4}>
+              <Tag color={probeStatusColors[item.status]}>{probeStatusLabels[item.status] || item.status}</Tag>
+              {item.status === 'ok' && item.latencyMs != null ? <Typography.Text type="secondary">{item.latencyMs}ms</Typography.Text> : null}
+            </Space>
+          </Tooltip>
+        );
+      }
+    },
     { title: '证书', dataIndex: 'certificateId', width: 160, responsive: ['lg'], render: (id?: string | null) => certificates.data?.items.find((item) => item.id === id)?.name || '-' },
     {
       title: '操作', width: 168, fixed: screens.md ? 'right' : undefined,
@@ -307,8 +349,8 @@ export function ProtocolsPage() {
     <Page title="接入协议">
       <Tabs activeKey={tab} onChange={setTab} items={[
         { key: 'protocols', label: '协议', children: <>
-          <div className="page-toolbar"><Typography.Text type="secondary">服务器对外提供的连接方式，保存后自动同步到本机 sing-box。</Typography.Text><Button type="primary" icon={<PlusOutlined />} onClick={openCreateProtocol}>添加接入协议</Button></div>
-          <Table rowKey="id" loading={protocols.isLoading} dataSource={protocols.data?.items || []} columns={protocolColumns} pagination={false} scroll={{ x: screens.md ? 1080 : 430 }} />
+          <div className="page-toolbar"><Typography.Text type="secondary">服务器对外提供的连接方式，保存后自动同步到本机 sing-box。</Typography.Text><Space><Button icon={<ThunderboltOutlined />} loading={runProbe.isPending} onClick={() => runProbe.mutate()}>立即拨测</Button><Button type="primary" icon={<PlusOutlined />} onClick={openCreateProtocol}>添加接入协议</Button></Space></div>
+          <Table rowKey="id" loading={protocols.isLoading} dataSource={protocols.data?.items || []} columns={protocolColumns} pagination={false} scroll={{ x: screens.md ? 1230 : 430 }} />
         </> },
         { key: 'certificates', label: '证书', children: <>
           <div className="page-toolbar"><Typography.Text type="secondary">{certificates.data?.items.length || 0} 个证书</Typography.Text><Space><Button icon={<SafetyCertificateOutlined />} onClick={() => { acmeForm.resetFields(); setAcmeDrawer(true); }}>申请 ACME 证书</Button><Button type="primary" icon={<SafetyCertificateOutlined />} onClick={openCreateCertificate}>生成自签名证书</Button></Space></div>

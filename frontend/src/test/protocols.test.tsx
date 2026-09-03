@@ -27,6 +27,13 @@ vi.mock('../services/protocols', () => ({
         { id: 'proto-b', name: 'beta', type: 'trojan', transport: 'tcp', enabled: true, listenPort: 443, status: 'not_listening', activeConnections: 0 }
       ]
     }),
+    probeResults: () => Promise.resolve({
+      items: [
+        { protocolId: 'proto-a', protocolName: 'alpha', status: 'ok', latencyMs: 42, error: '', checkedAt: '2026-09-03T02:00:00Z' },
+        { protocolId: 'proto-b', protocolName: 'beta', status: 'failed', latencyMs: null, error: '握手失败', checkedAt: '2026-09-03T02:00:00Z' }
+      ]
+    }),
+    runProbe: vi.fn(() => Promise.resolve({ checkedAt: '2026-09-03T02:05:00Z', items: [] })),
     schema: () => Promise.resolve({ type: 'vless', fields: [], defaults: {}, certificateRequired: false } as unknown as ResourceProtocolSchema),
     suggestPort: () => Promise.resolve({ listenPort: 8444 })
   }
@@ -65,5 +72,24 @@ describe('protocols page', () => {
     const beta = within(findRow('beta'));
     expect(beta.getByText('未监听')).toBeInTheDocument();
     expect(beta.getByText('0 连接')).toBeInTheDocument();
+  });
+
+  it('renders per-protocol end-to-end probe status with latency', async () => {
+    renderProtocols();
+    expect(await screen.findByText('alpha')).toBeInTheDocument();
+    const alpha = within(findRow('alpha'));
+    expect(alpha.getByText('链路正常')).toBeInTheDocument();
+    expect(alpha.getByText('42ms')).toBeInTheDocument();
+    const beta = within(findRow('beta'));
+    expect(beta.getByText('链路失败')).toBeInTheDocument();
+  });
+
+  it('triggers a manual probe from the toolbar button', async () => {
+    // vitest 未开 globals 自动 cleanup，跨用例 DOM 残留：用 container 作用域查询。
+    const { container } = renderProtocols();
+    const label = await within(container).findByText('立即拨测');
+    label.closest('button')!.click();
+    const { protocolsApi } = await import('../services/protocols');
+    await vi.waitFor(() => expect(protocolsApi.runProbe).toHaveBeenCalled());
   });
 });

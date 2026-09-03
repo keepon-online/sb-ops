@@ -119,7 +119,8 @@ export const alertTypeLabels: Record<string, string> = {
   runtime_sync_failed: '配置同步失败',
   database_capacity: '数据库容量预警',
   aggregation_failed: '流量聚合失败',
-  traffic_stalled: '流量采集停滞'
+  traffic_stalled: '流量采集停滞',
+  protocol_probe_failed: '协议链路拨测失败'
 };
 
 export function alertTypeLabel(type: string): string {
