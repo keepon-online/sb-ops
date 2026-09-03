@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net"
 	"strings"
+	"sync"
 	"time"
 
 	serviceuser "github.com/keepon-online/sb-ops/internal/service/user"
@@ -27,6 +28,15 @@ var (
 	// 订阅，客户端表现为无法使用。
 	ErrDeviceDisabled = errors.New("设备已停用")
 )
+
+// CleanETag normalizes an HTTP ETag / If-None-Match value by trimming whitespace,
+// removing the weak validation prefix ("W/"), and stripping surrounding quotes.
+func CleanETag(etag string) string {
+	etag = strings.TrimSpace(etag)
+	etag = strings.TrimPrefix(etag, "W/")
+	etag = strings.Trim(etag, `"`)
+	return strings.TrimSpace(etag)
+}
 
 type Artifact struct {
 	Format        string
@@ -49,10 +59,64 @@ type Service struct {
 	// 产物立即可用；为空（测试）时跳过同步。
 	sync func() error
 	log  *slog.Logger
+
+	mu           sync.RWMutex
+	digestDevice map[string]string // digest -> deviceID (tracks recent/historical digests across config regenerations)
 }
 
 func NewService(db *sql.DB, users *serviceuser.Service, sync func() error) *Service {
-	return &Service{db: db, now: func() time.Time { return time.Now().UTC() }, users: users, sync: sync, log: slog.Default()}
+	return &Service{
+		db: db, now: func() time.Time { return time.Now().UTC() },
+		users: users, sync: sync, log: slog.Default(),
+		digestDevice: make(map[string]string),
+	}
+}
+
+func (s *Service) recordDigest(digest, deviceID string) {
+	if digest == "" || deviceID == "" {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.digestDevice == nil {
+		s.digestDevice = make(map[string]string)
+	}
+	if len(s.digestDevice) > 1000 {
+		s.digestDevice = make(map[string]string)
+	}
+	s.digestDevice[digest] = deviceID
+}
+
+func (s *Service) findDeviceByDigest(ctx context.Context, userID, format, ifNoneMatch string) (string, error) {
+	digest := CleanETag(ifNoneMatch)
+	if digest == "" {
+		return "", nil
+	}
+	// 1. Direct query in runtime_artifacts
+	var deviceID string
+	err := s.db.QueryRowContext(ctx, `
+SELECT device_id FROM runtime_artifacts
+WHERE user_id=? AND format=? AND digest=?`, userID, format, digest).Scan(&deviceID)
+	if err == nil && deviceID != "" {
+		s.recordDigest(digest, deviceID)
+		return deviceID, nil
+	}
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return "", err
+	}
+
+	// 2. Check in-memory historical digest map
+	s.mu.RLock()
+	cachedID := s.digestDevice[digest]
+	s.mu.RUnlock()
+	if cachedID != "" {
+		var count int
+		err := s.db.QueryRowContext(ctx, `SELECT COUNT(1) FROM devices WHERE id=? AND user_id=?`, cachedID, userID).Scan(&count)
+		if err == nil && count > 0 {
+			return cachedID, nil
+		}
+	}
+	return "", nil
 }
 
 // selfLoopSource 判定订阅请求是否经代理自环回面板：客户端开 TUN/系统代理后
@@ -90,7 +154,8 @@ func selfLoopSource(value string) bool {
 // 影响）与用户 token（唯一订阅链接）：按请求 User-Agent + 来源 IP 路由到该
 // 客户端的设备，首次出现的客户端自动创建设备并同步内核；同步失败或无法识别
 // 客户端（空 UA）时回退该用户任一已有产物的设备（流量暂并入，客户端下次更新恢复按设备归因）。
-func (s *Service) ArtifactByToken(ctx context.Context, token, format, userAgent string, sourceIPs ...string) (Artifact, error) {
+// 携带 If-None-Match 时优先通过 ETag 摘要直接锚定既有设备，解决同款客户端多设备漫游换网误建新设备的问题。
+func (s *Service) ArtifactByToken(ctx context.Context, token, format, userAgent string, extra ...string) (Artifact, error) {
 	token = strings.TrimSpace(token)
 	format = strings.ToLower(strings.TrimSpace(format))
 	if token == "" {
@@ -126,11 +191,15 @@ FROM users WHERE subscription_token_hash=?`, hash[:]).Scan(&artifact.UserID, &us
 	now := s.now()
 	uaInfo := ParseUserAgent(userAgent)
 	sourceIP := ""
-	if len(sourceIPs) > 0 {
-		sourceIP = sourceIPs[0]
+	if len(extra) > 0 {
+		sourceIP = extra[0]
 	}
 	if selfLoopSource(sourceIP) {
 		sourceIP = ""
+	}
+	ifNoneMatch := ""
+	if len(extra) > 1 {
+		ifNoneMatch = extra[1]
 	}
 	var seenAt *time.Time
 	if uaInfo.Key != "" {
@@ -156,8 +225,20 @@ FROM users WHERE subscription_token_hash=?`, hash[:]).Scan(&artifact.UserID, &us
 			_ = s.users.UpdateDeviceMetadata(ctx, artifact.UserID, artifact.DeviceID, metadata)
 		}
 	} else {
-		// 用户链接：按 UA 路由到设备。
-		if uaInfo.Key != "" {
+		// 用户链接：优先通过 ETag (If-None-Match) 锚定已有设备（多台同 UA 客户端漫游换网时不误建新设备），
+		// ETag 未命中再按 UA + IP 路由/自动建设备。
+		if ifNoneMatch != "" {
+			if matchedID, _ := s.findDeviceByDigest(ctx, artifact.UserID, format, ifNoneMatch); matchedID != "" {
+				if dev, found, err := s.users.ClaimDevice(ctx, artifact.UserID, matchedID, uaInfo.Label, metadata); err == nil && found {
+					if !dev.Enabled {
+						return Artifact{}, ErrDeviceDisabled
+					}
+					artifact.DeviceID = dev.ID
+				}
+			}
+		}
+
+		if artifact.DeviceID == "" && uaInfo.Key != "" {
 			device, created, found, err := s.users.DeviceForKey(ctx, artifact.UserID, uaInfo.Key, uaInfo.Label, metadata)
 			if err != nil {
 				s.log.Warn("订阅自动建设备失败", "ua", uaInfo.Key, "error", err)
@@ -207,6 +288,9 @@ WHERE user_id=? AND device_id=? AND format=?`, artifact.UserID, artifact.DeviceI
 	}
 	if err != nil {
 		return Artifact{}, err
+	}
+	if artifact.Digest != "" && artifact.DeviceID != "" {
+		s.recordDigest(artifact.Digest, artifact.DeviceID)
 	}
 	artifact.ContentType = contentType(format)
 	return artifact, nil

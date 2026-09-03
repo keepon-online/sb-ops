@@ -346,3 +346,118 @@ func TestDisabledAutoDevice(t *testing.T) {
 		t.Fatalf("fallback fetch after disable: %v", err)
 	}
 }
+
+func TestCleanETag(t *testing.T) {
+	cases := []struct {
+		input, want string
+	}{
+		{`"abc123"`, "abc123"},
+		{`W/"abc123"`, "abc123"},
+		{"abc123", "abc123"},
+		{`  "abc123"  `, "abc123"},
+		{"", ""},
+		{`""`, ""},
+	}
+	for _, tc := range cases {
+		if got := CleanETag(tc.input); got != tc.want {
+			t.Fatalf("CleanETag(%q) = %q, want %q", tc.input, got, tc.want)
+		}
+	}
+}
+
+// TestMultiDeviceRoamingWithETag 验证同 UA 客户端名下已有多台设备时，
+// 漫游换网通过 ETag 精确认领旧设备，不误建新设备且不触发多余内核同步。
+func TestMultiDeviceRoamingWithETag(t *testing.T) {
+	share, users, recorder := newTestService(t)
+	userID, token := mustCreateUser(t, users)
+	recorder.userID = userID
+	ctx := t.Context()
+
+	// 1. 同一用户下有两台同一客户端（clashverge）的设备
+	first, err := share.ArtifactByToken(ctx, token, "clash.yaml", "clash-verge/2.1.3", "198.51.100.10")
+	if err != nil {
+		t.Fatalf("discover device 1: %v", err)
+	}
+	secondRaw, err := share.ArtifactByToken(ctx, token, "clash.yaml", "Stash/2.8", "198.51.100.20")
+	if err != nil {
+		t.Fatalf("discover device 2: %v", err)
+	}
+	if _, err := share.db.Exec(`UPDATE devices SET ua_key='clashverge', name='Clash Verge · 198.51.100.20' WHERE id=?`, secondRaw.DeviceID); err != nil {
+		t.Fatalf("set second device ua_key: %v", err)
+	}
+	second, err := share.ArtifactByToken(ctx, token, "clash.yaml", "clash-verge/2.1.3", "198.51.100.20")
+	if err != nil {
+		t.Fatalf("fetch second device: %v", err)
+	}
+	if first.DeviceID == second.DeviceID {
+		t.Fatalf("device 1 and 2 must have distinct IDs, got both %s", first.DeviceID)
+	}
+	devices, err := users.ListDevices(ctx, userID)
+	if err != nil || len(devices) != 2 {
+		t.Fatalf("initial devices=%d want 2", len(devices))
+	}
+	syncCalls := recorder.calls
+
+	// 2. 设备 2 移动到全新网络 (203.0.113.99)，携带设备 2 的 ETag 刷新订阅
+	roamed, err := share.ArtifactByToken(ctx, token, "clash.yaml", "clash-verge/2.1.3", "203.0.113.99", `"`+second.Digest+`"`)
+	if err != nil {
+		t.Fatalf("roam device 2: %v", err)
+	}
+	if roamed.DeviceID != second.DeviceID {
+		t.Fatalf("roamed device ID = %s, want %s (device 2)", roamed.DeviceID, second.DeviceID)
+	}
+	// 验证总设备数未增加（未新建第 3 台设备）且未触发内核重载
+	devices, _ = users.ListDevices(ctx, userID)
+	if len(devices) != 2 {
+		t.Fatalf("device count after roam = %d, want 2 (no ghost device)", len(devices))
+	}
+	if recorder.calls != syncCalls {
+		t.Fatalf("roaming must not trigger kernel sync, got calls=%d want %d", recorder.calls, syncCalls)
+	}
+	// 验证设备 2 的来源地址与名字已原地更新，设备 1 保持原样
+	for _, d := range devices {
+		if d.ID == second.DeviceID {
+			if d.SourceIP != "203.0.113.99" || d.Name != "Clash Verge · 203.0.113.99" {
+				t.Fatalf("device 2 not updated in place: %+v", d)
+			}
+		} else if d.ID == first.DeviceID {
+			if d.SourceIP != "198.51.100.10" {
+				t.Fatalf("device 1 unexpectedly modified: %+v", d)
+			}
+		}
+	}
+
+	// 3. 设备 1 也漫游到与设备 2 相同的 IP (203.0.113.99，如同一家庭 Wi-Fi)，携带设备 1 的 ETag
+	coexist, err := share.ArtifactByToken(ctx, token, "clash.yaml", "clash-verge/2.1.3", "203.0.113.99", first.Digest)
+	if err != nil {
+		t.Fatalf("coexist roam: %v", err)
+	}
+	if coexist.DeviceID != first.DeviceID {
+		t.Fatalf("coexist device ID = %s, want %s (device 1)", coexist.DeviceID, first.DeviceID)
+	}
+	devices, _ = users.ListDevices(ctx, userID)
+	if len(devices) != 2 {
+		t.Fatalf("coexist device count = %d, want 2", len(devices))
+	}
+
+	// 4. 模拟配置更新：服务端重新生成产物后摘要变更，设备 2 带着历史旧 ETag 换网拉取
+	oldDigest := second.Digest
+	newDigest := "digest-after-server-config-update"
+	if _, err := share.db.Exec(`UPDATE runtime_artifacts SET digest=? WHERE user_id=? AND device_id=?`, newDigest, userID, second.DeviceID); err != nil {
+		t.Fatalf("update artifact digest: %v", err)
+	}
+	reclaimed, err := share.ArtifactByToken(ctx, token, "clash.yaml", "clash-verge/2.1.3", "192.0.2.88", oldDigest)
+	if err != nil {
+		t.Fatalf("reclaim with historical digest: %v", err)
+	}
+	if reclaimed.DeviceID != second.DeviceID {
+		t.Fatalf("reclaimed device ID = %s, want %s (device 2 via historical digest)", reclaimed.DeviceID, second.DeviceID)
+	}
+	if reclaimed.Digest != newDigest {
+		t.Fatalf("reclaimed digest = %s, want new digest %s", reclaimed.Digest, newDigest)
+	}
+	devices, _ = users.ListDevices(ctx, userID)
+	if len(devices) != 2 {
+		t.Fatalf("historical digest reclaim device count = %d, want 2", len(devices))
+	}
+}

@@ -366,3 +366,37 @@ func TestUpdateDeviceMetadataKeepsInferredPlatform(t *testing.T) {
 		t.Fatalf("platform after android refresh=%q, want android", devices[0].Platform)
 	}
 }
+
+func TestFindDeviceByIDAndClaimDevice(t *testing.T) {
+	store := newTestStore(t)
+	svc := NewService(store)
+	ctx := t.Context()
+	created, _, err := svc.Create(ctx, CreateInput{Name: "alice", Enabled: true})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	dev, _, found, err := svc.DeviceForKey(ctx, created.ID, "clashverge", "Clash Verge", DeviceMetadata{SourceIP: "198.51.100.10"})
+	if err != nil || !found {
+		t.Fatalf("create device: %v", err)
+	}
+
+	// 1. FindDeviceByID
+	foundDev, ok, err := svc.FindDeviceByID(ctx, created.ID, dev.ID)
+	if err != nil || !ok || foundDev.ID != dev.ID {
+		t.Fatalf("FindDeviceByID: dev=%+v ok=%v err=%v", foundDev, ok, err)
+	}
+	// 不存在的设备 ID
+	if _, ok, err := svc.FindDeviceByID(ctx, created.ID, "nonexistent-id"); err != nil || ok {
+		t.Fatalf("FindDeviceByID nonexistent: ok=%v err=%v", ok, err)
+	}
+
+	// 2. ClaimDevice 更新来源地址与名称
+	claimed, ok, err := svc.ClaimDevice(ctx, created.ID, dev.ID, "Clash Verge", DeviceMetadata{SourceIP: "203.0.113.88"})
+	if err != nil || !ok {
+		t.Fatalf("ClaimDevice: %v", err)
+	}
+	devices, _ := svc.ListDevices(ctx, created.ID)
+	if len(devices) != 1 || devices[0].SourceIP != "203.0.113.88" || devices[0].Name != "Clash Verge · 203.0.113.88" {
+		t.Fatalf("device after claim: %+v (claimed=%+v)", devices[0], claimed)
+	}
+}

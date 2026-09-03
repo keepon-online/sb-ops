@@ -11,7 +11,8 @@ import (
 )
 
 func (h *handler) downloadSubscription(c *gin.Context) {
-	artifact, err := h.Share.ArtifactByToken(c.Request.Context(), c.Param("token"), c.Param("format"), c.Request.UserAgent(), c.ClientIP())
+	ifNoneMatch := c.GetHeader("If-None-Match")
+	artifact, err := h.Share.ArtifactByToken(c.Request.Context(), c.Param("token"), c.Param("format"), c.Request.UserAgent(), c.ClientIP(), ifNoneMatch)
 	if err != nil {
 		switch {
 		case errors.Is(err, serviceshare.ErrUserDisabled), errors.Is(err, serviceshare.ErrUserExpired), errors.Is(err, serviceshare.ErrQuotaExhausted), errors.Is(err, serviceshare.ErrDeviceDisabled):
@@ -30,7 +31,7 @@ func (h *handler) downloadSubscription(c *gin.Context) {
 	etag := `"` + artifact.Digest + `"`
 	c.Header("ETag", etag)
 	c.Header("Cache-Control", "private, no-cache")
-	if c.GetHeader("If-None-Match") == etag {
+	if serviceshare.CleanETag(ifNoneMatch) == artifact.Digest {
 		c.Status(http.StatusNotModified)
 		return
 	}

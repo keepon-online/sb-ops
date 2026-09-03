@@ -658,6 +658,22 @@ func (s *Store) FindDeviceByUAKey(ctx context.Context, userID, uaKey, sourceIP s
 	return device, true, nil
 }
 
+// FindDeviceByID locates a device by its ID and user ID.
+func (s *Store) FindDeviceByID(ctx context.Context, userID, deviceID string) (Device, bool, error) {
+	var device Device
+	var enabled int
+	err := s.db.QueryRowContext(ctx, `SELECT id,name,enabled FROM devices WHERE id=? AND user_id=?`, deviceID, userID).Scan(&device.ID, &device.Name, &enabled)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Device{}, false, nil
+	}
+	if err != nil {
+		return Device{}, false, err
+	}
+	device.Enabled = enabled != 0
+	device.Auto = true
+	return device, true, nil
+}
+
 // RotateDevice replaces one device's credential material in place.
 func (s *Store) RotateDevice(ctx context.Context, userID, deviceID string, device storedDevice) error {
 	result, err := s.db.ExecContext(ctx, `

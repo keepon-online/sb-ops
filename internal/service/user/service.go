@@ -196,6 +196,33 @@ func (s *Service) DeviceForKey(ctx context.Context, userID, uaKey, label string,
 	return device, true, true, nil
 }
 
+// FindDeviceByID retrieves one device by its ID for the user.
+func (s *Service) FindDeviceByID(ctx context.Context, userID, deviceID string) (Device, bool, error) {
+	return s.store.FindDeviceByID(ctx, userID, deviceID)
+}
+
+// ClaimDevice re-attributes an identified device (e.g. matched via ETag), updating its
+// source IP, name, and metadata without creating a new device.
+func (s *Service) ClaimDevice(ctx context.Context, userID, deviceID, label string, metadata DeviceMetadata) (Device, bool, error) {
+	existing, ok, err := s.store.FindDeviceByID(ctx, userID, deviceID)
+	if err != nil || !ok {
+		return existing, ok, err
+	}
+	if label == "" {
+		label = existing.Name
+		if idx := strings.Index(label, " · "); idx >= 0 {
+			label = label[:idx]
+		}
+	}
+	if name := autoDeviceName(label, metadata.SourceIP); name != existing.Name && normalizeSourceIP(metadata.SourceIP) != "" {
+		if renameErr := s.store.RenameDevice(ctx, userID, existing.ID, name); renameErr == nil {
+			existing.Name = name
+		}
+	}
+	_ = s.store.UpdateDeviceMetadata(ctx, userID, existing.ID, metadata, 5*time.Minute)
+	return existing, true, nil
+}
+
 // RotateDevice re-issues one device's credential; the old token/uuid/password
 // die immediately.
 func autoDeviceName(label, sourceIP string) string {
