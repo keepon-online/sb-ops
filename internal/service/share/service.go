@@ -228,7 +228,12 @@ FROM users WHERE subscription_token_hash=?`, hash[:]).Scan(&artifact.UserID, &us
 		// 用户链接：优先通过 ETag (If-None-Match) 锚定已有设备（多台同 UA 客户端漫游换网时不误建新设备），
 		// ETag 未命中再按 UA + IP 路由/自动建设备。
 		if ifNoneMatch != "" {
-			if matchedID, _ := s.findDeviceByDigest(ctx, artifact.UserID, format, ifNoneMatch); matchedID != "" {
+			// ETag 锚定是尽力而为：查询故障记日志后回退 UA 指纹路由，不吞错误。
+			matchedID, digestErr := s.findDeviceByDigest(ctx, artifact.UserID, format, ifNoneMatch)
+			if digestErr != nil {
+				s.log.Warn("ETag 设备锚定查询失败，回退 UA 指纹路由", "error", digestErr)
+			}
+			if digestErr == nil && matchedID != "" {
 				if dev, found, err := s.users.ClaimDevice(ctx, artifact.UserID, matchedID, uaInfo.Label, metadata); err == nil && found {
 					if !dev.Enabled {
 						return Artifact{}, ErrDeviceDisabled

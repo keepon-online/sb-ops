@@ -284,20 +284,23 @@ func clashRules(input Input, user serviceuser.ArtifactUser) ([]string, error) {
 	}
 	if len(rules) == 0 {
 		rules = defaultClashRules()
-		return append(selfDirectRules(input.PublicAddress), rules...), nil
+		return append(selfDirectRules(input.PublicAddress, input.PanelDomain), rules...), nil
 	}
-	return append(append(selfDirectRules(input.PublicAddress), rules...), "MATCH,"+defaultAction), nil
+	return append(append(selfDirectRules(input.PublicAddress, input.PanelDomain), rules...), "MATCH,"+defaultAction), nil
 }
 
 // selfDirectRules 把面板自身地址钉在规则最前：TUN/系统代理下客户端的订阅
 // 更新与面板访问若走隧道，会由本机内核自环回面板——既采集不到真实来源地址，
-// 面板故障时客户端连订阅都无法刷新。public_address 是裸主机名或 IPv4。
-func selfDirectRules(publicAddress string) []string {
-	// 面板公网域名是固定的订阅入口：即使 public_address 仍配置为 IP，
-	// 也要把域名钉为 DIRECT，避免 TUN/系统代理下订阅更新自环。
-	rules := []string{"DOMAIN,panel.example.com,DIRECT"}
+// 面板故障时客户端连订阅都无法刷新。public_address 是裸主机名或 IPv4；
+// panel_domain 是 public_address 配置为 IP 时面板额外的公网域名（可选，
+// 来自 deployment.panel_domain 配置，不在此硬编码任何具体域名）。
+func selfDirectRules(publicAddress, panelDomain string) []string {
+	var rules []string
+	if domain := strings.TrimSpace(panelDomain); domain != "" {
+		rules = append(rules, "DOMAIN,"+domain+",DIRECT")
+	}
 	host := strings.TrimSpace(publicAddress)
-	if host == "" || host == "panel.example.com" {
+	if host == "" || host == strings.TrimSpace(panelDomain) {
 		return rules
 	}
 	if ip := net.ParseIP(host); ip != nil && ip.To4() != nil {

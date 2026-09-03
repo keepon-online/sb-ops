@@ -73,6 +73,7 @@ func TestCompileEnablesPerUserTrafficStats(t *testing.T) {
 	device := testDevice("user-1", "credential-password")
 	result, err := Compile(Input{
 		PublicAddress: "1.1.1.1",
+		PanelDomain:   "panel.example.com",
 		Protocols: []serviceprotocol.Protocol{
 			{ID: "vless", Name: "VLESS", Type: serviceprotocol.TypeVLESS, Enabled: true, Listen: "::", ListenPort: 2443, Settings: map[string]any{"tlsMode": "reality", "serverName": "example.com", "realityPrivateKey": "private", "realityPublicKey": "public", "shortId": "01234567"}},
 			{ID: "ss", Name: "SS-2022", Type: serviceprotocol.TypeShadowsocks, Enabled: true, Listen: "::", ListenPort: 2444, Settings: map[string]any{"method": "2022-blake3-aes-256-gcm", "password": "server-password"}},
@@ -133,6 +134,7 @@ func TestCompileClashSubscriptionIncludesCommonRules(t *testing.T) {
 
 	result, err := Compile(Input{
 		PublicAddress: "1.1.1.1",
+		PanelDomain:   "panel.example.com",
 		Protocols: []serviceprotocol.Protocol{{
 			ID: "ss", Name: "SS", Type: serviceprotocol.TypeShadowsocks, Enabled: true, Listen: "::", ListenPort: 2444,
 			Settings: map[string]any{"method": "2022-blake3-aes-128-gcm", "password": "test-password"},
@@ -206,6 +208,7 @@ func TestCompileClashSubscriptionIncludesCommonRules(t *testing.T) {
 		actualRules[i] = rule.(string)
 	}
 	wantRules := append([]string{"DOMAIN,panel.example.com,DIRECT", "IP-CIDR,1.1.1.1/32,DIRECT,no-resolve"}, defaultClashRules()...)
+
 	if !reflect.DeepEqual(actualRules, wantRules) || !containsRule(actualRules, "RULE-SET,category-ads-all,"+clashAdsGroup) || !containsRule(actualRules, "RULE-SET,cn,"+clashChinaGroup+",no-resolve") || actualRules[len(actualRules)-1] != "MATCH,"+clashFinalGroup {
 		t.Fatalf("rules = %#v", actualRules)
 	}
@@ -216,19 +219,31 @@ func TestClashRulesPinPanelAddressDirect(t *testing.T) {
 	input := func(address string) Input {
 		return Input{PublicAddress: address, UserPolicies: map[string]map[string]bool{"user": {}}}
 	}
+	// public_address 为域名：一条 DIRECT，不重复。
 	domainRules, err := clashRules(input("panel.example.com"), user)
 	if err != nil {
 		t.Fatalf("clashRules(domain): %v", err)
 	}
-	if domainRules[0] != "DOMAIN,panel.example.com,DIRECT" || domainRules[1] != "DOMAIN,panel.example.com,DIRECT" || domainRules[len(domainRules)-1] != "MATCH,"+clashFinalGroup {
-		t.Fatalf("domain rules = %#v, want panel DIRECT first and MATCH last", domainRules)
+	if domainRules[0] != "DOMAIN,panel.example.com,DIRECT" || domainRules[1] == "DOMAIN,panel.example.com,DIRECT" || domainRules[len(domainRules)-1] != "MATCH,"+clashFinalGroup {
+		t.Fatalf("domain rules = %#v, want single panel DIRECT first and MATCH last", domainRules)
 	}
+	// public_address 为 IP 且未配置 panel_domain：只有 IP-CIDR，不得出现任何硬编码域名。
 	ipRules, err := clashRules(input("203.0.113.7"), user)
 	if err != nil {
 		t.Fatalf("clashRules(ip): %v", err)
 	}
-	if ipRules[0] != "DOMAIN,panel.example.com,DIRECT" || ipRules[1] != "IP-CIDR,203.0.113.7/32,DIRECT,no-resolve" {
+	if ipRules[0] != "IP-CIDR,203.0.113.7/32,DIRECT,no-resolve" {
 		t.Fatalf("ip rules = %#v, want panel IP-CIDR first", ipRules)
+	}
+	// public_address 为 IP 且配置 panel_domain：域名钉最前 + IP-CIDR 次之。
+	combinedInput := input("203.0.113.7")
+	combinedInput.PanelDomain = "panel.example.com"
+	combinedRules, err := clashRules(combinedInput, user)
+	if err != nil {
+		t.Fatalf("clashRules(ip+domain): %v", err)
+	}
+	if combinedRules[0] != "DOMAIN,panel.example.com,DIRECT" || combinedRules[1] != "IP-CIDR,203.0.113.7/32,DIRECT,no-resolve" {
+		t.Fatalf("combined rules = %#v, want domain then IP-CIDR", combinedRules)
 	}
 	// 有策略规则的订阅同样把面板地址钉在最前，避免被用户规则覆盖。
 	policyInput := Input{PublicAddress: "panel.example.com", UserPolicies: map[string]map[string]bool{"user": {"p1": true}}}
@@ -238,7 +253,7 @@ func TestClashRulesPinPanelAddressDirect(t *testing.T) {
 	if err != nil {
 		t.Fatalf("clashRules(policy): %v", err)
 	}
-	if policyRules[0] != "DOMAIN,panel.example.com,DIRECT" || policyRules[1] != "DOMAIN,panel.example.com,DIRECT" || policyRules[2] != "DOMAIN,corp.example.com,DIRECT" {
+	if policyRules[0] != "DOMAIN,panel.example.com,DIRECT" || policyRules[1] != "DOMAIN,corp.example.com,DIRECT" {
 		t.Fatalf("policy rules = %#v, want panel DIRECT before user rules", policyRules)
 	}
 }
@@ -254,6 +269,7 @@ func containsRule(rules []string, want string) bool {
 
 func TestClashRulesUseAssignedPolicy(t *testing.T) {
 	rules, err := clashRules(Input{
+		PublicAddress: "203.0.113.7", PanelDomain: "panel.example.com",
 		Policies: []servicepolicy.Policy{{ID: "default", Name: "Clash 默认分流", Enabled: true, DefaultAction: "proxy"}},
 		PolicyRules: map[string][]servicepolicy.Rule{"default": {
 			{Name: "AI", Enabled: true, Action: "proxy", Conditions: servicepolicy.Conditions{RuleSets: []string{"openai", "claude"}}},
@@ -266,7 +282,7 @@ func TestClashRulesUseAssignedPolicy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compile policy rules: %v", err)
 	}
-	want := []string{"DOMAIN,panel.example.com,DIRECT", "RULE-SET,openai," + clashAIGroup, "RULE-SET,claude," + clashAIGroup, "RULE-SET,china,DIRECT", "RULE-SET,private," + clashPrivateGroup + ",no-resolve", "IP-CIDR,10.0.0.0/8,DIRECT,no-resolve", "MATCH," + clashProxyGroup}
+	want := []string{"DOMAIN,panel.example.com,DIRECT", "IP-CIDR,203.0.113.7/32,DIRECT,no-resolve", "RULE-SET,openai," + clashAIGroup, "RULE-SET,claude," + clashAIGroup, "RULE-SET,china,DIRECT", "RULE-SET,private," + clashPrivateGroup + ",no-resolve", "IP-CIDR,10.0.0.0/8,DIRECT,no-resolve", "MATCH," + clashProxyGroup}
 	if !reflect.DeepEqual(rules, want) {
 		t.Fatalf("rules = %#v, want %#v", rules, want)
 	}
@@ -279,6 +295,7 @@ func TestCompileShadowsocksSubscription(t *testing.T) {
 
 	result, err := Compile(Input{
 		PublicAddress: "1.1.1.1",
+		PanelDomain:   "panel.example.com",
 		Protocols: []serviceprotocol.Protocol{{
 			ID: "ss", Name: "SS-2022", Type: serviceprotocol.TypeShadowsocks, Enabled: true, Listen: "::", ListenPort: 2444,
 			Settings: map[string]any{"method": "2022-blake3-aes-128-gcm", "password": "test-password"},
@@ -398,6 +415,7 @@ func TestCompileUsesProtocolCertificatePaths(t *testing.T) {
 	certificateID := "certificate-1"
 	result, err := Compile(Input{
 		PublicAddress: "1.1.1.1",
+		PanelDomain:   "panel.example.com",
 		TLSCertPath:   "/etc/sb/tls/fallback-cert.pem",
 		TLSKeyPath:    "/etc/sb/tls/fallback-key.pem",
 		CertificatePaths: map[string]CertificatePaths{certificateID: {
@@ -602,6 +620,7 @@ func TestCompileDerivesUniqueInboundTags(t *testing.T) {
 func TestCompileRendersArgoSubscriptionNodes(t *testing.T) {
 	result, err := Compile(Input{
 		PublicAddress: "1.1.1.1",
+		PanelDomain:   "panel.example.com",
 		Protocols: []serviceprotocol.Protocol{{
 			ID: "vm", Name: "VMess", Type: serviceprotocol.TypeVMess, Enabled: true, Listen: "::", ListenPort: 2096,
 			Settings: map[string]any{"transport": "ws", "wsPath": "/argo"},

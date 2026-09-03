@@ -128,6 +128,8 @@ certificates:
 
 deployment:
   public_address: "203.0.113.10"  # 必改：客户端订阅里拨打的地址（公网 IPv4 或域名）
+  # panel_domain: "panel.example.com"  # 可选：public_address 为 IP 而面板另有域名时填写，
+  #                                    # 订阅会把它钉为最前置的 DIRECT 规则（防自环）
   # tls_cert_path: ""             # 可选外部 TLS 证书；留空 = 面板生成的自签证书
   # tls_key_path: ""
 

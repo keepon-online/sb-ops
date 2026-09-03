@@ -2,6 +2,7 @@ package singbox
 
 import (
 	"context"
+	"slices"
 
 	"github.com/google/uuid"
 	"github.com/keepon-online/sb-ops/internal/service/common"
@@ -32,7 +33,8 @@ func (s *Service) EnsurePrivateBlockRule(ctx context.Context) (RouteRule, error)
 		if rule.Name != PrivateBlockRuleName {
 			continue
 		}
-		if rule.Enabled && rule.OutboundTag == "block" && len(rule.Conditions.IPCIDRs) == len(privateNetworkCIDRs) {
+		// 按内容比对而非数量：用户等量替换任一 CIDR 同样视为偏离默认，须还原。
+		if rule.Enabled && rule.OutboundTag == "block" && slices.Equal(rule.Conditions.IPCIDRs, privateNetworkCIDRs) {
 			return rule, nil
 		}
 		value, fields := routeRuleFromInput(RouteRuleWriteInput{ID: rule.ID, Name: rule.Name, Enabled: true, Priority: rule.Priority, Conditions: RouteConditions{IPCIDRs: privateNetworkCIDRs}, OutboundTag: "block"})

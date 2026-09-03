@@ -40,6 +40,9 @@ func ClassifyRuntimeConfigChanges(previous, next RuntimeConfig) ReloadSummary {
 	if previous.Deployment.PublicAddress != next.Deployment.PublicAddress {
 		summary.RestartRequired = append(summary.RestartRequired, "deployment.public_address")
 	}
+	if previous.Deployment.PanelDomain != next.Deployment.PanelDomain {
+		summary.RestartRequired = append(summary.RestartRequired, "deployment.panel_domain")
+	}
 	if previous.Deployment.TLSCertPath != next.Deployment.TLSCertPath {
 		summary.RestartRequired = append(summary.RestartRequired, "deployment.tls_cert_path")
 	}

@@ -41,6 +41,18 @@ func TestEnsurePrivateBlockRule(t *testing.T) {
 		t.Fatalf("healed rule = %#v", healed)
 	}
 
+	// 等量替换（数量不变、内容不同）同样视为偏离默认，应被还原。
+	if _, err := service.UpdateRule(ctx, RouteRuleWriteInput{ID: healed.ID, Revision: healed.Revision, Name: PrivateBlockRuleName, Enabled: true, Priority: healed.Priority, Conditions: RouteConditions{IPCIDRs: []string{"0.0.0.0/8", "10.0.0.0/8", "127.0.0.0/8", "169.254.0.0/16", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "fc00::/7"}}, OutboundTag: "block"}); err != nil {
+		t.Fatalf("swap cidr: %v", err)
+	}
+	healed2, err := service.EnsurePrivateBlockRule(ctx)
+	if err != nil {
+		t.Fatalf("heal swapped rule: %v", err)
+	}
+	if healed2.ID != healed.ID || !reflect.DeepEqual(healed2.Conditions.IPCIDRs, privateNetworkCIDRs) {
+		t.Fatalf("same-count swap not healed: %#v", healed2.Conditions.IPCIDRs)
+	}
+
 	// 重建：用户删除后重启补回，优先级避开被占用值。
 	if err := service.DeleteRule(ctx, rule.ID); err != nil {
 		t.Fatalf("delete rule: %v", err)

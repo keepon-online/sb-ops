@@ -61,8 +61,12 @@ type AuditConfig struct {
 
 type DeploymentConfig struct {
 	PublicAddress string `mapstructure:"public_address"`
-	TLSCertPath   string `mapstructure:"tls_cert_path"`
-	TLSKeyPath    string `mapstructure:"tls_key_path"`
+	// PanelDomain 是订阅自环保护用的面板公网域名：public_address 为 IP 而
+	// 面板另有域名时填写，订阅会把它钉为最前置的 DIRECT 规则；留空则只钉
+	// public_address。不要在代码里硬编码任何具体域名。
+	PanelDomain string `mapstructure:"panel_domain"`
+	TLSCertPath string `mapstructure:"tls_cert_path"`
+	TLSKeyPath  string `mapstructure:"tls_key_path"`
 }
 
 // NotificationsConfig holds outbound alert delivery endpoints. All fields are
@@ -188,6 +192,7 @@ func NormalizeRuntimeConfig(cfg RuntimeConfig) RuntimeConfig {
 		cfg.Certificates.ExpiryWarning = defaults.Certificates.ExpiryWarning
 	}
 	cfg.Deployment.PublicAddress = strings.TrimSpace(cfg.Deployment.PublicAddress)
+	cfg.Deployment.PanelDomain = strings.TrimSpace(cfg.Deployment.PanelDomain)
 	cfg.Deployment.TLSCertPath = strings.TrimSpace(cfg.Deployment.TLSCertPath)
 	cfg.Deployment.TLSKeyPath = strings.TrimSpace(cfg.Deployment.TLSKeyPath)
 	cfg.Notifications.WebhookURL = strings.TrimSpace(cfg.Notifications.WebhookURL)

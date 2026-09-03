@@ -416,11 +416,12 @@ func TestMultiDeviceRoamingWithETag(t *testing.T) {
 	}
 	// 验证设备 2 的来源地址与名字已原地更新，设备 1 保持原样
 	for _, d := range devices {
-		if d.ID == second.DeviceID {
+		switch d.ID {
+		case second.DeviceID:
 			if d.SourceIP != "203.0.113.99" || d.Name != "Clash Verge · 203.0.113.99" {
 				t.Fatalf("device 2 not updated in place: %+v", d)
 			}
-		} else if d.ID == first.DeviceID {
+		case first.DeviceID:
 			if d.SourceIP != "198.51.100.10" {
 				t.Fatalf("device 1 unexpectedly modified: %+v", d)
 			}

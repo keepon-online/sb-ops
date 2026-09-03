@@ -22,6 +22,7 @@ var (
 
 type Input struct {
 	PublicAddress       string
+	PanelDomain         string
 	TLSCertPath         string
 	TLSKeyPath          string
 	CertificatePaths    map[string]CertificatePaths

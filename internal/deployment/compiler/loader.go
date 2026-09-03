@@ -21,6 +21,7 @@ import (
 // the public address clients dial and optional external TLS certificate paths.
 type Deployment struct {
 	PublicAddress       string
+	PanelDomain         string
 	TLSCertPath         string
 	TLSKeyPath          string
 	CacheFilePath       string
@@ -124,7 +125,7 @@ func LoadInput(ctx context.Context, db *sql.DB, deployment Deployment, certifica
 		return Input{}, err
 	}
 	return Input{
-		PublicAddress: deployment.PublicAddress, TLSCertPath: deployment.TLSCertPath,
+		PublicAddress: deployment.PublicAddress, PanelDomain: deployment.PanelDomain, TLSCertPath: deployment.TLSCertPath,
 		TLSKeyPath: deployment.TLSKeyPath, CacheFilePath: deployment.CacheFilePath, AllowPrivateAddress: deployment.AllowPrivateAddress, CertificatePaths: certificatePaths, Protocols: protocols, Users: users, Devices: devices, UserProtocols: assignments,
 		Policies: policies, PolicyRules: policyRules, UserPolicies: userPolicies,
 		SingBoxConfig: singBoxConfig, ClashAPISecret: clashSecret, Outbounds: outbounds, OutboundPasswords: passwords, RouteRules: routeRules, RuleSets: ruleSets, ArgoTunnels: argoTunnels,

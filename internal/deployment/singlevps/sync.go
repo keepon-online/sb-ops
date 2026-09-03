@@ -22,6 +22,7 @@ import (
 type ApplyConfig struct {
 	CertificateDir      string
 	PublicAddress       string
+	PanelDomain         string
 	TLSCertPath         string
 	TLSKeyPath          string
 	CacheFilePath       string
@@ -199,6 +200,7 @@ func (s *SyncService) Sync(ctx context.Context) (SyncResult, error) {
 func (s *SyncService) compile(ctx context.Context) (deploymentcompiler.Input, deploymentcompiler.Result, error) {
 	input, err := deploymentcompiler.LoadInput(ctx, s.db, deploymentcompiler.Deployment{
 		PublicAddress:       s.apply.PublicAddress,
+		PanelDomain:         s.apply.PanelDomain,
 		TLSCertPath:         s.apply.TLSCertPath,
 		TLSKeyPath:          s.apply.TLSKeyPath,
 		CacheFilePath:       s.apply.CacheFilePath,

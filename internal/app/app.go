@@ -45,6 +45,7 @@ func New(cfg *config.RuntimeConfigHolder, stop func(), logger *logging.Logger, v
 	apply := deployment.ApplyConfig{
 		CertificateDir:      current.SingBox.CertificateDir,
 		PublicAddress:       current.Deployment.PublicAddress,
+		PanelDomain:         current.Deployment.PanelDomain,
 		TLSCertPath:         current.Deployment.TLSCertPath,
 		TLSKeyPath:          current.Deployment.TLSKeyPath,
 		CacheFilePath:       cacheFilePath,
