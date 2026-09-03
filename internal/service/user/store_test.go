@@ -324,3 +324,45 @@ func TestUpdateDevicePlatformOnlyFillsUnknown(t *testing.T) {
 		t.Fatalf("unknown refs after inference=%+v, want 0", refs)
 	}
 }
+
+// TestUpdateDeviceMetadataKeepsInferredPlatform 回归订阅刷新覆盖推断平台的 Bug：
+// Clash Verge 等 UA 解析平台为 unknown，订阅周期刷新不得把 DeviceProfiler
+// 已推断的 windows/macos 抹回 unknown；确定性的平台仍应正常写入。
+func TestUpdateDeviceMetadataKeepsInferredPlatform(t *testing.T) {
+	store := newTestStore(t)
+	svc := NewService(store)
+	ctx := t.Context()
+	created, _, err := svc.Create(ctx, CreateInput{Name: "alice", Enabled: true})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	device, _, found, err := svc.DeviceForKey(ctx, created.ID, "clashverge", "Clash Verge", DeviceMetadata{SourceIP: "203.0.113.9"})
+	if err != nil || !found {
+		t.Fatalf("discover device found=%v err=%v", found, err)
+	}
+	if err := svc.UpdateDevicePlatform(ctx, created.ID, device.ID, "windows"); err != nil {
+		t.Fatalf("infer platform: %v", err)
+	}
+	now := time.Now().UTC()
+	md := DeviceMetadata{Platform: "unknown", Client: "Clash Verge", ClientVersion: "2.1.3", SourceIP: "203.0.113.9", LastSeenAt: &now}
+	if err := svc.UpdateDeviceMetadata(ctx, created.ID, device.ID, md); err != nil {
+		t.Fatalf("refresh with unknown platform: %v", err)
+	}
+	devices, err := svc.ListDevices(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(devices) != 1 || devices[0].Platform != "windows" {
+		t.Fatalf("platform after unknown refresh=%q, want windows (inferred platform must persist)", devices[0].Platform)
+	}
+	// 确定性的平台（UA 携带）应能覆盖推断值；用晚于换取间隔的时间戳绕过 5 分钟节流。
+	after := now.Add(6 * time.Minute)
+	md.Platform = "android"
+	md.LastSeenAt = &after
+	if err := svc.UpdateDeviceMetadata(ctx, created.ID, device.ID, md); err != nil {
+		t.Fatalf("refresh with android: %v", err)
+	}
+	if devices, _ = svc.ListDevices(ctx, created.ID); devices[0].Platform != "android" {
+		t.Fatalf("platform after android refresh=%q, want android", devices[0].Platform)
+	}
+}

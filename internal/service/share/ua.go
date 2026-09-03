@@ -41,11 +41,34 @@ func ParseUserAgent(userAgent string) UAInfo {
 			}
 		}
 	}
-	// 未知客户端仍保留稳定 key，兼容当前自动发现行为；展示名截断到安全长度。
+	// 未匹配到受支持客户端，但仍保留稳定 key，兼容当前自动发现行为；
+	// 展示名截断到安全长度。
+	if isBrowserUA(trimmed) {
+		// 浏览器直接打开订阅链接只用于预览/复制，不该消耗设备配额或触发内核重载；
+		// Key 留空使调用方跳过自动建设备、走既有回退路径。
+		return UAInfo{Platform: detectPlatform(trimmed)}
+	}
 	return UAInfo{
 		Key: "ua-" + token, Label: truncateUA(fields[0]), Client: truncateUA(fields[0]),
 		Platform: detectPlatform(trimmed), Version: extractVersion(trimmed, token),
 	}
+}
+
+// isBrowserUA 判断 UA 是否来自浏览器。浏览器 UA 以 "Mozilla/" 开头且通常
+// 携带渲染引擎/浏览器标识；Clash 系客户端 UA（如 "clash-verge/v1.7.7"）不含
+// 这些标识，因此不受影响。
+func isBrowserUA(userAgent string) bool {
+	lower := strings.ToLower(userAgent)
+	if !strings.HasPrefix(lower, "mozilla/") {
+		return false
+	}
+	browserTokens := []string{"chrome", "safari", "firefox", "edg/", "trident", "opera", "opr/"}
+	for _, token := range browserTokens {
+		if strings.Contains(lower, token) {
+			return true
+		}
+	}
+	return false
 }
 
 var versionPattern = regexp.MustCompile(`(?i)(?:^|[/ _-])v?([0-9]+(?:\.[0-9A-Za-z-]+)+)`)

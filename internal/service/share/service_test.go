@@ -90,6 +90,11 @@ func TestParseUserAgentKeyLabel(t *testing.T) {
 		{"Stash/2.8.0", "stash", "Stash"},
 		{"MyClient/1.0", "ua-myclient", "MyClient/1.0"},
 		{"", "", ""},
+		// 浏览器 UA 不自动建设备：Key 留空，Label 留空。
+		{"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", "", ""},
+		{"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15", "", ""},
+		{"Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0", "", ""},
+		{"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 Edg/126.0.0.0", "", ""},
 	}
 	for _, tc := range cases {
 		info := ParseUserAgent(tc.ua)
@@ -108,6 +113,9 @@ func TestParseUserAgentMetadata(t *testing.T) {
 		{"ClashforWindows/0.20.39 (Windows)", "clashforwindows", "Clash for Windows", "windows", "0.20.39"},
 		{"MyClient/1.0 (Linux)", "ua-myclient", "MyClient/1.0", "linux", "1.0"},
 		{"", "", "", "unknown", ""},
+		// 浏览器 UA：不建设备（Key 空），但平台仍按 UA 识别。
+		{"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", "", "", "windows", ""},
+		{"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15", "", "", "macos", ""},
 	}
 	for _, tc := range cases {
 		got := ParseUserAgent(tc.ua)

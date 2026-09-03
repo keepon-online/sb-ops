@@ -551,9 +551,9 @@ func (s *Store) UpdateDeviceMetadata(ctx context.Context, userID, deviceID strin
 	// 只刷新其余元数据；非空且不同才覆盖。
 	_, err := s.db.ExecContext(ctx, `
 UPDATE devices
-SET source_ip=COALESCE(NULLIF(?,''),source_ip),platform=?,client=?,client_version=?,last_seen_at=?
+SET source_ip=COALESCE(NULLIF(?,''),source_ip),platform=CASE WHEN ?='unknown' THEN platform ELSE ? END,client=?,client_version=?,last_seen_at=?
 WHERE id=? AND user_id=? AND (source_ip<>? OR last_seen_at IS NULL OR last_seen_at <= ?)`,
-		sourceIP, platform, client, version, common.TimeFromPtr(seenAt), deviceID, userID, sourceIP, cutoff)
+		sourceIP, platform, platform, client, version, common.TimeFromPtr(seenAt), deviceID, userID, sourceIP, cutoff)
 	return err
 }
 
