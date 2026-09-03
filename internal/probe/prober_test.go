@@ -110,8 +110,7 @@ func TestProbeEndToEndThroughRealKernel(t *testing.T) {
 	}))
 	t.Cleanup(target.Close)
 
-	prober := NewProber(db, func(context.Context) (bool, string) { return true, "" })
-	prober.targetURL = target.URL
+	prober := NewProberWithTargetURL(db, func(context.Context) (bool, string) { return true, "" }, target.URL)
 
 	result, err := prober.Probe(t.Context(), "")
 	if err != nil {

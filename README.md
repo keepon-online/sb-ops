@@ -119,6 +119,13 @@ traffic:
 audit:
   retention_days: 180             # 审计日志保留天数；0 = 永久保留
 
+probe:
+  target_url: "http://www.gstatic.com/generate_204" # 端到端拨测目标；HTTP/HTTPS
+  interval: 5m                         # 自动拨测周期；热加载后下一轮生效
+
+certificates:
+  expiry_warning: 720h                 # 证书到期前提醒阈值；默认 30 天
+
 deployment:
   public_address: "203.0.113.10"  # 必改：客户端订阅里拨打的地址（公网 IPv4 或域名）
   # tls_cert_path: ""             # 可选外部 TLS 证书；留空 = 面板生成的自签证书

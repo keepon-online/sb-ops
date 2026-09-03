@@ -117,15 +117,16 @@ func newOps(db *sql.DB, sessionTTL time.Duration, apply deployment.ApplyConfig, 
 	})
 	events := controlevents.NewBus(db)
 	alerts := controlobservability.NewService(db, newAlertNotifier(events, configProvider))
+	alerts.SetExpiryWarning(func() time.Duration { return configProvider().Certificates.ExpiryWarning })
 	// 协议端到端拨测：内核 running 且配置 applied 才放行（内核故障已有
 	// runtime_sync_failed 告警，拨测此时写失败行只会制造误报）。
-	prober := controlprobe.NewProber(db, func(ctx context.Context) (bool, string) {
+	prober := controlprobe.NewProberWithTargetURLProvider(db, func(ctx context.Context) (bool, string) {
 		runtimeProbe := syncer.Probe(ctx)
 		if runtimeProbe.ConfigStatus != "applied" {
 			return false, runtimeProbe.Reason
 		}
 		return true, ""
-	})
+	}, func() string { return configProvider().Probe.TargetURL })
 	// 升级源每次操作现取，跟随 config.yaml updates 段热更新。
 	upgradeService := controlupgrade.NewService(func() (string, string) {
 		cfg := configProvider()
@@ -211,14 +212,14 @@ func newOps(db *sql.DB, sessionTTL time.Duration, apply deployment.ApplyConfig, 
 	value.wg.Add(1)
 	go func() {
 		defer value.wg.Done()
-		runProtocolProbeLoop(background, prober, logger)
+		runProtocolProbeLoop(background, prober, logger, configProvider)
 	}()
 	return value, nil
 }
 
 // runProtocolProbeLoop 周期拨测循环。内核未就绪的跳过属常态（同步窗口、
 // 停机），打 debug 不打扰；其余失败（如读库失败）打错误日志。
-func runProtocolProbeLoop(ctx context.Context, prober *controlprobe.Prober, logger *logging.Logger) {
+func runProtocolProbeLoop(ctx context.Context, prober *controlprobe.Prober, logger *logging.Logger, configProvider func() config.RuntimeConfig) {
 	timer := time.NewTimer(controlprobe.ProbeInitialDelay)
 	defer timer.Stop()
 	for {
@@ -234,7 +235,11 @@ func runProtocolProbeLoop(ctx context.Context, prober *controlprobe.Prober, logg
 				logger.Error().Err(err).Msg("协议拨测轮失败")
 			}
 		}
-		timer.Reset(controlprobe.ProbeInterval)
+		interval := configProvider().Probe.Interval
+		if interval <= 0 {
+			interval = controlprobe.ProbeInterval
+		}
+		timer.Reset(interval)
 	}
 }
 

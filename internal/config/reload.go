@@ -49,6 +49,12 @@ func ClassifyRuntimeConfigChanges(previous, next RuntimeConfig) ReloadSummary {
 	if previous.Traffic.RetentionDays != next.Traffic.RetentionDays {
 		summary.Immediate = append(summary.Immediate, "traffic.retention_days")
 	}
+	if previous.Probe != next.Probe {
+		summary.Immediate = append(summary.Immediate, "probe")
+	}
+	if previous.Certificates != next.Certificates {
+		summary.Immediate = append(summary.Immediate, "certificates.expiry_warning")
+	}
 	if previous.Notifications != next.Notifications {
 		summary.Immediate = append(summary.Immediate, "notifications")
 	}

@@ -120,7 +120,8 @@ export const alertTypeLabels: Record<string, string> = {
   database_capacity: '数据库容量预警',
   aggregation_failed: '流量聚合失败',
   traffic_stalled: '流量采集停滞',
-  protocol_probe_failed: '协议链路拨测失败'
+  protocol_probe_failed: '协议链路拨测失败',
+  certificate_expiring: '证书即将到期'
 };
 
 export function alertTypeLabel(type: string): string {

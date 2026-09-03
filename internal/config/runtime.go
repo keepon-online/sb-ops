@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"time"
@@ -17,6 +18,8 @@ type RuntimeConfig struct {
 	Notifications NotificationsConfig    `mapstructure:"notifications"`
 	Updates       UpdatesConfig          `mapstructure:"updates"`
 	Acme          AcmeConfig             `mapstructure:"acme"`
+	Probe         ProbeConfig            `mapstructure:"probe"`
+	Certificates  CertificateConfig      `mapstructure:"certificates"`
 	Panel         PanelConfig            `mapstructure:"panel"`
 	Development   DevelopmentConfig      `mapstructure:"development"`
 }
@@ -92,6 +95,15 @@ type AcmeConfig struct {
 	APIToken    string `mapstructure:"api_token"`
 }
 
+type ProbeConfig struct {
+	TargetURL string        `mapstructure:"target_url"`
+	Interval  time.Duration `mapstructure:"interval"`
+}
+
+type CertificateConfig struct {
+	ExpiryWarning time.Duration `mapstructure:"expiry_warning"`
+}
+
 type AppServerConfig struct {
 	Listen  string `mapstructure:"listen"`
 	DataDir string `mapstructure:"data_dir"`
@@ -138,6 +150,9 @@ func DefaultRuntimeConfig() RuntimeConfig {
 	cfg.SingBox.CertificateDir = ""
 	cfg.Traffic.Interval = time.Minute
 	cfg.Traffic.RetentionDays = 90
+	cfg.Probe.TargetURL = "http://www.gstatic.com/generate_204"
+	cfg.Probe.Interval = 5 * time.Minute
+	cfg.Certificates.ExpiryWarning = 30 * 24 * time.Hour
 	cfg.Audit.RetentionDays = 180
 	cfg.Panel.SessionTTL = 24 * time.Hour
 	return cfg
@@ -161,6 +176,16 @@ func NormalizeRuntimeConfig(cfg RuntimeConfig) RuntimeConfig {
 	// keep net/http's "0 = no timeout" semantics and are not coerced.
 	if cfg.Traffic.Interval <= 0 {
 		cfg.Traffic.Interval = defaults.Traffic.Interval
+	}
+	cfg.Probe.TargetURL = strings.TrimSpace(cfg.Probe.TargetURL)
+	if cfg.Probe.TargetURL == "" {
+		cfg.Probe.TargetURL = defaults.Probe.TargetURL
+	}
+	if cfg.Probe.Interval <= 0 {
+		cfg.Probe.Interval = defaults.Probe.Interval
+	}
+	if cfg.Certificates.ExpiryWarning <= 0 {
+		cfg.Certificates.ExpiryWarning = defaults.Certificates.ExpiryWarning
 	}
 	cfg.Deployment.PublicAddress = strings.TrimSpace(cfg.Deployment.PublicAddress)
 	cfg.Deployment.TLSCertPath = strings.TrimSpace(cfg.Deployment.TLSCertPath)
@@ -226,6 +251,10 @@ func ValidateRuntimeConfig(cfg RuntimeConfig) error {
 	}
 	if cfg.Updates.Repo != "" && !validGitHubRepo(cfg.Updates.Repo) {
 		return fmt.Errorf("updates.repo 必须是 owner/repo 形式的 GitHub 仓库标识")
+	}
+	parsed, err := url.Parse(cfg.Probe.TargetURL)
+	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return fmt.Errorf("probe.target_url 必须是包含主机的 HTTP 或 HTTPS 地址")
 	}
 	return nil
 }

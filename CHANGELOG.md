@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### 新增
+
+- **拨测增强配置**：新增 `probe.target_url` 与 `probe.interval`，支持在 `config.yaml` 中自定义端到端拨测目标和周期，热加载后下一轮生效；新增 `certificates.expiry_warning`，证书进入提醒窗口时自动产生中文到期告警。
+
 ## [0.3.3] - 2026-09-03
 
 ### 新增

@@ -62,16 +62,24 @@ type Prober struct {
 	db        *sql.DB
 	store     *Store
 	ready     func(ctx context.Context) (bool, string)
-	targetURL string
+	targetURL func() string
 	newBox    boxConstructor
 	now       func() time.Time
 	mu        sync.Mutex // 串行化拨测轮次（周期轮与手动触发互斥）
 }
 
 func NewProber(db *sql.DB, ready func(ctx context.Context) (bool, string)) *Prober {
+	return NewProberWithTargetURL(db, ready, ProbeTargetURL)
+}
+
+func NewProberWithTargetURL(db *sql.DB, ready func(ctx context.Context) (bool, string), targetURL string) *Prober {
+	return NewProberWithTargetURLProvider(db, ready, func() string { return targetURL })
+}
+
+func NewProberWithTargetURLProvider(db *sql.DB, ready func(ctx context.Context) (bool, string), targetURL func() string) *Prober {
 	prober := &Prober{
 		db: db, store: NewStore(db), ready: ready,
-		targetURL: ProbeTargetURL, now: func() time.Time { return time.Now().UTC() },
+		targetURL: targetURL, now: func() time.Time { return time.Now().UTC() },
 	}
 	// 不接 PlatformLogWriter（会强制启用 cache-file 与 clash-server 服务，
 	// 见 runtime/singbox 的注释）：拨测实例日志关闭，错误经 HTTP 代理层
@@ -224,7 +232,7 @@ func (p *Prober) probeOne(ctx context.Context, protocol serviceprotocol.Protocol
 		Timeout:   perProbeTimeout,
 	}
 	started := time.Now()
-	response, err := client.Get(p.targetURL)
+	response, err := client.Get(p.targetURL())
 	latency := time.Since(started).Milliseconds()
 	if err != nil {
 		item.Status, item.Error = "failed", truncateError(err)

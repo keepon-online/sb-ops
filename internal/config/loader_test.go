@@ -90,6 +90,11 @@ panel:
   session_ttl: "6h"
 traffic:
   interval: "30s"
+probe:
+  target_url: " https://example.com/health "
+  interval: "2m"
+certificates:
+  expiry_warning: "48h"
 logging:
   rotate_max_mb: 10
 `))
@@ -109,6 +114,12 @@ logging:
 	if cfg.Traffic.Interval != 30*time.Second {
 		t.Fatalf("traffic.interval = %v", cfg.Traffic.Interval)
 	}
+	if cfg.Probe.TargetURL != "https://example.com/health" || cfg.Probe.Interval != 2*time.Minute {
+		t.Fatalf("probe config = %+v", cfg.Probe)
+	}
+	if cfg.Certificates.ExpiryWarning != 48*time.Hour {
+		t.Fatalf("certificate expiry warning = %v", cfg.Certificates.ExpiryWarning)
+	}
 	if cfg.Logging.RotateBackups != DefaultRuntimeConfig().Logging.RotateBackups {
 		t.Fatalf("unset rotate_backups should default to %d", DefaultRuntimeConfig().Logging.RotateBackups)
 	}
@@ -127,6 +138,38 @@ logging:
 	normalized := NormalizeRuntimeConfig(RuntimeConfig{Traffic: TrafficCollectorConfig{Interval: -1 * time.Second}})
 	if normalized.Traffic.Interval != DefaultRuntimeConfig().Traffic.Interval {
 		t.Fatalf("interval normalize = %v", normalized.Traffic.Interval)
+	}
+	if normalized.Probe.TargetURL != DefaultRuntimeConfig().Probe.TargetURL || normalized.Probe.Interval != DefaultRuntimeConfig().Probe.Interval {
+		t.Fatalf("probe defaults = %+v", normalized.Probe)
+	}
+	if normalized.Certificates.ExpiryWarning != DefaultRuntimeConfig().Certificates.ExpiryWarning {
+		t.Fatalf("certificate defaults = %+v", normalized.Certificates)
+	}
+	for _, target := range []string{"", "file:///tmp/x", "javascript:alert(1)", "https://"} {
+		candidate := normalized
+		candidate.Probe.TargetURL = target
+		candidate = NormalizeRuntimeConfig(candidate)
+		if target == "" {
+			continue
+		}
+		if err := ValidateRuntimeConfig(candidate); err == nil {
+			t.Fatalf("target URL %q should fail validation", target)
+		}
+	}
+}
+
+func TestProbeAndCertificateChangesAreImmediate(t *testing.T) {
+	previous := DefaultRuntimeConfig()
+	next := previous
+	next.Probe.TargetURL = "https://example.com/health"
+	next.Probe.Interval = 2 * time.Minute
+	next.Certificates.ExpiryWarning = 14 * 24 * time.Hour
+	summary := ClassifyRuntimeConfigChanges(previous, next)
+	if len(summary.Immediate) != 2 || summary.Immediate[0] != "probe" || summary.Immediate[1] != "certificates.expiry_warning" {
+		t.Fatalf("summary=%+v", summary)
+	}
+	if len(summary.RestartRequired) != 0 {
+		t.Fatalf("probe changes should not require restart: %+v", summary.RestartRequired)
 	}
 }
 

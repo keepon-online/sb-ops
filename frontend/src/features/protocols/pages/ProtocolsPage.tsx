@@ -301,7 +301,7 @@ export function ProtocolsPage() {
       title: '链路拨测', width: 150,
       render: (_, value) => {
         const item = probe.data?.items.find((entry) => entry.protocolId === value.id);
-        if (!item) return <Tooltip title="还没有拨测记录：周期拨测每 5 分钟一轮，或点工具栏「立即拨测」。"><Tag>未拨测</Tag></Tooltip>;
+        if (!item) return <Tooltip title="还没有拨测记录：周期拨测由服务器 config.yaml 的 probe.interval 控制，或点工具栏「立即拨测」。"><Tag>未拨测</Tag></Tooltip>;
         const tooltip = item.status === 'failed'
           ? `端到端拨测失败：${item.error}`
           : item.status === 'skipped' ? `跳过原因：${item.error}` : `全链路实测延迟 ${item.latencyMs ?? '-'}ms（${new Date(item.checkedAt).toLocaleTimeString()}）`;

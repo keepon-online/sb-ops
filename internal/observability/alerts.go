@@ -3,6 +3,7 @@ package observability
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"os"
 	"strings"
 	"time"
@@ -30,14 +31,21 @@ type Alert struct {
 type candidate struct{ alertType, severity, resourceType, resourceID, message string }
 
 type Service struct {
-	db        *sql.DB
-	notifier  Notifier
-	now       func() time.Time
-	maxDBSize int64
+	db            *sql.DB
+	notifier      Notifier
+	now           func() time.Time
+	expiryWarning func() time.Duration
+	maxDBSize     int64
 }
 
 func NewService(db *sql.DB, notifier Notifier) *Service {
-	return &Service{db: db, notifier: notifier, now: func() time.Time { return time.Now().UTC() }, maxDBSize: 10 << 30}
+	return &Service{db: db, notifier: notifier, now: func() time.Time { return time.Now().UTC() }, expiryWarning: func() time.Duration { return 30 * 24 * time.Hour }, maxDBSize: 10 << 30}
+}
+
+// SetExpiryWarning injects the live runtime configuration without coupling the
+// observability package to the config package.
+func (s *Service) SetExpiryWarning(value func() time.Duration) {
+	s.expiryWarning = value
 }
 
 func (s *Service) Evaluate(ctx context.Context, aggregationErr error, trafficStalled bool) error {
@@ -87,6 +95,33 @@ func (s *Service) Evaluate(ctx context.Context, aggregationErr error, trafficSta
 		return err
 	}
 	probeRows.Close()
+	warningUntil := now.Add(s.expiryWarning())
+	certRows, err := s.db.QueryContext(ctx, `SELECT id, name, domain, not_after FROM certificates WHERE not_after > ? AND not_after <= ?`, now.Unix(), warningUntil.Unix())
+	if err != nil {
+		return err
+	}
+	for certRows.Next() {
+		var id, name, domain string
+		var notAfter int64
+		if err := certRows.Scan(&id, &name, &domain, &notAfter); err != nil {
+			certRows.Close()
+			return err
+		}
+		remaining := time.Until(time.Unix(notAfter, 0))
+		if s.now != nil {
+			remaining = time.Unix(notAfter, 0).Sub(now)
+		}
+		label := name
+		if domain != "" {
+			label += "（" + domain + "）"
+		}
+		values = append(values, candidate{"certificate_expiring", "warning", "certificate", id, fmt.Sprintf("证书%s将于 %s 到期，剩余%s", label, time.Unix(notAfter, 0).UTC().Format("2006-01-02 15:04:05"), formatDuration(remaining))})
+	}
+	if err := certRows.Err(); err != nil {
+		certRows.Close()
+		return err
+	}
+	certRows.Close()
 	seen := map[string]bool{}
 	for _, value := range values {
 		fingerprint := value.alertType + ":" + value.resourceType + ":" + value.resourceID
@@ -118,6 +153,15 @@ func (s *Service) Evaluate(ctx context.Context, aggregationErr error, trafficSta
 		}
 	}
 	return nil
+}
+
+func formatDuration(value time.Duration) string {
+	days := int(value / (24 * time.Hour))
+	if days > 0 {
+		return fmt.Sprintf("%d 天", days)
+	}
+	hours := int(value / time.Hour)
+	return fmt.Sprintf("%d 小时", hours)
 }
 
 func (s *Service) open(ctx context.Context, fingerprint string, value candidate, now time.Time) error {
