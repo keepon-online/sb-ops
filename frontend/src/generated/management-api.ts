@@ -382,6 +382,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/protocols/probe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Run an end-to-end probe now through each protocol inbound and persist the results */
+        post: operations["runProtocolProbe"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/protocols/probe-results": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the latest persisted end-to-end probe result per protocol */
+        get: operations["listProtocolProbeResults"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/protocols": {
         parameters: {
             query?: never;
@@ -1608,6 +1642,30 @@ export interface components {
              * @enum {string}
              */
             rule: "ok" | "missing" | "mismatched" | "unknown";
+        };
+        ProbeResult: {
+            /** Format: date-time */
+            checkedAt: string;
+            items: components["schemas"]["ProbeResultItem"][];
+        };
+        ProbeResultItem: {
+            /** Format: uuid */
+            protocolId: string;
+            protocolName: string;
+            /**
+             * @description ok=全链路通；failed=拨测失败（error 说明原因）；skipped=未拨测（停用/无凭据）。
+             * @enum {string}
+             */
+            status: "ok" | "failed" | "skipped";
+            /** @description 实测链路延迟；skipped 时为 null。 */
+            latencyMs?: number | null;
+            /** @description failed 的错误原因或 skipped 的跳过原因。 */
+            error?: string;
+            /** Format: date-time */
+            checkedAt: string;
+        };
+        StoredProbeResults: {
+            items: components["schemas"]["ProbeResultItem"][];
         };
         ResourceCertificate: {
             /** Format: uuid */
@@ -3257,6 +3315,75 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["SuccessEnvelope"] & {
                         data?: components["schemas"]["ProtocolRuntimeStatusResult"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description Runtime service unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManagementErrorResponse"];
+                };
+            };
+        };
+    };
+    runProtocolProbe: {
+        parameters: {
+            query?: {
+                /** @description 只拨测该协议；缺省为全部协议。 */
+                protocolId?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 本轮拨测结果（单协议失败是数据不是错误） */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessEnvelope"] & {
+                        data?: components["schemas"]["ProbeResult"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description Runtime service unavailable or kernel not ready */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManagementErrorResponse"];
+                };
+            };
+        };
+    };
+    listProtocolProbeResults: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 每协议最近一次拨测结果 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessEnvelope"] & {
+                        data?: components["schemas"]["StoredProbeResults"];
                     };
                 };
             };

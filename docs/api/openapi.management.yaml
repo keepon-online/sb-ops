@@ -508,6 +508,30 @@ paths:
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
         '503': {description: Runtime service unavailable, content: {application/json: {schema: {$ref: '#/components/schemas/ManagementErrorResponse'}}}}
+  /api/v1/protocols/probe:
+    post:
+      tags: [Protocols]
+      operationId: runProtocolProbe
+      summary: Run an end-to-end probe now through each protocol inbound and persist the results
+      security: [{BearerAuth: []}]
+      parameters:
+        - {name: protocolId, in: query, required: false, schema: {type: string, format: uuid}, description: 只拨测该协议；缺省为全部协议。}
+      responses:
+        '200': {description: 本轮拨测结果（单协议失败是数据不是错误）, content: {application/json: {schema: {allOf: [{$ref: '#/components/schemas/SuccessEnvelope'}, {properties: {data: {$ref: '#/components/schemas/ProbeResult'}}}]}}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '503': {description: Runtime service unavailable or kernel not ready, content: {application/json: {schema: {$ref: '#/components/schemas/ManagementErrorResponse'}}}}
+  /api/v1/protocols/probe-results:
+    get:
+      tags: [Protocols]
+      operationId: listProtocolProbeResults
+      summary: List the latest persisted end-to-end probe result per protocol
+      security: [{BearerAuth: []}]
+      responses:
+        '200': {description: 每协议最近一次拨测结果, content: {application/json: {schema: {allOf: [{$ref: '#/components/schemas/SuccessEnvelope'}, {properties: {data: {$ref: '#/components/schemas/StoredProbeResults'}}}]}}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '503': {description: Runtime service unavailable, content: {application/json: {schema: {$ref: '#/components/schemas/ManagementErrorResponse'}}}}
   /api/v1/protocols:
     get:
       tags: [Protocols]
@@ -1941,6 +1965,33 @@ components:
         from: {type: integer, minimum: 1, maximum: 65535}
         to: {type: integer, minimum: 1, maximum: 65535}
         rule: {type: string, enum: [ok, missing, mismatched, unknown], description: iptables 端口跳跃规则与期望配置的比对结果。}
+    ProbeResult:
+      type: object
+      additionalProperties: false
+      required: [checkedAt, items]
+      properties:
+        checkedAt: {type: string, format: date-time}
+        items: {type: array, items: {$ref: '#/components/schemas/ProbeResultItem'}}
+    ProbeResultItem:
+      type: object
+      additionalProperties: false
+      required: [protocolId, protocolName, status, checkedAt]
+      properties:
+        protocolId: {type: string, format: uuid}
+        protocolName: {type: string}
+        status:
+          type: string
+          enum: [ok, failed, skipped]
+          description: ok=全链路通；failed=拨测失败（error 说明原因）；skipped=未拨测（停用/无凭据）。
+        latencyMs: {type: [integer, 'null'], minimum: 0, description: 实测链路延迟；skipped 时为 null。}
+        error: {type: string, description: failed 的错误原因或 skipped 的跳过原因。}
+        checkedAt: {type: string, format: date-time}
+    StoredProbeResults:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/ProbeResultItem'}}
     ResourceCertificate:
       type: object
       additionalProperties: false

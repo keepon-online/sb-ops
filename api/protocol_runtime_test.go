@@ -11,13 +11,16 @@ import (
 	deployment "github.com/keepon-online/sb-ops/internal/deployment/singlevps"
 	"github.com/keepon-online/sb-ops/internal/httpx"
 	"github.com/keepon-online/sb-ops/internal/identity"
+	controlprobe "github.com/keepon-online/sb-ops/internal/probe"
 	runtimebox "github.com/keepon-online/sb-ops/internal/runtime/singbox"
 	servicecertificate "github.com/keepon-online/sb-ops/internal/service/certificate"
 	serviceprotocol "github.com/keepon-online/sb-ops/internal/service/protocol"
 	"github.com/keepon-online/sb-ops/internal/service/secret"
 )
 
-func newProtocolRuntimeRouter(t *testing.T, withSync bool) (*gin.Engine, string) {
+// newProtocolRuntimeRouter 装配带协议运行时端点的测试路由。ready 非空时
+// 一并装配拨测 Prober（共享同一数据库，读到已种子的 proto-a 协议）。
+func newProtocolRuntimeRouter(t *testing.T, withSync bool, ready func(context.Context) (bool, string)) (*gin.Engine, string) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	db, err := database.Open(database.Options{Path: t.TempDir() + "/control.db"})
@@ -48,6 +51,9 @@ func newProtocolRuntimeRouter(t *testing.T, withSync bool) (*gin.Engine, string)
 		Protocols:    protocols,
 		Certificates: servicecertificate.NewService(servicecertificate.NewStore(db), secrets),
 	}
+	if ready != nil {
+		dependencies.Prober = controlprobe.NewProber(db, ready)
+	}
 	if withSync {
 		syncer := deployment.NewSyncService(db, deployment.ApplyConfig{})
 		syncer.KernelState = func() runtimebox.Status { return runtimebox.Status{State: "running"} }
@@ -70,13 +76,13 @@ func newProtocolRuntimeRouter(t *testing.T, withSync bool) (*gin.Engine, string)
 }
 
 func TestProtocolRuntimeStatusWithoutSyncService(t *testing.T) {
-	router, token := newProtocolRuntimeRouter(t, false)
+	router, token := newProtocolRuntimeRouter(t, false, nil)
 	response := performJSON(t, router, http.MethodGet, "/api/v1/protocols/runtime-status", "", token)
 	assertErrorCode(t, response, http.StatusServiceUnavailable, httpx.CodeRuntimeUnavailable)
 }
 
 func TestProtocolRuntimeStatusReturnsItems(t *testing.T) {
-	router, token := newProtocolRuntimeRouter(t, true)
+	router, token := newProtocolRuntimeRouter(t, true, nil)
 	response := performJSON(t, router, http.MethodGet, "/api/v1/protocols/runtime-status", "", token)
 	if response.Code != http.StatusOK {
 		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
@@ -93,4 +99,45 @@ func TestProtocolRuntimeStatusReturnsItems(t *testing.T) {
 	if item.ID != "proto-a" || item.Status != "listening" || item.ActiveConnections != nil {
 		t.Fatalf("item = %#v", item)
 	}
+}
+
+func TestProbeEndpointsWithoutProber(t *testing.T) {
+	router, token := newProtocolRuntimeRouter(t, false, nil)
+	response := performJSON(t, router, http.MethodGet, "/api/v1/protocols/probe-results", "", token)
+	assertErrorCode(t, response, http.StatusServiceUnavailable, httpx.CodeRuntimeUnavailable)
+	trigger := performJSON(t, router, http.MethodPost, "/api/v1/protocols/probe", "", token)
+	assertErrorCode(t, trigger, http.StatusServiceUnavailable, httpx.CodeRuntimeUnavailable)
+}
+
+// TestManualProbeRunsAndPersists 手动拨测（不起内核）：协议没有分配设备时
+// 返回 skipped 并落库，GET 读取面回读同一行；单协议过滤只返回该协议。
+func TestManualProbeRunsAndPersists(t *testing.T) {
+	router, token := newProtocolRuntimeRouter(t, true, func(context.Context) (bool, string) { return true, "" })
+
+	response := performJSON(t, router, http.MethodPost, "/api/v1/protocols/probe?protocolId=proto-a", "", token)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	var result controlprobe.Result
+	decodeResponse(t, response, &result)
+	if len(result.Items) != 1 || result.Items[0].ProtocolID != "proto-a" || result.Items[0].Status != "skipped" {
+		t.Fatalf("items = %#v", result.Items)
+	}
+
+	stored := performJSON(t, router, http.MethodGet, "/api/v1/protocols/probe-results", "", token)
+	if stored.Code != http.StatusOK {
+		t.Fatalf("stored status=%d body=%s", stored.Code, stored.Body.String())
+	}
+	var storedResult controlprobe.StoredResult
+	decodeResponse(t, stored, &storedResult)
+	if len(storedResult.Items) != 1 || storedResult.Items[0].Status != "skipped" {
+		t.Fatalf("stored items = %#v", storedResult.Items)
+	}
+}
+
+// TestManualProbeGatedOnKernelReady 内核未就绪时手动拨测返回 503 而非失败行。
+func TestManualProbeGatedOnKernelReady(t *testing.T) {
+	router, token := newProtocolRuntimeRouter(t, true, func(context.Context) (bool, string) { return false, "内核未运行" })
+	response := performJSON(t, router, http.MethodPost, "/api/v1/protocols/probe", "", token)
+	assertErrorCode(t, response, http.StatusServiceUnavailable, httpx.CodeRuntimeUnavailable)
 }

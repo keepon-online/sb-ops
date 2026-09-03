@@ -10,6 +10,7 @@ import (
 	controlmonitor "github.com/keepon-online/sb-ops/internal/monitor"
 	controlobservability "github.com/keepon-online/sb-ops/internal/observability"
 	controloverview "github.com/keepon-online/sb-ops/internal/overview"
+	controlprobe "github.com/keepon-online/sb-ops/internal/probe"
 	serviceargo "github.com/keepon-online/sb-ops/internal/service/argo"
 	servicecertificate "github.com/keepon-online/sb-ops/internal/service/certificate"
 	servicepolicy "github.com/keepon-online/sb-ops/internal/service/policy"
@@ -45,6 +46,8 @@ type Dependencies struct {
 	Config       func() config.RuntimeConfig
 	Argo         *serviceargo.Service
 	Upgrade      *controlupgrade.Service
+	// Prober 跑协议端到端拨测；测试可缺省（对应端点返回 503）。
+	Prober *controlprobe.Prober
 	// ArgoManager restarts tunnel processes; the supervisor may be absent in
 	// tests, hence the narrow interface.
 	ArgoManager interface{ RestartTunnel(id string) }
@@ -104,12 +107,14 @@ func RegisterRoutes(router *gin.Engine, dependencies Dependencies) {
 		resourceRead.GET("/protocol-schemas/:type", h.protocolSchema)
 		resourceRead.GET("/protocols", h.listProtocols)
 		resourceRead.GET("/protocols/runtime-status", h.protocolRuntimeStatus)
+		resourceRead.GET("/protocols/probe-results", h.protocolProbeResults)
 		resourceRead.GET("/protocols/:id", h.getProtocol)
 		resourceRead.GET("/certificates", h.listCertificates)
 		resourceRead.GET("/certificates/:id", h.getCertificate)
 
 		resourceWrite := authenticated.Group("")
 		resourceWrite.POST("/protocols/suggest-port", h.suggestProtocolPort)
+		resourceWrite.POST("/protocols/probe", h.runProtocolProbe)
 		resourceWrite.POST("/protocols", h.createProtocol)
 		resourceWrite.PATCH("/protocols/:id", h.updateProtocol)
 		resourceWrite.DELETE("/protocols/:id", h.deleteProtocol)

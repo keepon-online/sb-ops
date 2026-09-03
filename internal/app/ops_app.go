@@ -22,6 +22,7 @@ import (
 	controlmonitor "github.com/keepon-online/sb-ops/internal/monitor"
 	controlobservability "github.com/keepon-online/sb-ops/internal/observability"
 	controloverview "github.com/keepon-online/sb-ops/internal/overview"
+	controlprobe "github.com/keepon-online/sb-ops/internal/probe"
 	argoruntime "github.com/keepon-online/sb-ops/internal/runtime/argo"
 	serviceargo "github.com/keepon-online/sb-ops/internal/service/argo"
 	servicecertificate "github.com/keepon-online/sb-ops/internal/service/certificate"
@@ -116,6 +117,15 @@ func newOps(db *sql.DB, sessionTTL time.Duration, apply deployment.ApplyConfig, 
 	})
 	events := controlevents.NewBus(db)
 	alerts := controlobservability.NewService(db, newAlertNotifier(events, configProvider))
+	// 协议端到端拨测：内核 running 且配置 applied 才放行（内核故障已有
+	// runtime_sync_failed 告警，拨测此时写失败行只会制造误报）。
+	prober := controlprobe.NewProber(db, func(ctx context.Context) (bool, string) {
+		runtimeProbe := syncer.Probe(ctx)
+		if runtimeProbe.ConfigStatus != "applied" {
+			return false, runtimeProbe.Reason
+		}
+		return true, ""
+	})
 	// 升级源每次操作现取，跟随 config.yaml updates 段热更新。
 	upgradeService := controlupgrade.NewService(func() (string, string) {
 		cfg := configProvider()
@@ -130,7 +140,7 @@ func newOps(db *sql.DB, sessionTTL time.Duration, apply deployment.ApplyConfig, 
 	api.RegisterRoutes(router, api.Dependencies{
 		Identity: auth, Store: identityStore, Users: users, Protocols: protocols, Certificates: certificates, Policies: policies, SingBox: singBox, Sync: syncer,
 		Overview: overview, AuditLogs: auditLogs, Share: subscriptions, Traffic: traffic, Events: events, Alerts: alerts, Config: configProvider,
-		Argo: argoService, ArgoManager: argoManager, Monitor: monitor, Upgrade: upgradeService,
+		Argo: argoService, ArgoManager: argoManager, Monitor: monitor, Upgrade: upgradeService, Prober: prober,
 	})
 	background, cancel := context.WithCancel(context.Background())
 	value := &OpsApp{
@@ -197,7 +207,35 @@ func newOps(db *sql.DB, sessionTTL time.Duration, apply deployment.ApplyConfig, 
 		defer value.wg.Done()
 		_ = newDeviceProfiler(syncer, users, logger).Run(background)
 	}()
+	// 协议端到端拨测：启动后等首轮同步落定再首测，之后固定周期滚动。
+	value.wg.Add(1)
+	go func() {
+		defer value.wg.Done()
+		runProtocolProbeLoop(background, prober, logger)
+	}()
 	return value, nil
+}
+
+// runProtocolProbeLoop 周期拨测循环。内核未就绪的跳过属常态（同步窗口、
+// 停机），打 debug 不打扰；其余失败（如读库失败）打错误日志。
+func runProtocolProbeLoop(ctx context.Context, prober *controlprobe.Prober, logger *logging.Logger) {
+	timer := time.NewTimer(controlprobe.ProbeInitialDelay)
+	defer timer.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-timer.C:
+		}
+		if _, err := prober.Probe(ctx, ""); err != nil {
+			if errors.Is(err, controlprobe.ErrKernelNotReady) {
+				logger.Info().Err(err).Msg("协议拨测跳过")
+			} else {
+				logger.Error().Err(err).Msg("协议拨测轮失败")
+			}
+		}
+		timer.Reset(controlprobe.ProbeInterval)
+	}
 }
 
 // deviceProfileStoreAdapter bridges the user service onto the profiler store
