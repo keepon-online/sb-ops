@@ -47,7 +47,6 @@ const auditSegmentLabels: Record<string, string> = {
   logout: '登出',
   change: '修改',
   rotate: '轮换',
-  view: '查看',
   reset: '重置',
   adjust: '调整',
   acknowledge: '确认',

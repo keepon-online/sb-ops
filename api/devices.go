@@ -28,7 +28,6 @@ func (h *handler) listUserDevices(c *gin.Context) {
 		writeResourceError(c, err)
 		return
 	}
-	h.audit(c, actionDeviceList, resourceDevice, c.Param("id"), resultSuccess)
 	httpx.OK(c, gin.H{"items": devices, "subscriptionToken": token, "maxDevices": serviceuser.MaxDevicesPerUser})
 }
 

@@ -104,7 +104,6 @@ const (
 	actionDeviceUpdate = "user.device.update"
 	actionDeviceDelete = "user.device.delete"
 	actionDeviceRotate = "user.device.rotate"
-	actionDeviceList   = "user.device.list"
 
 	actionUserSubscriptionRotate = "user.subscription.rotate"
 	resourceDevice               = "user_device"
