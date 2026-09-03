@@ -96,6 +96,10 @@ func newOps(db *sql.DB, sessionTTL time.Duration, apply deployment.ApplyConfig, 
 	if _, err := policies.EnsureDefaultClashPolicy(context.Background()); err != nil {
 		return nil, err
 	}
+	// 默认服务器分流护栏：拒绝私网与回环（用户删除后重启会自动补回）。
+	if _, err := singBox.EnsurePrivateBlockRule(context.Background()); err != nil {
+		logger.Error().Err(err).Msg("初始化默认私网拦截规则失败")
+	}
 	syncer := deployment.NewSyncService(db, apply, componentLogSink(logger, "sing-box", true))
 	argoStore := serviceargo.NewStore(db, secrets)
 	argoService := serviceargo.NewService(argoStore, protocolStore)
