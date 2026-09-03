@@ -2,6 +2,12 @@ package observability
 
 const SchemaVersion = 11
 
+// ProbeSchemaVersion 取全局下一个空闲值（勿与其它包共用：条件迁移判定会
+// 恒真，见 internal/database/migrate.go 的编号纪律）。probe_results 属可
+// 观测域数据（internal/probe 写、告警评估读），DDL 因此归本包——probe 包
+// 依赖 service 层模型，若由 database 直接 import 会与用户/编译器测试成环。
+const ProbeSchemaVersion = 13
+
 const Schema = `
 CREATE TABLE IF NOT EXISTS operational_alerts (
   id TEXT PRIMARY KEY,
@@ -33,4 +39,17 @@ CREATE TABLE IF NOT EXISTS notification_outbox (
   FOREIGN KEY(alert_id) REFERENCES operational_alerts(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_notification_outbox_pending ON notification_outbox(delivered_at,failed_at,available_at,id);
+`
+
+// ProbeSchema 落库每协议最近一次端到端拨测结果（一行一协议，upsert 覆盖）。
+// 不复用 runtime_artifacts：它每次内核同步整表 DELETE 重建，会冲掉拨测结果。
+const ProbeSchema = `
+CREATE TABLE IF NOT EXISTS probe_results (
+  protocol_id TEXT PRIMARY KEY,
+  status TEXT NOT NULL,
+  latency_ms INTEGER,
+  error TEXT NOT NULL DEFAULT '',
+  checked_at INTEGER NOT NULL,
+  FOREIGN KEY (protocol_id) REFERENCES protocols(id) ON DELETE CASCADE
+);
 `

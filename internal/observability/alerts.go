@@ -68,6 +68,25 @@ func (s *Service) Evaluate(ctx context.Context, aggregationErr error, trafficSta
 	if trafficStalled {
 		values = append(values, candidate{"traffic_stalled", "warning", "control_plane", "traffic", "traffic collection loop has not completed a successful cycle within the threshold while active proxy connections exist (V2Ray stats query or ingest keeps failing)"})
 	}
+	// 协议端到端拨测失败行驱动告警（行翻绿后下一轮自动恢复）；skipped 行
+	// （停用/无凭据）不告警。直查 probe_results 与上面直查 runtime_state 同例。
+	probeRows, err := s.db.QueryContext(ctx, `SELECT r.protocol_id, COALESCE(p.name, r.protocol_id), r.error FROM probe_results r LEFT JOIN protocols p ON p.id=r.protocol_id WHERE r.status='failed'`)
+	if err != nil {
+		return err
+	}
+	for probeRows.Next() {
+		var protocolID, name, probeError string
+		if err := probeRows.Scan(&protocolID, &name, &probeError); err != nil {
+			probeRows.Close()
+			return err
+		}
+		values = append(values, candidate{"protocol_probe_failed", "critical", "protocol", protocolID, "协议「" + name + "」端到端拨测失败：" + probeError})
+	}
+	if err := probeRows.Err(); err != nil {
+		probeRows.Close()
+		return err
+	}
+	probeRows.Close()
 	seen := map[string]bool{}
 	for _, value := range values {
 		fingerprint := value.alertType + ":" + value.resourceType + ":" + value.resourceID

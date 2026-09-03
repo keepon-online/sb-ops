@@ -637,16 +637,71 @@ INSERT INTO devices(id,user_id,name,ua_key,source_ip,rotated_at,created_at) VALU
 // 与其它包已记录的版本互不占用——首版 audit=1 撞 identity=1 时判定恒真，
 // 重建从未执行，旧版噪音（成功登录、runtime.sync、已废弃读操作）全部幸存。
 func TestAuditSchemaVersionIsExclusive(t *testing.T) {
-	for name, version := range map[string]int{
+	for name, version := range schemaVersionByPackage() {
+		if name == "audit" {
+			continue
+		}
+		if version == controlaudit.SchemaVersion {
+			t.Fatalf("audit SchemaVersion=%d 与 %s 的版本号相同，一次性迁移判定会恒真", version, name)
+		}
+	}
+}
+
+// TestProbeSchemaVersionIsExclusive 同理锁定 probe_results 表的版本号独占：
+// schema_versions 的 version 是全局编号，撞号的条件迁移判定会恒真导致迁移
+// 体永不执行。
+func TestProbeSchemaVersionIsExclusive(t *testing.T) {
+	for name, version := range schemaVersionByPackage() {
+		if name == "probe" {
+			continue
+		}
+		if version == observability.ProbeSchemaVersion {
+			t.Fatalf("probe SchemaVersion=%d 与 %s 的版本号相同，编号纪律被破坏", version, name)
+		}
+	}
+}
+
+func schemaVersionByPackage() map[string]int {
+	return map[string]int{
 		"identity":      identitySchemaVersion,
 		"resource":      resource.SchemaVersion,
 		"traffic":       traffic.SchemaVersion,
 		"events":        events.SchemaVersion,
 		"observability": observability.SchemaVersion,
-	} {
-		if version == controlaudit.SchemaVersion {
-			t.Fatalf("audit SchemaVersion=%d 与 %s 的版本号相同，一次性迁移判定会恒真", version, name)
-		}
+		"audit":         controlaudit.SchemaVersion,
+		"probe":         observability.ProbeSchemaVersion,
+	}
+}
+
+// TestMigrateCreatesProbeResultsOnUpgrade 模拟 probe 表之前的存量库：
+// 升级迁移必须补建 probe_results 并记录版本，且不触碰既有数据。
+func TestMigrateCreatesProbeResultsOnUpgrade(t *testing.T) {
+	db, err := Open(Options{Path: filepath.Join(t.TempDir(), "control.db")})
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	if err := Migrate(t.Context(), db); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+	if _, err := db.Exec(`DROP TABLE probe_results; DELETE FROM schema_versions WHERE version=?`, observability.ProbeSchemaVersion); err != nil {
+		t.Fatalf("回到 probe 表之前的库: %v", err)
+	}
+	if err := Migrate(t.Context(), db); err != nil {
+		t.Fatalf("upgrade Migrate: %v", err)
+	}
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(1) FROM sqlite_master WHERE type='table' AND name='probe_results'`).Scan(&count); err != nil {
+		t.Fatalf("query probe_results: %v", err)
+	}
+	if count != 1 {
+		t.Fatal("升级后 probe_results 未补建")
+	}
+	if err := db.QueryRow(`SELECT COUNT(1) FROM schema_versions WHERE version=?`, observability.ProbeSchemaVersion).Scan(&count); err != nil {
+		t.Fatalf("query probe version: %v", err)
+	}
+	if count != 1 {
+		t.Fatal("升级后 probe schema 版本未记录")
 	}
 }
 

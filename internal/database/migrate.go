@@ -21,7 +21,7 @@ const identitySchemaVersion = 1
 
 // CurrentSchemaVersion is the highest schema version recorded after a fresh
 // migration. It reflects the single-VPS layout (agent/node tables removed).
-const CurrentSchemaVersion = controlaudit.SchemaVersion
+const CurrentSchemaVersion = observability.ProbeSchemaVersion
 
 // dropAgentSchema removes the legacy agent/node/rollout tables. These are
 // idempotent DROPs so fresh databases (which never had them) are unaffected.
@@ -126,6 +126,9 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 	if _, err := tx.ExecContext(ctx, observability.Schema); err != nil {
 		return fmt.Errorf("应用 observability schema: %w", err)
 	}
+	if _, err := tx.ExecContext(ctx, observability.ProbeSchema); err != nil {
+		return fmt.Errorf("应用 probe schema: %w", err)
+	}
 	// Drop the legacy agent/node/rollout tables. With foreign keys enforced,
 	// the node-side tables reference each other, so dropping them before the
 	// traffic tables is safe only because traffic was redeclared above without
@@ -147,6 +150,7 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 		{events.SchemaVersion, "event schema"},
 		{observability.SchemaVersion, "observability schema"},
 		{controlaudit.SchemaVersion, "audit schema"},
+		{observability.ProbeSchemaVersion, "probe schema"},
 	} {
 		if _, err := tx.ExecContext(ctx,
 			`INSERT OR IGNORE INTO schema_versions (version, applied_at) VALUES (?, ?)`,

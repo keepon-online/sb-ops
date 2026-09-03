@@ -427,7 +427,7 @@ func shadowsocksInbound(protocol serviceprotocol.Protocol, devices []serviceuser
 	}
 	entries := make([]any, 0, len(devices))
 	for _, device := range devices {
-		entries = append(entries, map[string]any{"name": device.DeviceID, "password": shadowsocksUserPassword(method, device.Password)})
+		entries = append(entries, map[string]any{"name": device.DeviceID, "password": serviceprotocol.ShadowsocksUserPassword(method, device.Password)})
 	}
 	inbound["users"] = entries
 	return inbound

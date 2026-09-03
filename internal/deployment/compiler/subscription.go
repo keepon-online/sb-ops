@@ -1,8 +1,6 @@
 package compiler
 
 import (
-	"crypto/sha256"
-	"encoding/base64"
 	"fmt"
 	"net"
 	"sort"
@@ -469,14 +467,5 @@ func shadowsocksSubscriptionPassword(protocol serviceprotocol.Protocol, device s
 	// SS-2022 多用户模式下，内核按「服务端密钥 + 各用户密钥」校验，
 	// 客户端密码必须是 "服务端密钥:用户密钥" 的冒号组合，只给用户密钥
 	// 会始终认证失败（invalid request）。
-	return setting(protocol, "password") + ":" + shadowsocksUserPassword(method, device.Password)
-}
-
-func shadowsocksUserPassword(method, credential string) string {
-	digest := sha256.Sum256([]byte(credential))
-	keyLength := 32
-	if strings.Contains(method, "aes-128") {
-		keyLength = 16
-	}
-	return base64.StdEncoding.EncodeToString(digest[:keyLength])
+	return setting(protocol, "password") + ":" + serviceprotocol.ShadowsocksUserPassword(method, device.Password)
 }
