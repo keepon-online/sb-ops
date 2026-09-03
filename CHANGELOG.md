@@ -8,6 +8,10 @@
 
 - **拨测增强配置**：新增 `probe.target_url` 与 `probe.interval`，支持在 `config.yaml` 中自定义端到端拨测目标和周期，热加载后下一轮生效；新增 `certificates.expiry_warning`，证书进入提醒窗口时自动产生中文到期告警。
 
+### 运维
+
+- **WARP 迁移收尾**：生产已确认面板 WARP 出站与指定域名分流运行正常，默认出口保持 `direct`；盘点确认旧 CFwarp 未运行后，删除失效的 `warp-go.service` unit，避免后续误启。
+
 ## [0.3.3] - 2026-09-03
 
 ### 新增
