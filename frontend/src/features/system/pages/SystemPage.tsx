@@ -1,7 +1,7 @@
 import { CloudUploadOutlined, ReloadOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { App as AntApp, Alert, Button, Descriptions, Popconfirm, Space, Spin, Steps, Tag, Typography } from 'antd';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { Page } from '../../../components/Page';
 import { ApiError } from '../../../services/http';
 import { systemApi, type UpgradeStatus } from '../../../services/system';
@@ -50,6 +50,15 @@ export function SystemPage() {
   const value = status.data;
   const phase = value?.phase ?? 'idle';
   const latest = value?.latest;
+
+  // 进页自动检查一次：后台虽有 6 小时自动检查，但缓存为空（后台检查失败/
+  // 刚重启）时页面自己补一次，不再依赖手动点「检查更新」；每次挂载至多一次。
+  const autoChecked = useRef(false);
+  useEffect(() => {
+    if (autoChecked.current || status.isLoading || !value?.configured || latest || phaseActive(phase) || check.isPending) return;
+    autoChecked.current = true;
+    check.mutate();
+  }, [value, latest, phase, status.isLoading, check]);
 
   // 重启阶段：面板进程即将被替换，先等旧进程下线、再等新进程就绪后整页刷新，
   // 避免对仍存活的老进程反复 reload。

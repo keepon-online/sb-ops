@@ -314,3 +314,40 @@ func TestEvaluateVPSBandwidthStalledOnlyAfterSustainedFailure(t *testing.T) {
 		t.Fatalf("恢复后应自动解除：%+v", alerts)
 	}
 }
+
+func TestEvaluateUpgradeAvailableAlert(t *testing.T) {
+	now := time.Date(2026, 9, 4, 12, 0, 0, 0, time.UTC)
+	service := newAlertTestService(t)
+	service.now = func() time.Time { return now }
+	var status UpgradeStatus
+	var configured bool
+	service.SetUpgradeSource(func() (UpgradeStatus, bool) { return status, configured })
+
+	// 未配置升级源或尚无检查结果：不告警。
+	if err := service.Evaluate(context.Background(), nil, false); err != nil {
+		t.Fatalf("Evaluate (unconfigured): %v", err)
+	}
+	if alerts := openAlerts(t, service, "upgrade_available"); len(alerts) != 0 {
+		t.Fatalf("未配置不应告警：%+v", alerts)
+	}
+
+	// 有可升级版本：warning 告警。
+	configured = true
+	status = UpgradeStatus{CurrentVersion: "v0.3.5", LatestVersion: "v0.3.6", Available: true}
+	if err := service.Evaluate(context.Background(), nil, false); err != nil {
+		t.Fatalf("Evaluate (available): %v", err)
+	}
+	alerts := openAlerts(t, service, "upgrade_available")
+	if len(alerts) != 1 || alerts[0].Severity != "warning" || !strings.Contains(alerts[0].Message, "v0.3.6") {
+		t.Fatalf("alerts=%+v", alerts)
+	}
+
+	// 升级完成（或已是最新）后下一轮自动恢复。
+	status = UpgradeStatus{CurrentVersion: "v0.3.6", LatestVersion: "v0.3.6"}
+	if err := service.Evaluate(context.Background(), nil, false); err != nil {
+		t.Fatalf("Evaluate (upgraded): %v", err)
+	}
+	if alerts := openAlerts(t, service, "upgrade_available"); len(alerts) != 0 {
+		t.Fatalf("升级后应自动解除：%+v", alerts)
+	}
+}

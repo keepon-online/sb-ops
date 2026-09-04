@@ -61,6 +61,7 @@ type Service struct {
 	expiryWarning func() time.Duration
 	maxDBSize     int64
 	bandwidth     func() (BandwidthStatus, bool)
+	upgrade       func() (UpgradeStatus, bool)
 }
 
 func NewService(db *sql.DB, notifier Notifier) *Service {
@@ -76,6 +77,20 @@ func (s *Service) SetExpiryWarning(value func() time.Duration) {
 // SetBandwidthSource 注入提供商带宽计量视图（未注入或返回 ok=false 时不评估）。
 func (s *Service) SetBandwidthSource(source func() (BandwidthStatus, bool)) {
 	s.bandwidth = source
+}
+
+// UpgradeStatus 是面板版本检查的注入视图（升级服务 Status 快照的换算，
+// 本地引用类型同 BandwidthStatus 例）。ok=false 表示未配置升级源或尚无
+// 检查结果，不产生候选。
+type UpgradeStatus struct {
+	CurrentVersion string
+	LatestVersion  string
+	Available      bool
+}
+
+// SetUpgradeSource 注入面板版本视图（未注入或返回 ok=false 时不评估）。
+func (s *Service) SetUpgradeSource(source func() (UpgradeStatus, bool)) {
+	s.upgrade = source
 }
 
 func (s *Service) Evaluate(ctx context.Context, aggregationErr error, trafficStalled bool) error {
@@ -123,6 +138,14 @@ func (s *Service) Evaluate(ctx context.Context, aggregationErr error, trafficSta
 			if status.Failed && now.Sub(status.LastSuccess) > bandwidthStaleAfter {
 				values = append(values, candidate{"vps_bandwidth_stalled", "warning", "control_plane", "bandwidth", fmt.Sprintf("VPS 流量计量已超过 %s 无成功采样（SolusVM API 持续拉取失败），月流量预算失去数据源", formatDuration(bandwidthStaleAfter))})
 			}
+		}
+	}
+	// 面板新版本：后台周期检查（或页面检查）缓存的结果里有可升级版本时提醒，
+	// 升级完成（或源停配）后下一轮自动恢复。
+	if s.upgrade != nil {
+		if status, ok := s.upgrade(); ok && status.Available {
+			values = append(values, candidate{"upgrade_available", "warning", "system_upgrade", "panel",
+				fmt.Sprintf("面板有新版本 %s（当前 %s），可在「系统升级」页查看说明并升级", status.LatestVersion, status.CurrentVersion)})
 		}
 	}
 	// 协议端到端拨测失败行驱动告警（行翻绿后下一轮自动恢复）；skipped 行

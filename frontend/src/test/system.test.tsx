@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { App as AntApp, ConfigProvider } from 'antd';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { SystemPage } from '../features/system/pages/SystemPage';
@@ -59,16 +59,21 @@ describe('system upgrade page', () => {
     expect(screen.getByRole('button', { name: /检查更新/ })).toBeDisabled();
   });
 
-  it('shows latest release after check and upgrade button becomes available', async () => {
+  it('auto-checks on mount and shows the latest release', async () => {
     statusMock.mockResolvedValue(baseStatus());
     renderSystem();
     expect(await screen.findByText('v0.2.0')).toBeInTheDocument();
-    expect(screen.getByText('尚未检查')).toBeInTheDocument();
-
-    await fireEvent.click(screen.getByRole('button', { name: /检查更新/ }));
+    // 进页自动检查：缓存为空时不再依赖手动点击，最新版本与升级入口直接出现。
     expect(await screen.findByText('v0.3.0')).toBeInTheDocument();
     expect(screen.getByText('可升级')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /升级到 v0.3.0/ })).toBeEnabled();
+  });
+
+  it('keeps the cached latest release without re-checking on mount', async () => {
+    statusMock.mockResolvedValue(baseStatus({ latest: { version: 'v0.2.1', notes: '', publishedAt: 1755701779, upgradable: false } }));
+    renderSystem();
+    expect(await screen.findByText('v0.2.1')).toBeInTheDocument();
+    expect(screen.getByText('已最新')).toBeInTheDocument();
   });
 
   it('renders progress steps while an upgrade is running', async () => {

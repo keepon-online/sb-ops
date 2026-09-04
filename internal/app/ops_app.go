@@ -171,6 +171,19 @@ func newOps(db *sql.DB, sessionTTL time.Duration, apply deployment.ApplyConfig, 
 		cfg := configProvider()
 		return cfg.Updates.Repo, cfg.Updates.Token
 	}, version, restart, events)
+	// 新版本自动发现：升级服务缓存最近一次检查结果（页面展示同一份缓存），
+	// 有可升级版本时经 upgrade_available 告警外发。
+	alerts.SetUpgradeSource(func() (controlobservability.UpgradeStatus, bool) {
+		snapshot := upgradeService.Status()
+		if !snapshot.Configured || snapshot.Latest == nil {
+			return controlobservability.UpgradeStatus{}, false
+		}
+		return controlobservability.UpgradeStatus{
+			CurrentVersion: snapshot.CurrentVersion,
+			LatestVersion:  snapshot.Latest.Version,
+			Available:      snapshot.Latest.Upgradable,
+		}, true
+	})
 	health := controlobservability.NewHealthState(nil)
 	monitor := controlmonitor.NewService()
 	gin.SetMode(gin.ReleaseMode)
@@ -259,6 +272,13 @@ func newOps(db *sql.DB, sessionTTL time.Duration, apply deployment.ApplyConfig, 
 		defer value.wg.Done()
 		runSolusVMMetering(background, solusvmState, configProvider, logger)
 	}()
+	// 面板新版本自动发现：周期检查 GitHub Release，结果进升级服务缓存与
+	// upgrade_available 告警。
+	value.wg.Add(1)
+	go func() {
+		defer value.wg.Done()
+		runUpgradeCheckLoop(background, upgradeService, logger)
+	}()
 	return value, nil
 }
 
@@ -312,6 +332,35 @@ func runSolusVMMetering(ctx context.Context, state *controlsolusvm.State, config
 			}
 		}
 		timer.Reset(controlsolusvm.PollInterval)
+	}
+}
+
+// upgradeCheckInitialDelay / upgradeCheckInterval 是新版本自动发现的节奏：
+// 启动先等升级与同步落定再首查，之后每 6 小时一查（GitHub 匿名限额 60 次/时，
+// 个人面板远够用）。
+const (
+	upgradeCheckInitialDelay = 2 * time.Minute
+	upgradeCheckInterval     = 6 * time.Hour
+)
+
+// runUpgradeCheckLoop 周期检查 GitHub 最新 Release，把结果写进升级服务缓存
+// （系统页展示同一份，页面不再需要手动点检查）；有可升级版本时
+// upgrade_available 告警经 Evaluate 外发。未配置升级源/升级进行中静默让位，
+// 单次失败只记日志——页面手动检查仍可用，不构成需要告警的故障。
+func runUpgradeCheckLoop(ctx context.Context, upgrades *controlupgrade.Service, logger *logging.Logger) {
+	timer := time.NewTimer(upgradeCheckInitialDelay)
+	defer timer.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-timer.C:
+		}
+		if _, err := upgrades.Check(ctx); err != nil &&
+			!errors.Is(err, controlupgrade.ErrNotConfigured) && !errors.Is(err, controlupgrade.ErrBusy) {
+			logger.Error().Err(err).Msg("面板升级自动检查失败")
+		}
+		timer.Reset(upgradeCheckInterval)
 	}
 }
 
