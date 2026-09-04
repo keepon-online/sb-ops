@@ -201,6 +201,28 @@ export function ProtocolsPage() {
     },
     onError: (error: Error) => reportError(error)
   });
+  const [probingProtocolId, setProbingProtocolId] = useState<string | null>(null);
+  const runSingleProbe = useMutation({
+    mutationFn: (id: string) => {
+      setProbingProtocolId(id);
+      return protocolsApi.runProbe(id);
+    },
+    onSuccess: (result, id) => {
+      void queryClient.invalidateQueries({ queryKey: ['resources', 'protocols-probe'] });
+      const item = result.items.find((entry) => entry.protocolId === id);
+      if (item?.status === 'ok') {
+        message.success(`协议拨测成功：全链路延迟 ${item.latencyMs ?? '-'}ms`);
+      } else if (item?.status === 'failed') {
+        message.error(`协议拨测失败：${item.error || '链路异常'}`);
+      } else if (item?.status === 'skipped') {
+        message.warning(`协议拨测跳过：${item.error || '无可用凭据'}`);
+      } else {
+        message.info('协议拨测完成');
+      }
+    },
+    onError: (error: Error) => reportError(error),
+    onSettled: () => setProbingProtocolId(null)
+  });
   const rotateSecret = useMutation({
     mutationFn: protocolsApi.rotateSecret,
     onSuccess: (result) => {
@@ -298,20 +320,33 @@ export function ProtocolsPage() {
       }
     },
     {
-      title: '链路拨测', width: 150,
+      title: '链路拨测', width: 180,
       render: (_, value) => {
         const item = probe.data?.items.find((entry) => entry.protocolId === value.id);
-        if (!item) return <Tooltip title="还没有拨测记录：周期拨测由服务器 config.yaml 的 probe.interval 控制，或点工具栏「立即拨测」。"><Tag>未拨测</Tag></Tooltip>;
-        const tooltip = item.status === 'failed'
-          ? `端到端拨测失败：${item.error}`
-          : item.status === 'skipped' ? `跳过原因：${item.error}` : `全链路实测延迟 ${item.latencyMs ?? '-'}ms（${new Date(item.checkedAt).toLocaleTimeString()}）`;
+        const tooltip = !item
+          ? '还没有拨测记录：周期拨测由服务器 config.yaml 的 probe.interval 控制，可点击右侧按钮立即拨测。'
+          : item.status === 'failed'
+            ? `端到端拨测失败：${item.error}`
+            : item.status === 'skipped' ? `跳过原因：${item.error}` : `全链路实测延迟 ${item.latencyMs ?? '-'}ms（${new Date(item.checkedAt).toLocaleTimeString()}）`;
+        const tag = item ? (
+          <Tag color={probeStatusColors[item.status]}>{probeStatusLabels[item.status] || item.status}</Tag>
+        ) : (
+          <Tag>未拨测</Tag>
+        );
         return (
-          <Tooltip title={tooltip}>
-            <Space size={4}>
-              <Tag color={probeStatusColors[item.status]}>{probeStatusLabels[item.status] || item.status}</Tag>
-              {item.status === 'ok' && item.latencyMs != null ? <Typography.Text type="secondary">{item.latencyMs}ms</Typography.Text> : null}
-            </Space>
-          </Tooltip>
+          <Space size={4}>
+            <Tooltip title={tooltip}>{tag}</Tooltip>
+            {item?.status === 'ok' && item.latencyMs != null ? <Typography.Text type="secondary">{item.latencyMs}ms</Typography.Text> : null}
+            <Tooltip title="立即拨测该协议">
+              <Button
+                type="text"
+                size="small"
+                icon={<ThunderboltOutlined />}
+                loading={probingProtocolId === value.id}
+                onClick={() => runSingleProbe.mutate(value.id)}
+              />
+            </Tooltip>
+          </Space>
         );
       }
     },

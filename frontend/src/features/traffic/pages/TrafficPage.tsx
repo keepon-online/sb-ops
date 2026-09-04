@@ -31,11 +31,14 @@ function pointBucketKey(bucket: string, mode: BucketMode): string {
 const shareColors = ['#4f8ef7', '#42a56f', '#e8a33d', '#d16ba5', '#9b7ede', '#5bc0de', '#e07b54', '#8bd17d'];
 
 function ProtocolDonut({ shares }: { shares: TrafficProtocolShare[] }) {
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
   const total = shares.reduce((sum, item) => sum + item.totalBytes, 0);
   if (total <= 0) return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无协议流量" />;
   const radius = 60;
   const circumference = 2 * Math.PI * radius;
   let accumulated = 0;
+  const activeShare = shares.find((s) => s.id === hoveredId);
+
   return <div style={{ display: 'flex', alignItems: 'center', gap: 32, flexWrap: 'wrap', padding: '8px 0' }}>
     <svg viewBox="0 0 160 160" width={160} height={160} role="img" aria-label="协议流量占比环形图">
       <g transform="rotate(-90 80 80)">
@@ -44,20 +47,71 @@ function ProtocolDonut({ shares }: { shares: TrafficProtocolShare[] }) {
           const dash = `${fraction * circumference} ${circumference}`;
           const offset = -accumulated * circumference;
           accumulated += fraction;
-          return <circle key={share.id} cx="80" cy="80" r={radius} fill="none" stroke={shareColors[index % shareColors.length]} strokeWidth="24" strokeDasharray={dash} strokeDashoffset={offset} />;
+          const isHovered = hoveredId === share.id;
+          const isDimmed = hoveredId !== null && !isHovered;
+          return (
+            <circle
+              key={share.id}
+              cx="80"
+              cy="80"
+              r={radius}
+              fill="none"
+              stroke={shareColors[index % shareColors.length]}
+              strokeWidth={isHovered ? 28 : 24}
+              strokeDasharray={dash}
+              strokeDashoffset={offset}
+              opacity={isDimmed ? 0.35 : 1}
+              style={{ cursor: 'pointer', transition: 'stroke-width 0.2s ease, opacity 0.2s ease' }}
+              onMouseEnter={() => setHoveredId(share.id)}
+              onMouseLeave={() => setHoveredId(null)}
+            />
+          );
         })}
       </g>
-      <text x="80" y="76" textAnchor="middle" fill="var(--text-color)" fontSize="13">合计</text>
-      <text x="80" y="94" textAnchor="middle" fill="var(--text-color)" fontSize="14" fontWeight="600">{bytes(total)}</text>
+      {activeShare ? (
+        <>
+          <text x="80" y="68" textAnchor="middle" fill="var(--text-color)" fontSize="12" fontWeight="500">
+            {activeShare.name.length > 8 ? `${activeShare.name.slice(0, 7)}…` : activeShare.name}
+          </text>
+          <text x="80" y="86" textAnchor="middle" fill="var(--text-color)" fontSize="13" fontWeight="600">
+            {bytes(activeShare.totalBytes)}
+          </text>
+          <text x="80" y="102" textAnchor="middle" fill="var(--text-secondary)" fontSize="11">
+            {((activeShare.totalBytes / total) * 100).toFixed(1)}%
+          </text>
+        </>
+      ) : (
+        <>
+          <text x="80" y="76" textAnchor="middle" fill="var(--text-color)" fontSize="13">合计</text>
+          <text x="80" y="94" textAnchor="middle" fill="var(--text-color)" fontSize="14" fontWeight="600">{bytes(total)}</text>
+        </>
+      )}
     </svg>
-    <Space direction="vertical" size={6}>
-      {shares.map((share, index) => (
-        <Space key={share.id} size={8}>
-          <span style={{ width: 10, height: 10, borderRadius: 2, background: shareColors[index % shareColors.length], display: 'inline-block' }} />
-          <Typography.Text>{share.name}</Typography.Text>
-          <Typography.Text type="secondary">{bytes(share.totalBytes)} · {((share.totalBytes / total) * 100).toFixed(1)}%</Typography.Text>
-        </Space>
-      ))}
+    <Space direction="vertical" size={4}>
+      {shares.map((share, index) => {
+        const isHovered = hoveredId === share.id;
+        return (
+          <div
+            key={share.id}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '4px 8px',
+              borderRadius: 6,
+              cursor: 'pointer',
+              background: isHovered ? 'rgba(var(--primary-color-rgb), 0.12)' : 'transparent',
+              transition: 'background-color 0.2s ease'
+            }}
+            onMouseEnter={() => setHoveredId(share.id)}
+            onMouseLeave={() => setHoveredId(null)}
+          >
+            <span style={{ width: 10, height: 10, borderRadius: 2, background: shareColors[index % shareColors.length], display: 'inline-block' }} />
+            <Typography.Text strong={isHovered}>{share.name}</Typography.Text>
+            <Typography.Text type="secondary">{bytes(share.totalBytes)} · {((share.totalBytes / total) * 100).toFixed(1)}%</Typography.Text>
+          </div>
+        );
+      })}
     </Space>
   </div>;
 }

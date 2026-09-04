@@ -1,4 +1,5 @@
 import {
+  CopyOutlined,
   DeleteOutlined,
   EditOutlined,
   LineChartOutlined,
@@ -21,6 +22,7 @@ import {
   InputNumber,
   Modal,
   Popconfirm,
+  Progress,
   QRCode,
   Result,
   Select,
@@ -251,6 +253,32 @@ export function UsersPage() {
     });
     setDrawerOpen(true);
   };
+  const [copyingUserId, setCopyingUserId] = useState<string | null>(null);
+
+  const handleQuickCopySubscription = async (user: ResourceUser) => {
+    setCopyingUserId(user.id);
+    try {
+      const cached = queryClient.getQueryData<{ subscriptionToken?: string }>(['resources', 'users', user.id, 'devices']);
+      let token = cached?.subscriptionToken;
+      if (!token) {
+        const devices = await usersApi.listDevices(user.id);
+        token = devices.subscriptionToken;
+      }
+      if (token) {
+        const url = subscriptionUrl(token, 'clash.yaml');
+        await navigator.clipboard.writeText(url);
+        message.success(`已复制 ${user.name} 的 Clash 订阅链接`);
+      } else {
+        message.error('未找到该用户的订阅凭据');
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '复制订阅链接失败';
+      message.error(msg);
+    } finally {
+      setCopyingUserId(null);
+    }
+  };
+
   const columns: ColumnsType<ResourceUser> = [
     {
       title: '用户', dataIndex: 'name', width: screens.md ? 180 : 132,
@@ -258,16 +286,48 @@ export function UsersPage() {
       render: (name: string) => <Typography.Text strong ellipsis={{ tooltip: name }} style={{ maxWidth: 150 }}>{name}</Typography.Text>
     },
     { title: '状态', dataIndex: 'status', width: 96, render: (value: ResourceUserStatus) => <Tag color={statusMeta[value].color}>{statusMeta[value].label}</Tag> },
-    { title: '已用 / 额度', width: 180, responsive: ['md'], render: (_, value) => `${formatBytes(value.usedBytes)} / ${formatBytes(value.quotaBytes, true)}` },
+    {
+      title: '已用 / 额度', width: 200, responsive: ['md'],
+      render: (_, value) => {
+        const isUnlimited = value.quotaBytes <= 0;
+        const percent = isUnlimited ? 0 : Math.min(100, Math.round((value.usedBytes / value.quotaBytes) * 100));
+        const isOver = !isUnlimited && value.usedBytes > value.quotaBytes;
+        const strokeColor = isOver || percent >= 90 ? '#cf1322' : percent >= 70 ? '#d46b08' : 'var(--primary-color)';
+        return (
+          <div style={{ minWidth: 140 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 2 }}>
+              <Typography.Text strong={isOver}>{formatBytes(value.usedBytes)}</Typography.Text>
+              <Typography.Text type="secondary">/ {formatBytes(value.quotaBytes, true)}</Typography.Text>
+            </div>
+            {isUnlimited ? (
+              <Typography.Text type="secondary" style={{ fontSize: 11 }}>不限额度</Typography.Text>
+            ) : (
+              <Progress
+                percent={percent}
+                size="small"
+                showInfo={false}
+                strokeColor={strokeColor}
+                status={isOver ? 'exception' : 'normal'}
+                style={{ margin: 0 }}
+              />
+            )}
+            {isOver ? (
+              <Typography.Text type="danger" style={{ fontSize: 11 }}>{remainingText(value.quotaBytes, value.usedBytes)}</Typography.Text>
+            ) : null}
+          </div>
+        );
+      }
+    },
     { title: '到期时间', dataIndex: 'expiresAt', width: 180, responsive: ['lg'], render: (value?: string) => value ? new Date(value).toLocaleString() : '永久' },
     { title: '设备', dataIndex: 'deviceCount', width: 96, responsive: ['lg'], render: (value: number) => `${value} 台` },
     {
-      title: '操作', fixed: screens.md ? 'right' : undefined, width: screens.md ? 184 : 132,
+      title: '操作', fixed: screens.md ? 'right' : undefined, width: screens.md ? 210 : 160,
       render: (_, value) => (
         <Space size={2}>
+          <Tooltip title="一键复制订阅链接"><Button type="text" icon={<CopyOutlined />} loading={copyingUserId === value.id} onClick={() => void handleQuickCopySubscription(value)} /></Tooltip>
           <Tooltip title="编辑"><Button type="text" icon={<EditOutlined />} onClick={() => openEdit(value)} /></Tooltip>
           <Tooltip title="查看流量"><Button type="text" icon={<LineChartOutlined />} onClick={() => navigate(`/traffic?userId=${encodeURIComponent(value.id)}`)} /></Tooltip>
-          <Tooltip title="设备与订阅链接"><Button type="text" icon={<MobileOutlined />} onClick={() => setDevicesUser(value)} /></Tooltip>
+          <Tooltip title="设备与订阅二维码"><Button type="text" icon={<MobileOutlined />} onClick={() => setDevicesUser(value)} /></Tooltip>
           <Tooltip title="调整额度"><Button type="text" icon={<ThunderboltOutlined />} onClick={() => { setTrafficUser(value); trafficForm.resetFields(); trafficForm.setFieldsValue({ mode: 'add' }); }} /></Tooltip>
           <Popconfirm title="确认删除该用户？" onConfirm={() => remove.mutate(value.id)}><Tooltip title="删除"><Button type="text" danger icon={<DeleteOutlined />} /></Tooltip></Popconfirm>
         </Space>

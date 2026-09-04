@@ -2,6 +2,7 @@ import {
   ApiOutlined,
   AuditOutlined,
   AlertOutlined,
+  BellOutlined,
   CloudUploadOutlined,
   ControlOutlined,
   DashboardOutlined,
@@ -17,17 +18,21 @@ import {
   UserOutlined,
   LineChartOutlined
 } from '@ant-design/icons';
-import { Avatar, Button, Drawer, Dropdown, Layout, Menu, Space, Tooltip, Typography } from 'antd';
+import { useQuery } from '@tanstack/react-query';
+import { Avatar, Badge, Button, Drawer, Dropdown, Grid, Layout, Menu, Popover, Space, Tag, Tooltip, Typography } from 'antd';
 import type { ItemType } from 'antd/es/menu/interface';
 import { useEffect, useRef, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAppTheme, themeColors, type ThemeColor } from '../context/ThemeContext';
 import { useIdentity } from '../hooks/useIdentity';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { alertsApi } from '../services/alerts';
+import { controlPlaneApi } from '../services/controlPlane';
 import { clearSessionAndRedirect } from '../services/http';
 import { identityApi } from '../services/identity';
 import { useEventStream } from '../features/events/useEventStream';
 import { ChangePasswordModal } from '../features/auth/components/ChangePasswordModal';
+import { configStatusLabels, kernelStatusLabels } from '../util/labels';
 
 const { Header, Content, Sider } = Layout;
 const { Text } = Typography;
@@ -67,6 +72,26 @@ export function AppLayout() {
   const { themeMode, themeColor, setThemeColor, toggleThemeMode } = useAppTheme();
   const isMobile = useIsMobile();
   const contentRef = useRef<HTMLElement>(null);
+
+  const screens = Grid.useBreakpoint();
+  const openAlertsQuery = useQuery({
+    queryKey: ['alerts', 'open-summary'],
+    queryFn: () => alertsApi.list({ status: 'open' }),
+    retry: false,
+    refetchInterval: 30000
+  });
+  const overviewQuery = useQuery({
+    queryKey: ['overview'],
+    queryFn: controlPlaneApi.overview,
+    retry: false,
+    refetchInterval: 30000
+  });
+
+  const openAlerts = openAlertsQuery.data?.items || [];
+  const openAlertsCount = openAlerts.length;
+  const hasCriticalAlert = openAlerts.some((item) => item.severity === 'critical');
+  const kernelHealthy = overviewQuery.data?.kernelStatus === 'running';
+  const kernelError = overviewQuery.data?.kernelStatus === 'unhealthy';
 
   // 内容区独立滚动后，切换路由需要手动回滚顶部，避免沿用上一页的滚动位置。
   useEffect(() => {
@@ -159,32 +184,89 @@ export function AppLayout() {
       )}
       <Layout>
         <Header className="topbar">
-          <Space>
+          <Space size={screens.md ? 16 : 8}>
             {isMobile && (
               <Button className="mobile-menu-button" type="text" icon={<MenuOutlined />} aria-label="打开导航" onClick={() => setMobileNavigationOpen(true)} />
             )}
             <SafetyCertificateOutlined style={{ color: 'var(--primary-color)' }} />
             <Text strong>运营控制台</Text>
+            {overviewQuery.data && (
+              <Tooltip title={`内核状态：${kernelStatusLabels[overviewQuery.data.kernelStatus] || overviewQuery.data.kernelStatus}，配置：${configStatusLabels[overviewQuery.data.configStatus] || overviewQuery.data.configStatus}`}>
+                <Tag
+                  color={kernelHealthy ? 'success' : kernelError ? 'error' : 'default'}
+                  style={{ cursor: 'pointer', borderRadius: 10, padding: '0 8px', fontSize: 12, display: 'inline-flex', alignItems: 'center' }}
+                  onClick={() => navigate('/singbox')}
+                >
+                  <span className={kernelHealthy ? 'pulse-dot' : ''} style={{ width: 6, height: 6, borderRadius: '50%', background: 'currentColor', marginRight: 5 }} />
+                  {kernelHealthy ? '内核正常' : kernelError ? '内核异常' : '正在检查'}
+                </Tag>
+              </Tooltip>
+            )}
           </Space>
-          <Dropdown
-            menu={{
-              items: [
-                { key: 'password', icon: <LockOutlined />, label: '修改密码' },
-                { type: 'divider' },
-                { key: 'logout', icon: <LogoutOutlined />, label: '退出登录', danger: true }
-              ],
-              onClick: ({ key }) => {
-                if (key === 'password') setPasswordModalOpen(true);
-                if (key === 'logout') void logout();
+          <Space size={14}>
+            <Popover
+              placement="bottomRight"
+              title={
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: 260 }}>
+                  <Text strong>运行告警 ({openAlertsCount})</Text>
+                  <Button type="link" size="small" style={{ padding: 0 }} onClick={() => navigate('/alerts')}>查看全部</Button>
+                </div>
               }
-            }}
-            trigger={['click']}
-          >
-            <Space className="account-entry" size={8}>
-              <Avatar size="small" icon={<UserOutlined />} style={{ backgroundColor: 'var(--primary-color)' }} />
-              <Text className="account-name" type="secondary">{data?.user.username}</Text>
-            </Space>
-          </Dropdown>
+              content={
+                <div style={{ width: 260, maxHeight: 300, overflowY: 'auto' }}>
+                  {openAlerts.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '16px 0', color: 'var(--text-secondary)', fontSize: 12 }}>暂无未恢复告警</div>
+                  ) : (
+                    <Space direction="vertical" size={8} style={{ width: '100%' }}>
+                      {openAlerts.slice(0, 5).map((item) => (
+                        <div key={item.id} style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: 6 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
+                            <Tag color={item.severity === 'critical' ? 'error' : 'warning'} style={{ margin: 0, fontSize: 11 }}>
+                              {item.severity === 'critical' ? '严重' : '警告'}
+                            </Tag>
+                            <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+                              {new Date(item.lastSeenAt).toLocaleTimeString()}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: 12, lineHeight: 1.4, wordBreak: 'break-word' }}>{item.message}</div>
+                        </div>
+                      ))}
+                    </Space>
+                  )}
+                </div>
+              }
+            >
+              <Badge count={openAlertsCount} size="small" overflowCount={99}>
+                <Button
+                  type="text"
+                  shape="circle"
+                  icon={<BellOutlined style={{ fontSize: 16, color: hasCriticalAlert ? '#ff4d4f' : undefined }} />}
+                  onClick={() => navigate('/alerts')}
+                  aria-label="查看告警"
+                />
+              </Badge>
+            </Popover>
+
+            <Dropdown
+              menu={{
+                items: [
+                  { key: 'password', icon: <LockOutlined />, label: '修改密码' },
+                  { type: 'divider' },
+                  { key: 'logout', icon: <LogoutOutlined />, label: '退出登录', danger: true }
+                ],
+                onClick: ({ key }) => {
+                  if (key === 'password') setPasswordModalOpen(true);
+                  if (key === 'logout') void logout();
+                }
+              }}
+              trigger={['click']}
+            >
+              <Space className="account-entry" size={8}>
+                <Avatar size="small" icon={<UserOutlined />} style={{ backgroundColor: 'var(--primary-color)' }} />
+                <Text className="account-name" type="secondary">{data?.user.username}</Text>
+              </Space>
+            </Dropdown>
+          </Space>
         </Header>
         <Content ref={contentRef} className="content">
           <Outlet />
