@@ -139,6 +139,8 @@ func TestParseUserAgentAutoCreate(t *testing.T) {
 		{"MyClient/1.0", true},
 		{"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", false},
 		{"Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0", false},
+		{"curl/7.81.0", false},
+		{"Wget/1.21.2 (linux-gnu)", false},
 		{"", false},
 	}
 	for _, tc := range cases {
@@ -211,6 +213,45 @@ func TestBrowserUserAgentMatchesWithoutCreating(t *testing.T) {
 	}
 	if recorder.calls != 1 {
 		t.Fatalf("browser routing must not create devices: sync calls=%d", recorder.calls)
+	}
+}
+
+// TestCliToolUserAgentDoesNotCreateDevices：curl/wget 连通性测试不建设备；
+// 既有 curl 设备（过滤前建的存量）仍可路由，删除后也不会再新建。
+func TestCliToolUserAgentDoesNotCreateDevices(t *testing.T) {
+	share, users, recorder := newTestService(t)
+	userID, token := mustCreateUser(t, users)
+	recorder.userID = userID
+
+	// 新用户用 curl 测链接：不建设备、不触发同步，返回订阅不存在。
+	if _, err := share.ArtifactByToken(t.Context(), token, "clash.yaml", "curl/7.81.0", "203.0.113.9"); err == nil {
+		t.Fatalf("curl on a fresh user must not serve anything")
+	}
+	var count int
+	if err := share.db.QueryRow(`SELECT COUNT(1) FROM devices WHERE user_id=?`, userID).Scan(&count); err != nil {
+		t.Fatalf("count devices: %v", err)
+	}
+	if count != 0 || recorder.calls != 0 {
+		t.Fatalf("devices=%d sync=%d, want 0/0 (curl must not auto-create)", count, recorder.calls)
+	}
+
+	// 存量 curl 设备（生产中过滤前已建）：仍按 ua-curl 键路由到它。
+	legacy, created, found, err := users.DeviceForKey(t.Context(), userID, "ua-curl", "curl/7.81.0", serviceuser.DeviceMetadata{SourceIP: "203.0.113.9"})
+	if err != nil || !created || !found {
+		t.Fatalf("seed legacy curl device created=%v found=%v err=%v", created, found, err)
+	}
+	if err := seedArtifact(share.db, userID, legacy.ID); err != nil {
+		t.Fatalf("seed artifact: %v", err)
+	}
+	routed, err := share.ArtifactByToken(t.Context(), token, "clash.yaml", "curl/7.81.0", "203.0.113.9")
+	if err != nil {
+		t.Fatalf("curl fetch with legacy device: %v", err)
+	}
+	if routed.DeviceID != legacy.ID {
+		t.Fatalf("curl UA must route to legacy ua-curl device: got %s want %s", routed.DeviceID, legacy.ID)
+	}
+	if recorder.calls != 0 {
+		t.Fatalf("curl routing must not trigger kernel sync: calls=%d", recorder.calls)
 	}
 }
 

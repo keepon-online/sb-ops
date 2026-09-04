@@ -2,6 +2,9 @@ package observability
 
 import (
 	"context"
+	"encoding/hex"
+	"fmt"
+	"net"
 	"strings"
 	"sync"
 	"time"
@@ -15,9 +18,11 @@ import (
 // update/NCSI probes, macOS pulls Apple software updates, Android maintains
 // its FCM push connection. Connections are attributed to devices by matching
 // the connection source address against the device's subscription source
-// address (devices.source_ip). Devices sharing one egress address share the
-// portrait — acceptable for platform inference and strictly better than a
-// permanent "unknown".
+// address (devices.source_ip) under a network prefix — IPv4 /24, IPv6 /48 —
+// because residential egress addresses drift inside the prefix and the exact
+// address recorded at subscription time routinely diverges from the live
+// connection source. Devices sharing one prefix share the portrait — an
+// accepted trade-off, strictly better than a permanent "unknown".
 type DeviceProfiler struct {
 	// Snapshot fetches the current Clash connection list. Only the source
 	// address and target host of each connection are consumed.
@@ -134,8 +139,27 @@ func (p *DeviceProfiler) Run(ctx context.Context) error {
 	}
 }
 
+// networkKey 把地址折叠成画像归因前缀：IPv4 /24、IPv6 /48。家宽动态出口
+// 在前缀内跳动是常态，devices.source_ip 记录的是最后一次拉订阅的出口，
+// 与实时连接的源地址经常同前缀而不同址；按前缀归因把这类漂移对上。
+// 无法解析时原样返回（两侧使用同一函数，保持一致性）。
+func networkKey(ip string) string {
+	parsed := net.ParseIP(strings.TrimSpace(ip))
+	if parsed == nil {
+		return ip
+	}
+	if v4 := parsed.To4(); v4 != nil {
+		return fmt.Sprintf("%d.%d.%d.0/24", v4[0], v4[1], v4[2])
+	}
+	// IPv6 前缀用 hex.EncodeToString：%x 会先调 net.IP 的 String() 方法再
+	// 对其文本做编码，得到的不是地址字节的十六进制。
+	v6 := parsed.To16()
+	return hex.EncodeToString(v6[:6]) + "::/48"
+}
+
 // pass runs one snapshot: attribute live connection hosts to unknown devices
-// by source address, then persist any platform that reached the threshold.
+// by source-address prefix, then persist any platform that reached the
+// threshold.
 func (p *DeviceProfiler) pass(ctx context.Context) {
 	if p.Snapshot == nil || p.Store == nil {
 		return
@@ -156,15 +180,16 @@ func (p *DeviceProfiler) pass(ctx context.Context) {
 		p.log(slog.WarnLevel, "读取实时连接失败（平台推断跳过本轮）: "+err.Error())
 		return
 	}
-	hostsByIP := make(map[string]map[string]bool, len(devices))
+	hostsByPrefix := make(map[string]map[string]bool, len(devices))
 	for _, sample := range samples {
 		if sample.SourceIP == "" || sample.Host == "" {
 			continue
 		}
-		hosts, ok := hostsByIP[sample.SourceIP]
+		prefix := networkKey(sample.SourceIP)
+		hosts, ok := hostsByPrefix[prefix]
 		if !ok {
 			hosts = map[string]bool{}
-			hostsByIP[sample.SourceIP] = hosts
+			hostsByPrefix[prefix] = hosts
 		}
 		hosts[strings.ToLower(sample.Host)] = true
 	}
@@ -175,7 +200,7 @@ func (p *DeviceProfiler) pass(ctx context.Context) {
 	for _, device := range devices {
 		key := deviceKey{userID: device.UserID, deviceID: device.DeviceID}
 		live[key] = true
-		for host := range hostsByIP[device.SourceIP] {
+		for host := range hostsByPrefix[networkKey(device.SourceIP)] {
 			platform, ok := domainPlatform(host)
 			if !ok {
 				continue

@@ -46,9 +46,10 @@ func ParseUserAgent(userAgent string) UAInfo {
 			}
 		}
 	}
-	if isBrowserUA(trimmed) {
-		// 浏览器样式的 UA：保留稳定 key 以匹配既有设备（手动改 UA 的客户端
-		// 不受影响），但不自动新建，浏览器预览订阅链接不再消耗设备配额。
+	if isBrowserUA(trimmed) || cliToolTokens[token] {
+		// 浏览器样式的 UA 与 curl/wget 等命令行工具：保留稳定 key 以匹配
+		// 既有设备（手动改 UA 的客户端、已存在的 curl 测试设备不受影响），
+		// 但不自动新建——预览/测试订阅链接不再消耗设备配额。
 		return UAInfo{
 			Key: "ua-" + token, Label: truncateUA(fields[0]), Client: truncateUA(fields[0]),
 			Platform: detectPlatform(trimmed), Version: extractVersion(trimmed, token),
@@ -62,6 +63,10 @@ func ParseUserAgent(userAgent string) UAInfo {
 		AutoCreate: true,
 	}
 }
+
+// cliToolTokens 是会拉取订阅但不是代理客户端的命令行工具（normalize 后的
+// token 形态）：拉订阅通常只是连通性测试，不该变成面板里的设备。
+var cliToolTokens = map[string]bool{"curl": true, "wget": true}
 
 // isBrowserUA 判断 UA 是否来自浏览器。浏览器 UA 以 "Mozilla/" 开头且通常
 // 携带渲染引擎/浏览器标识；Clash 系客户端 UA（如 "clash-verge/v1.7.7"）不含
