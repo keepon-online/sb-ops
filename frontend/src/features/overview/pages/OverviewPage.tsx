@@ -110,6 +110,7 @@ export function OverviewPage() {
       <Progress
         style={{ maxWidth: 480, marginTop: 8 }}
         percent={Math.min(100, value.bandwidth.percent)}
+        format={(percent) => `${(percent ?? 0).toFixed(1)}%`}
         status={value.bandwidth.percent >= 80 ? 'exception' : 'normal'}
         strokeColor={value.bandwidth.percent >= 95 ? '#cf1322' : undefined}
       />
