@@ -4,10 +4,14 @@ package api
 // handler 调用 audit / mutate 时不要再手写字符串字面量。这些值会落库并被前端
 // util/labels.ts 映射为中文标签，属于对外契约——只增不改，不能重命名。
 //
+// 导出的取值（ResultSuccess / ResourceUser / ActionUserTrafficAutoReset）供
+// handler 之外的唯一审计写入方 internal/app 后台周期重置任务跨包引用，未导出
+// 取值仍仅限包内 handler 使用。
+//
 // action 命名约定 <域>.<操作>（如 protocol.create、singbox.route-rule.order）。
 
 const (
-	resultSuccess = "success"
+	ResultSuccess = "success"
 	resultFailure = "failure"
 )
 
@@ -16,7 +20,7 @@ const (
 	resourceAccount           = "account"
 	resourceSession           = "session"
 	resourceAlert             = "alert"
-	resourceUser              = "user"
+	ResourceUser              = "user"
 	resourceProtocol          = "protocol"
 	resourceCertificate       = "certificate"
 	resourcePolicy            = "policy"
@@ -99,6 +103,9 @@ const (
 	actionUserTrafficReset  = "user.traffic.reset"
 	actionUserTrafficAdjust = "user.traffic.adjust"
 	actionUserQuotaAdjust   = "user.quota.adjust"
+
+	// 后台周期额度重置（internal/app 运维循环发起，无登录 actor）
+	ActionUserTrafficAutoReset = "user.traffic.auto-reset"
 
 	// 用户设备
 	actionDeviceUpdate = "user.device.update"

@@ -758,6 +758,61 @@ func (s *Store) AdjustQuota(ctx context.Context, id, mode string, bytes int64, n
 	return nil
 }
 
+// ResetDueQuotas 消费 next_reset_at：到期用户的用量计数器清零（users 与
+// devices 双维度，语义同手工 setTraffic "reset"），next_reset_at 按当前
+// interval 推进到 now 之后的第一个边界——停机跨越多个周期时一次清零、对齐
+// 边界即可。interval 已清零但 next_reset_at 残留的脏行自愈为 NULL，避免
+// 推进死循环。返回重置前快照，供调用方判定哪些用户刚离开额度超额态。
+func (s *Store) ResetDueQuotas(ctx context.Context, now time.Time) ([]QuotaReset, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	rows, err := tx.QueryContext(ctx, userSelect+` WHERE u.next_reset_at IS NOT NULL AND u.next_reset_at<=?`, common.UnixTime(now))
+	if err != nil {
+		return nil, err
+	}
+	var due []User
+	for rows.Next() {
+		value, err := scanUser(rows)
+		if err != nil {
+			rows.Close()
+			return nil, err
+		}
+		due = append(due, value)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	resets := make([]QuotaReset, 0, len(due))
+	for _, value := range due {
+		var next *time.Time
+		if value.ResetIntervalDays > 0 {
+			boundary := *value.NextResetAt
+			for !boundary.After(now) {
+				boundary = boundary.AddDate(0, 0, value.ResetIntervalDays)
+			}
+			next = &boundary
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE users SET used_bytes=0,next_reset_at=?,revision=revision+1,updated_at=? WHERE id=?`,
+			common.TimeFromPtr(next), common.UnixTime(now), value.ID); err != nil {
+			return nil, err
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE devices SET used_bytes=0 WHERE user_id=?`, value.ID); err != nil {
+			return nil, err
+		}
+		resets = append(resets, QuotaReset{Before: value, NextResetAt: next})
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return resets, nil
+}
+
 // setTraffic mutates the quota counters only: users/devices used_bytes are
 // zeroed or adjusted in place while traffic_hourly history is left untouched.
 // Window statistics (overview 24h totals) therefore keep counting pre-reset

@@ -114,6 +114,22 @@ type TrafficInput struct {
 	Bytes int64
 }
 
+// QuotaReset 记录一次周期额度重置：Before 是重置前快照（旧用量与状态判定
+// 依据），NextResetAt 是推进后的下一轮重置边界（nil 表示脏数据自愈后不再
+// 周期重置）。
+type QuotaReset struct {
+	Before      User
+	NextResetAt *time.Time
+}
+
+// QuotaResetResult 汇总一轮周期额度重置：Reset 是全部被重置的用户，Recovered
+// 是其中从额度超额恢复可用的——超额用户此前被编译剔除出协议入站，调用方应
+// 触发一次内核同步让其凭据重新生效。
+type QuotaResetResult struct {
+	Reset     []QuotaReset
+	Recovered []User
+}
+
 // DeviceMetadata contains the latest client observation from a subscription request.
 type DeviceMetadata struct {
 	Platform      string

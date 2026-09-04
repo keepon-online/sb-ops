@@ -87,7 +87,7 @@ func (h *handler) closeSingBoxConnection(c *gin.Context) {
 		writeRuntimeFailed(c, "关闭连接失败")
 		return
 	}
-	h.audit(c, actionSingBoxConnectionClose, resourceSingBoxConnection, c.Param("id"), resultSuccess)
+	h.audit(c, actionSingBoxConnectionClose, resourceSingBoxConnection, c.Param("id"), ResultSuccess)
 	c.Status(http.StatusNoContent)
 }
 
@@ -110,7 +110,7 @@ func (h *handler) checkSingBoxRuntime(c *gin.Context) {
 		httpx.Error(c, http.StatusUnprocessableEntity, httpx.CodeRuntimeFailed, value.Message, nil)
 		return
 	}
-	h.audit(c, actionSingBoxRuntimeCheck, resourceSingBoxRuntime, localRuntimeID, resultSuccess)
+	h.audit(c, actionSingBoxRuntimeCheck, resourceSingBoxRuntime, localRuntimeID, ResultSuccess)
 	httpx.OK(c, value)
 }
 
@@ -126,7 +126,7 @@ func (h *handler) reconcileSingBoxRuntime(c *gin.Context) {
 		httpx.Error(c, http.StatusInternalServerError, httpx.CodeSyncFailed, "同步 sing-box 配置失败", nil)
 		return
 	}
-	h.audit(c, actionSingBoxRuntimeReconcile, resourceSingBoxRuntime, localRuntimeID, resultSuccess)
+	h.audit(c, actionSingBoxRuntimeReconcile, resourceSingBoxRuntime, localRuntimeID, ResultSuccess)
 	httpx.OK(c, value)
 }
 
@@ -141,7 +141,7 @@ func (h *handler) restartSingBoxRuntime(c *gin.Context) {
 		writeRuntimeFailed(c, "重启 sing-box 失败")
 		return
 	}
-	h.audit(c, actionSingBoxRuntimeRestart, resourceSingBoxRuntime, localRuntimeID, resultSuccess)
+	h.audit(c, actionSingBoxRuntimeRestart, resourceSingBoxRuntime, localRuntimeID, ResultSuccess)
 	c.Status(http.StatusNoContent)
 }
 

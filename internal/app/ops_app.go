@@ -3,12 +3,14 @@ package app
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"path/filepath"
 	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/gookit/slog"
 	"github.com/keepon-online/sb-ops/api"
 	controlaudit "github.com/keepon-online/sb-ops/internal/audit"
@@ -42,6 +44,7 @@ type OpsApp struct {
 	AuditLogs     *controlaudit.Service
 	Certificates  *servicecertificate.Service
 	Policies      *servicepolicy.Service
+	Users         *serviceuser.Service
 	Sync          *deployment.SyncService
 	Traffic       *controltraffic.Service
 	Events        *controlevents.Bus
@@ -149,7 +152,7 @@ func newOps(db *sql.DB, sessionTTL time.Duration, apply deployment.ApplyConfig, 
 	})
 	background, cancel := context.WithCancel(context.Background())
 	value := &OpsApp{
-		IdentityStore: identityStore, AuditLogs: auditLogs, Certificates: certificates, Policies: policies, Sync: syncer,
+		IdentityStore: identityStore, AuditLogs: auditLogs, Certificates: certificates, Policies: policies, Users: users, Sync: syncer,
 		Traffic: traffic, Events: events, Alerts: alerts,
 		Router: router, db: db, cancel: cancel, Health: health, logger: logger, config: configProvider, argo: argoManager,
 		activeConnections: kernelConnections(syncer),
@@ -473,6 +476,7 @@ func (a *OpsApp) runOperationalChecks(ctx context.Context) {
 		a.logger.Error().Err(err).Msg("系统事件保留清理失败")
 	}
 	a.verifyKernelHealth(ctx)
+	a.resetDueQuotas(ctx)
 }
 
 // verifyKernelHealth dials the embedded kernel through the Clash API and
@@ -489,6 +493,56 @@ func (a *OpsApp) verifyKernelHealth(ctx context.Context) {
 	a.logger.Error().Err(err).Msg("内核健康探测失败，尝试自动重新同步")
 	if _, syncErr := a.Sync.Reconcile(ctx); syncErr != nil {
 		a.logger.Error().Err(syncErr).Msg("内核自愈重新同步失败")
+	}
+}
+
+// resetDueQuotas 消费用户的周期额度重置：next_reset_at 到期的用户用量清零并
+// 推进边界，逐户落系统审计（无登录 actor）；有用户因此从额度超额恢复可用时
+// 重新同步内核——超额剔除只发生在编译期，不触发同步凭据就回不了协议入站。
+// 放在 verifyKernelHealth 之后：重置引发的同步刚重启过内核，紧接着的健康
+// 探测容易撞上启动窗口再触发一次冗余同步。
+func (a *OpsApp) resetDueQuotas(ctx context.Context) {
+	if a.Users == nil {
+		return
+	}
+	result, err := a.Users.ResetDueQuotas(ctx)
+	if err != nil {
+		a.logger.Error().Err(err).Msg("周期额度重置失败")
+		return
+	}
+	if len(result.Reset) == 0 {
+		return
+	}
+	a.logger.Info().Int("reset", len(result.Reset)).Msg("周期额度重置完成")
+	// 审计写库剥离取消：停机瞬间进行中的重置也要留下痕。
+	auditCtx := context.WithoutCancel(ctx)
+	for _, reset := range result.Reset {
+		a.appendQuotaResetAudit(auditCtx, reset)
+	}
+	if len(result.Recovered) > 0 && a.Sync != nil {
+		if _, err := a.Sync.Reconcile(ctx); err != nil {
+			a.logger.Error().Err(err).Msg("额度恢复用户后重新同步失败")
+		}
+	}
+}
+
+func (a *OpsApp) appendQuotaResetAudit(ctx context.Context, reset serviceuser.QuotaReset) {
+	if a.AuditLogs == nil {
+		return
+	}
+	payload, err := json.Marshal(map[string]any{
+		"usedBytes": reset.Before.UsedBytes, "nextResetAt": reset.NextResetAt,
+	})
+	if err != nil {
+		payload = []byte("{}")
+	}
+	if err := a.AuditLogs.Append(ctx, controlaudit.Record{
+		ID: uuid.NewString(), Action: api.ActionUserTrafficAutoReset,
+		ResourceType: api.ResourceUser, ResourceID: reset.Before.ID, Result: api.ResultSuccess,
+		DetailsJSON: string(payload), CreatedAt: time.Now().UTC(),
+	}); err != nil {
+		// 与 handler 侧同款取舍：审计失败不影响业务结果，但必须留痕。
+		a.logger.Error().Err(err).Str("userId", reset.Before.ID).Msg("写入周期额度重置审计失败")
 	}
 }
 

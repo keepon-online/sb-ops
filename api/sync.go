@@ -50,7 +50,7 @@ func (h *handler) mutate(c *gin.Context, err error, action, resourceType, failur
 	if len(changes) > 0 && len(changes[0]) > 0 {
 		h.auditChanges(c, action, resourceType, successID, changes[0])
 	} else {
-		h.audit(c, action, resourceType, successID, resultSuccess)
+		h.audit(c, action, resourceType, successID, ResultSuccess)
 	}
 	return h.synchronize(c, resourceType, successID)
 }

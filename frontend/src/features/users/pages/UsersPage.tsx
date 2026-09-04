@@ -340,7 +340,12 @@ export function UsersPage() {
               disabledDate={(current) => current.isBefore(dayjs().startOf('day'))}
             />
           </Form.Item>
-          <Form.Item name="resetIntervalDays" label="重置周期（天，0 为不重置）" rules={[{ required: true }]}><InputNumber min={0} precision={0} style={{ width: '100%' }} /></Form.Item>
+          <Form.Item
+            name="resetIntervalDays"
+            label="重置周期（天，0 为不重置）"
+            extra={editing?.nextResetAt ? `下次重置：${new Date(editing.nextResetAt).toLocaleString()}（到期自动清零用量）` : undefined}
+            rules={[{ required: true }]}
+          ><InputNumber min={0} precision={0} style={{ width: '100%' }} /></Form.Item>
         </Form>
       </Drawer>
 

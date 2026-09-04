@@ -33,6 +33,6 @@ func (h *handler) acknowledgeAlert(c *gin.Context) {
 		}
 		return
 	}
-	h.audit(c, actionAlertAcknowledge, resourceAlert, value.ID, resultSuccess)
+	h.audit(c, actionAlertAcknowledge, resourceAlert, value.ID, ResultSuccess)
 	httpx.OK(c, value)
 }

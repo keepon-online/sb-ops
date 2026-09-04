@@ -54,10 +54,10 @@ func (h *handler) audit(c *gin.Context, action, resourceType, resourceID, result
 func (h *handler) auditChanges(c *gin.Context, action, resourceType, resourceID string, changes map[string]any) {
 	payload, err := json.Marshal(map[string]any{"changes": changes})
 	if err != nil {
-		h.appendAuditLog(c, action, resourceType, resourceID, resultSuccess, "{}")
+		h.appendAuditLog(c, action, resourceType, resourceID, ResultSuccess, "{}")
 		return
 	}
-	h.appendAuditLog(c, action, resourceType, resourceID, resultSuccess, string(payload))
+	h.appendAuditLog(c, action, resourceType, resourceID, ResultSuccess, string(payload))
 }
 
 func (h *handler) appendAuditLog(c *gin.Context, action, resourceType, resourceID, result, detailsJSON string) {

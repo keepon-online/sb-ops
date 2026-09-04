@@ -38,7 +38,7 @@ func (h *handler) rotateUserSubscription(c *gin.Context) {
 		writeResourceError(c, err)
 		return
 	}
-	h.audit(c, actionUserSubscriptionRotate, resourceUser, c.Param("id"), resultSuccess)
+	h.audit(c, actionUserSubscriptionRotate, ResourceUser, c.Param("id"), ResultSuccess)
 	httpx.OK(c, gin.H{"subscriptionToken": token})
 }
 

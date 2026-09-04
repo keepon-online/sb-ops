@@ -59,7 +59,7 @@ func (h *handler) createUser(c *gin.Context) {
 		ExpiresAt: request.ExpiresAt, ResetIntervalDays: request.ResetIntervalDays,
 		ProtocolIDs: request.ProtocolIDs, PolicyIDs: request.PolicyIDs,
 	})
-	if !h.mutate(c, err, actionUserCreate, resourceUser, "", value.ID) {
+	if !h.mutate(c, err, actionUserCreate, ResourceUser, "", value.ID) {
 		return
 	}
 	httpx.Created(c, userMutationResponse{User: value, Subscription: &token})
@@ -84,7 +84,7 @@ func (h *handler) updateUser(c *gin.Context) {
 		QuotaBytes: request.QuotaBytes, ExpiresAt: request.ExpiresAt,
 		ResetIntervalDays: request.ResetIntervalDays, ProtocolIDs: request.ProtocolIDs, PolicyIDs: request.PolicyIDs,
 	})
-	if !h.mutate(c, err, actionUserUpdate, resourceUser, c.Param("id"), value.ID) {
+	if !h.mutate(c, err, actionUserUpdate, ResourceUser, c.Param("id"), value.ID) {
 		return
 	}
 	httpx.OK(c, value)
@@ -92,7 +92,7 @@ func (h *handler) updateUser(c *gin.Context) {
 
 func (h *handler) deleteUser(c *gin.Context) {
 	err := h.Users.Delete(c.Request.Context(), c.Param("id"))
-	if !h.mutate(c, err, actionUserDelete, resourceUser, c.Param("id"), c.Param("id")) {
+	if !h.mutate(c, err, actionUserDelete, ResourceUser, c.Param("id"), c.Param("id")) {
 		return
 	}
 	c.Status(http.StatusNoContent)
@@ -104,7 +104,7 @@ func (h *handler) batchUserStatus(c *gin.Context) {
 		return
 	}
 	err := h.Users.BatchStatus(c.Request.Context(), request.IDs, *request.Enabled)
-	if !h.mutate(c, err, actionUserBatchStatus, resourceUser, "", "") {
+	if !h.mutate(c, err, actionUserBatchStatus, ResourceUser, "", "") {
 		return
 	}
 	c.Status(http.StatusNoContent)
@@ -116,7 +116,7 @@ func (h *handler) resetUserTraffic(c *gin.Context) {
 		writeResourceError(c, err)
 		return
 	}
-	h.audit(c, actionUserTrafficReset, resourceUser, value.ID, resultSuccess)
+	h.audit(c, actionUserTrafficReset, ResourceUser, value.ID, ResultSuccess)
 	httpx.OK(c, value)
 }
 
@@ -131,7 +131,7 @@ func (h *handler) adjustUser(c *gin.Context, action string, call func(context.Co
 		writeResourceError(c, err)
 		return
 	}
-	h.audit(c, action, resourceUser, value.ID, resultSuccess)
+	h.audit(c, action, ResourceUser, value.ID, ResultSuccess)
 	httpx.OK(c, value)
 }
 

@@ -77,7 +77,7 @@ func (h *handler) initializeAdmin(c *gin.Context) {
 		return
 	}
 	c.Set(principalKey, identity.Principal{AccountID: account.ID})
-	h.audit(c, actionSetupAdminInitialize, resourceAccount, account.ID, resultSuccess)
+	h.audit(c, actionSetupAdminInitialize, resourceAccount, account.ID, ResultSuccess)
 	httpx.Created(c, newAccountResponse(account))
 }
 
@@ -117,7 +117,7 @@ func (h *handler) changePassword(c *gin.Context) {
 		writeIdentityError(c, err)
 		return
 	}
-	h.audit(c, actionAuthPasswordChange, resourceAccount, account.ID, resultSuccess)
+	h.audit(c, actionAuthPasswordChange, resourceAccount, account.ID, ResultSuccess)
 	httpx.OK(c, newAccountResponse(account))
 }
 
@@ -127,7 +127,7 @@ func (h *handler) logout(c *gin.Context) {
 		writeIdentityError(c, err)
 		return
 	}
-	h.audit(c, actionAuthLogout, resourceSession, currentPrincipal(c).SessionID, resultSuccess)
+	h.audit(c, actionAuthLogout, resourceSession, currentPrincipal(c).SessionID, ResultSuccess)
 	c.Status(http.StatusNoContent)
 }
 

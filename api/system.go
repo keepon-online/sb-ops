@@ -22,7 +22,7 @@ func (h *handler) checkUpgrade(c *gin.Context) {
 		writeUpgradeError(c, err)
 		return
 	}
-	h.audit(c, actionSystemUpgradeCheck, resourceSystemUpgrade, release.Version, resultSuccess)
+	h.audit(c, actionSystemUpgradeCheck, resourceSystemUpgrade, release.Version, ResultSuccess)
 	httpx.OK(c, release)
 }
 
@@ -38,7 +38,7 @@ func (h *handler) startUpgrade(c *gin.Context) {
 	if latest := h.Upgrade.Status().Latest; latest != nil {
 		resourceID = latest.Version
 	}
-	h.audit(c, actionSystemUpgradeStart, resourceSystemUpgrade, resourceID, resultSuccess)
+	h.audit(c, actionSystemUpgradeStart, resourceSystemUpgrade, resourceID, ResultSuccess)
 	httpx.OK(c, h.Upgrade.Status())
 }
 

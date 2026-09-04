@@ -299,6 +299,24 @@ func (s *Service) ResetTraffic(ctx context.Context, id string) (User, error) {
 	return s.store.Get(ctx, id)
 }
 
+// ResetDueQuotas 消费 next_reset_at 到期的用户：用量清零并推进下一轮边界。
+// StatusAt 的 quotaExceeded 判定已蕴含「启用且未到期」，Recovered 即重置后
+// 立即恢复可用、需要重新编译进内核的用户。
+func (s *Service) ResetDueQuotas(ctx context.Context) (QuotaResetResult, error) {
+	now := s.now()
+	resets, err := s.store.ResetDueQuotas(ctx, now)
+	if err != nil {
+		return QuotaResetResult{}, err
+	}
+	result := QuotaResetResult{Reset: resets, Recovered: make([]User, 0, len(resets))}
+	for _, reset := range resets {
+		if reset.Before.StatusAt(now) == StatusQuotaExceeded {
+			result.Recovered = append(result.Recovered, reset.Before)
+		}
+	}
+	return result, nil
+}
+
 func (s *Service) AdjustQuota(ctx context.Context, id string, input TrafficInput) (User, error) {
 	if err := s.store.AdjustQuota(ctx, id, input.Mode, input.Bytes, s.now()); err != nil {
 		return User{}, err
