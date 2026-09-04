@@ -71,12 +71,12 @@ function AuditDetailDrawer({ entry, onClose }: { entry: ManagementAuditEntry | n
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', fontSize: 12 }}>
                   <div style={{ padding: '8px 12px', background: 'rgba(239, 68, 68, 0.08)', borderRight: '1px solid var(--border-color)', wordBreak: 'break-all' }}>
-                    <div style={{ color: '#cf1322', fontWeight: 600, marginBottom: 4 }}>- 改前旧值</div>
-                    <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontFamily: 'inherit' }}>{formatDiffValue(diff.old)}</pre>
+                    <div style={{ color: 'var(--color-error)', fontWeight: 600, marginBottom: 4 }}>- 改前旧值</div>
+                    <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontFamily: "'JetBrains Mono', monospace" }}>{formatDiffValue(diff.old)}</pre>
                   </div>
                   <div style={{ padding: '8px 12px', background: 'rgba(34, 197, 94, 0.08)', wordBreak: 'break-all' }}>
-                    <div style={{ color: '#389e0d', fontWeight: 600, marginBottom: 4 }}>+ 改后新值</div>
-                    <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontFamily: 'inherit' }}>{formatDiffValue(diff.new)}</pre>
+                    <div style={{ color: 'var(--color-success)', fontWeight: 600, marginBottom: 4 }}>+ 改后新值</div>
+                    <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontFamily: "'JetBrains Mono', monospace" }}>{formatDiffValue(diff.new)}</pre>
                   </div>
                 </div>
               </div>

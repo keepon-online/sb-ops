@@ -20,6 +20,7 @@ import { controlPlaneApi, type ManagementOverview } from '../../../services/cont
 import { ApiError } from '../../../services/http';
 import { trafficApi } from '../../../services/traffic';
 import { configStatusLabels, kernelStatusLabels, runtimeStatusLabels } from '../../../util/labels';
+import { useAppTheme } from '../../../context/ThemeContext';
 
 const platformLabels: Record<string, string> = {
   windows: 'Windows', macos: 'macOS', linux: 'Linux', android: 'Android', ios: 'iOS', unknown: '未知'
@@ -58,13 +59,15 @@ export function OverviewPage() {
 
   if (overview.isError) return <Result status={overview.error instanceof ApiError && overview.error.status === 403 ? '403' : 'error'} title={overview.error.message} extra={<Button type="primary" icon={<ReloadOutlined />} onClick={() => void overview.refetch()}>重试</Button>} />;
   const value = overview.data;
+  const { themeColor } = useAppTheme();
+  const downColor = themeColor === 'green' ? '#38bdf8' : '#42a56f';
   const showTasks = Boolean(value?.tasks.some((task) => !task.completed));
   const autoCount = value?.devices?.auto ?? 0;
 
   const trafficPoints = traffic24hSeries.data?.items || [];
   const sparklineLabels = trafficPoints.map((p) => dayjs(p.bucket).format('HH:mm'));
   const sparklineSeries = [
-    { name: '下行', color: '#42a56f', values: trafficPoints.map((p) => p.downBytes) },
+    { name: '下行', color: downColor, values: trafficPoints.map((p) => p.downBytes) },
     { name: '上行', color: 'var(--primary-color)', values: trafficPoints.map((p) => p.upBytes) }
   ];
 
@@ -166,7 +169,7 @@ export function OverviewPage() {
               percent={Math.min(100, value.bandwidth.percent)}
               format={(percent) => `${(percent ?? 0).toFixed(1)}%`}
               status={value.bandwidth.percent >= 80 ? 'exception' : 'normal'}
-              strokeColor={value.bandwidth.percent >= 95 ? '#cf1322' : undefined}
+              strokeColor={value.bandwidth.percent >= 95 ? 'var(--color-error)' : undefined}
             />
             <Typography.Paragraph type="secondary" style={{ marginTop: 8, marginBottom: 0, fontSize: 12 }}>
               数字来自 VPS 提供商 SolusVM API，含全部网卡流量与宿主层开销。

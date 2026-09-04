@@ -298,7 +298,7 @@ export function ProtocolsPage() {
 
   const protocolColumns: ColumnsType<ResourceProtocol> = [
     { title: '名称', dataIndex: 'name', width: 180, fixed: screens.md ? 'left' : undefined, render: (value: string) => <Typography.Text strong>{value}</Typography.Text> },
-    { title: '类型', dataIndex: 'type', width: 150, render: (value: ResourceProtocolType) => <Tag color="blue">{protocolLabels[value]}</Tag> },
+    { title: '类型', dataIndex: 'type', width: 150, render: (value: ResourceProtocolType) => <Tag color="processing">{protocolLabels[value]}</Tag> },
     { title: '监听', width: 180, render: (_, value) => <Typography.Text code>{value.listen}:{value.listenPort}</Typography.Text> },
     { title: '状态', dataIndex: 'enabled', width: 90, render: (value: boolean) => <Tag color={value ? 'success' : 'default'}>{value ? '启用' : '停用'}</Tag> },
     {
@@ -363,7 +363,7 @@ export function ProtocolsPage() {
   ];
   const certificateColumns: ColumnsType<ResourceCertificate> = [
     { title: '名称', dataIndex: 'name', width: 160, render: (value: string) => <Typography.Text strong>{value}</Typography.Text> },
-    { title: '来源', dataIndex: 'source', width: 90, render: (value: string) => <Tag color={value === 'acme' ? 'success' : value === 'self_signed' ? 'blue' : 'default'}>{certificateSourceLabels[value] || value}</Tag> },
+    { title: '来源', dataIndex: 'source', width: 90, render: (value: string) => <Tag color={value === 'acme' ? 'success' : value === 'self_signed' ? 'processing' : 'default'}>{certificateSourceLabels[value] || value}</Tag> },
     { title: '域名', dataIndex: 'domain', width: 150, render: (value?: string) => value || '-' },
     { title: '指纹', dataIndex: 'fingerprint', ellipsis: true, render: (value: string) => <Typography.Text code copyable>{value}</Typography.Text> },
     { title: '到期时间', dataIndex: 'notAfter', width: 170, render: (value: string) => new Date(value).toLocaleString() },

@@ -114,7 +114,7 @@ export function SystemPage() {
         {
           key: 'latest', label: '最新版本',
           children: latest
-            ? <Space>{latest.version}{latest.upgradable ? <Tag color="blue">可升级</Tag> : <Tag color="green">已最新</Tag>}</Space>
+            ? <Space>{latest.version}{latest.upgradable ? <Tag color="processing">可升级</Tag> : <Tag color="success">已最新</Tag>}</Space>
             : <Typography.Text type="secondary">尚未检查</Typography.Text>
         },
         { key: 'published', label: '发布时间', children: latest?.publishedAt ? new Date(latest.publishedAt * 1000).toLocaleString() : '—' }

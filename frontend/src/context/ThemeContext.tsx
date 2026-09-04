@@ -15,26 +15,34 @@ interface ThemeContextType {
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 // Theme color definitions for light and dark modes
-export const themeColors: Record<ThemeColor, { light: string; dark: string; rgb: string }> = {
+export const themeColors: Record<ThemeColor, { light: string; dark: string; rgb: string; accentLight: string; accentDark: string }> = {
   blue: {
     light: '#0284c7', // Sky blue
     dark: '#38bdf8',  // Cyan/sky dark
-    rgb: '56, 189, 248'
+    rgb: '56, 189, 248',
+    accentLight: '#6366f1',
+    accentDark: '#818cf8'
   },
   purple: {
     light: '#7c3aed', // Violet
     dark: '#a78bfa',  // Purple dark
-    rgb: '167, 139, 250'
+    rgb: '167, 139, 250',
+    accentLight: '#c026d3',
+    accentDark: '#f472b6'
   },
   green: {
     light: '#059669', // Emerald
     dark: '#34d399',  // Mint dark
-    rgb: '52, 211, 153'
+    rgb: '52, 211, 153',
+    accentLight: '#0891b2',
+    accentDark: '#22d3ee'
   },
   orange: {
     light: '#ea580c', // Orange/Sunset
     dark: '#fb923c',  // Amber dark
-    rgb: '251, 146, 60'
+    rgb: '251, 146, 60',
+    accentLight: '#d97706',
+    accentDark: '#facc15'
   }
 };
 
@@ -68,10 +76,13 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     const activeColor = themeColors[themeColor];
     const primaryHex = isDark ? activeColor.dark : activeColor.light;
     const primaryRGB = isDark ? activeColor.rgb : hexToRgb(activeColor.light);
+    const accentHex = isDark ? activeColor.accentDark : activeColor.accentLight;
 
     // Apply primary color variable
     root.style.setProperty('--primary-color', primaryHex);
     root.style.setProperty('--primary-color-rgb', primaryRGB);
+    root.style.setProperty('--primary-accent', accentHex);
+    root.style.setProperty('--traffic-down', themeColor === 'green' ? '#38bdf8' : '#42a56f');
 
     // Apply light/dark color variables
     if (isDark) {
@@ -83,6 +94,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       root.style.setProperty('--border-color', '#1e293b');
       root.style.setProperty('--text-color', '#f3f4f6');
       root.style.setProperty('--text-secondary', '#94a3b8');
+      root.style.setProperty('--color-success', '#34d399');
+      root.style.setProperty('--color-warning', '#fbbf24');
+      root.style.setProperty('--color-error', '#f87171');
+      root.style.setProperty('--color-info', '#60a5fa');
       root.style.setProperty('--card-shadow', '0 4px 20px -2px rgba(0, 0, 0, 0.4)');
       root.style.setProperty('--glass-bg', 'rgba(19, 27, 46, 0.7)');
       root.style.setProperty('--glass-border', 'rgba(255, 255, 255, 0.06)');
@@ -95,6 +110,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       root.style.setProperty('--border-color', '#e2e8f0');
       root.style.setProperty('--text-color', '#1e293b');
       root.style.setProperty('--text-secondary', '#64748b');
+      root.style.setProperty('--color-success', '#10b981');
+      root.style.setProperty('--color-warning', '#f59e0b');
+      root.style.setProperty('--color-error', '#ef4444');
+      root.style.setProperty('--color-info', '#3b82f6');
       root.style.setProperty('--card-shadow', '0 4px 20px -2px rgba(0, 0, 0, 0.05)');
       root.style.setProperty('--glass-bg', 'rgba(255, 255, 255, 0.75)');
       root.style.setProperty('--glass-border', 'rgba(0, 0, 0, 0.06)');
@@ -115,7 +134,13 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 export function useAppTheme() {
   const context = useContext(ThemeContext);
   if (!context) {
-    throw new Error('useAppTheme must be used within a ThemeProvider');
+    return {
+      themeMode: 'dark' as ThemeMode,
+      themeColor: 'blue' as ThemeColor,
+      setThemeMode: () => {},
+      setThemeColor: () => {},
+      toggleThemeMode: () => {}
+    };
   }
   return context;
 }
@@ -145,7 +170,7 @@ export function useAntdThemeConfig(): ThemeConfig {
       token: {
         colorPrimary: primaryColor,
         borderRadius: 10,
-        fontFamily: "'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+        fontFamily: "'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif",
         colorBgLayout: isDark ? '#0b0f19' : '#f8fafc',
         colorBgContainer: isDark ? '#131b2e' : '#ffffff',
         colorBorder: isDark ? '#1e293b' : '#e2e8f0',

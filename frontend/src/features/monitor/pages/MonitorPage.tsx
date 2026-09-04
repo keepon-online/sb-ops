@@ -10,6 +10,7 @@ import { useElementWidth } from '../../../components/useElementWidth';
 import { monitorApi, type MonitorStatus } from '../../../services/monitor';
 import { ApiError } from '../../../services/http';
 import type { components } from '../../../generated/management-api';
+import { useAppTheme } from '../../../context/ThemeContext';
 
 type MonitorInterface = components['schemas']['MonitorInterface'];
 
@@ -49,6 +50,8 @@ const interfaceColumns = [
 ];
 
 export function MonitorPage() {
+  const { themeColor } = useAppTheme();
+  const downColor = themeColor === 'green' ? '#38bdf8' : '#42a56f';
   const monitor = useQuery({ queryKey: ['monitor'], queryFn: monitorApi.status, retry: false, refetchInterval: 5000 });
   if (monitor.isError) return <Result status={monitor.error instanceof ApiError && monitor.error.status === 403 ? '403' : 'error'} title={monitor.error.message} extra={<Button type="primary" icon={<ReloadOutlined />} onClick={() => void monitor.refetch()}>重试</Button>} />;
   const value: MonitorStatus | undefined = monitor.data;
@@ -77,7 +80,7 @@ export function MonitorPage() {
       <div className="gauge-cell" role="img" aria-label={`网络速率，下行 ${rate(value?.network.recvRate || 0)}，上行 ${rate(value?.network.sendRate || 0)}`}>
         <Typography.Text strong>网络速率</Typography.Text>
         <div className="gauge-rate">
-          <Typography.Text style={{ color: '#42a56f', fontSize: 18, fontWeight: 600 }}><ArrowDownOutlined /> {rate(value?.network.recvRate || 0)}</Typography.Text>
+          <Typography.Text style={{ color: downColor, fontSize: 18, fontWeight: 600 }}><ArrowDownOutlined /> {rate(value?.network.recvRate || 0)}</Typography.Text>
           <Typography.Text style={{ color: 'var(--primary-color)', fontSize: 18, fontWeight: 600 }}><ArrowUpOutlined /> {rate(value?.network.sendRate || 0)}</Typography.Text>
         </div>
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>10 分钟峰值 ↓{rate(peakRecv)} · ↑{rate(peakSend)}</Typography.Text>
@@ -94,10 +97,10 @@ export function MonitorPage() {
     </section>
 
     <section className="workspace-section">
-      <Space className="section-heading"><Typography.Title level={4}>网络速率趋势</Typography.Title><Typography.Text type="secondary">绿线下行，蓝线上行</Typography.Text></Space>
+      <Space className="section-heading"><Typography.Title level={4}>网络速率趋势</Typography.Title><Typography.Text type="secondary">上行 (↑) · 下行 (↓)</Typography.Text></Space>
       <InteractiveChart height={220} area ariaLabel="网络速率趋势，绿线下行，蓝线上行，悬停查看数值" emptyText="暂无采样数据" labels={labels} formatValue={rate}
         series={[
-          { name: '下行', color: '#42a56f', values: history.map((point) => point.netRecvRate) },
+          { name: '下行', color: downColor, values: history.map((point) => point.netRecvRate) },
           { name: '上行', color: 'var(--primary-color)', values: history.map((point) => point.netSendRate) }
         ]} />
     </section>

@@ -128,7 +128,7 @@ export function PoliciesPage() {
     { title: '顺序', width: 84, render: (_, __, index) => <Space size={0}><Button type="text" size="small" icon={<ArrowUpOutlined />} disabled={index === 0} onClick={() => moveRule(index, -1)} /><Button type="text" size="small" icon={<ArrowDownOutlined />} disabled={index === (rules.data?.items.length || 0) - 1} onClick={() => moveRule(index, 1)} /></Space> },
     { title: '规则', dataIndex: 'name', width: 170, render: (value: string) => <Typography.Text strong>{value}</Typography.Text> },
     { title: '条件', render: (_, value) => conditionSummary(value.conditions) },
-    { title: '动作', dataIndex: 'action', width: 110, render: (value: string) => <Tag color={value === 'block' ? 'error' : value === 'direct' ? 'success' : 'blue'}>{actionLabel(value)}</Tag> },
+    { title: '动作', dataIndex: 'action', width: 110, render: (value: string) => <Tag color={value === 'block' ? 'error' : value === 'direct' ? 'success' : 'processing'}>{actionLabel(value)}</Tag> },
     { title: '状态', dataIndex: 'enabled', width: 72, render: (value: boolean) => value ? '启用' : '停用' },
     { title: '操作', width: 104, render: (_, value) => <Space size={2}><Tooltip title="编辑"><Button type="text" icon={<EditOutlined />} onClick={() => openEditRule(value)} /></Tooltip><Popconfirm title="确认删除该规则？" onConfirm={() => removeRule.mutate(value.id)}><Tooltip title="删除"><Button type="text" danger icon={<DeleteOutlined />} /></Tooltip></Popconfirm></Space> }
   ];

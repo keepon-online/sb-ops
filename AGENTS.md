@@ -59,6 +59,29 @@ go test -tags=with_quic,with_utls,with_clash_api,with_v2ray_api,with_wireguard,w
 - **订阅产物只有 `clash.yaml` 一种格式**（`runtime_artifacts` 落库硬编码）；前端订阅链接也只展示它。`sbox.json`/`clmi.yaml`/`jhsub.txt` 曾是 404 死链已删——除非后端真的实现生成器，不要再加回前端格式列表。
 - **已删除勿恢复**：`config/validation.go`（agent 时代自由 sb.json 校验，仅测试引用）、流量归档/清理 API（`Archive`/`Purge`/`EstimateBefore` + `/traffic/archive|purge` 路由；`PurgeBefore` 保留供留存任务）、协议类型 `naive`/`shadowtls`（sing-box 独有协议，mihomo/clash 不支持、永远进不了 clash.yaml 订阅，2026-08 移除；保留 `anytls`——mihomo 支持）。
 
+## 前端视觉、交互与主题规范（勿破坏）
+
+- **主题色与多套预设自适应**：面板支持 4 套主题色（`blue` 天蓝、`purple` 紫罗兰、`green` 翡翠绿、`orange` 日落橙）及深浅双模式（`dark` / `light`）。
+  - **严禁硬编码单一色彩（如 `#0284c7`、`#1677ff`、`#1890ff`、`color="blue"`、`color="geekblue"`）**：Ant Design 强调态标签统一用语义化 `color="processing"`（自动映射当前主题 `colorPrimary`），成功用 `color="success"`、警告用 `color="warning"`、错误用 `color="error"`、停用用 `color="default"`；不要在组件里写死固定蓝色。
+  - **渐变终点必须消费 `--primary-accent`**：双色渐变（品牌 Logo、登录页标题、总览核心指标）统一写 `linear-gradient(135deg, var(--primary-color), var(--primary-accent))`；`--primary-accent` 由 `ThemeContext` 随主题色动态匹配同系副色，严禁在 CSS 里将渐变终点硬编码为浅紫（`#a78bfa`）或其它固定色（会导致绿色/橙色主题严重撞色发灰）。
+  - **语义状态消费 CSS 变量**：报警/错误与成功色统一消费 `var(--color-error)` / `var(--color-warning)` / `var(--color-success)`，不要在 inline style 里写死 `#cf1322` / `#389e0d`（在暗色模式 `#131b2e` 底色下对比度不足）。
+- **双通道图表与图例文案规范**：
+  - 流量与网络速率趋势图（`InteractiveChart`）上行线消费 `var(--primary-color)`，下行线消费 `var(--traffic-down)`（在 `green` 绿色主题下自动动态映射为高对比天蓝 `#38bdf8`，其他主题下为 `#42a56f`，避免双绿混淆）。
+  - 图例与辅助说明统一使用语义化符号（如 `<LineChartOutlined /> 上行 (↑) · 下行 (↓)`），**严禁在界面文案中硬编码颜色名称**（曾硬编码「蓝线上行，绿线下行」，在绿/紫/橙主题下与实际线条颜色冲突）。
+- **字体与排版规范**：
+  - 全局西文字体优先 `Plus Jakarta Sans`，代码/密钥/IP/Diff 对账一律使用等宽字体 `'JetBrains Mono', ui-monospace, monospace`。
+  - 字体栈必须保留系统级中文字体回退（`'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif`），保证 Windows 与 macOS 汉字字重渲染均一。
+- **交互与高频操作减阻**：
+  - 用户订阅复制走轻量一步直达（优先从 React Query 缓存读取设备 Token，缺省异步静默加载，带有即时反馈提示，严禁强迫用户展开设备抽屉后再手工查找复制）。
+  - 协议端到端拨测支持单行就地触发（复用 `POST /api/v1/protocols/probe?protocolId=...`）。
+  - 审计日志变更记录必须展示字段级 `{old, new}` 结构化 Diff 对账抽屉（红底旧值、绿底新值、等宽显示）。
+- **响应式与移动端体验**：
+  - 表格水平滚动容器必须声明 `-webkit-overflow-scrolling: touch;`，消除移动端滑动手势卡顿。
+  - 抽屉（Drawer）在平板/手机（`max-width: 768px`）下必须占满屏幕宽度（`width: 100% !important; max-width: 100vw;`），避免抽屉内表单拥挤截断。
+  - 操作工具栏（`.page-toolbar`）小屏下必须弹性换行或纵向堆叠，输入框与选择器自动充满宽度。
+- **单测安全兜底**：
+  - `useAppTheme()` 必须保留未被 `<ThemeProvider>` 包裹时的默认降级返回对象，避免孤立单元测试渲染页面组件时因缺少 Context 抛出异常。测试断言若包含精确 `ariaLabel`（如 `monitor.test.tsx`），页面中的可访问性标签需严格对齐测试契约。
+
 ## 测试注意
 
 - 全部 Go 测试需 build tags。
