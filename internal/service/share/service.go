@@ -244,7 +244,13 @@ FROM users WHERE subscription_token_hash=?`, hash[:]).Scan(&artifact.UserID, &us
 		}
 
 		if artifact.DeviceID == "" && uaInfo.Key != "" {
-			device, created, found, err := s.users.DeviceForKey(ctx, artifact.UserID, uaInfo.Key, uaInfo.Label, metadata)
+			// 浏览器样式的 UA（含手动改成浏览器 UA 的客户端）只匹配既有设备，
+			// 不自动新建：浏览器预览订阅链接不消耗设备配额。
+			route := s.users.DeviceForKey
+			if !uaInfo.AutoCreate {
+				route = s.users.MatchDeviceForKey
+			}
+			device, created, found, err := route(ctx, artifact.UserID, uaInfo.Key, uaInfo.Label, metadata)
 			if err != nil {
 				s.log.Warn("订阅自动建设备失败", "ua", uaInfo.Key, "error", err)
 			}

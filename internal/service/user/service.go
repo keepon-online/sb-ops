@@ -143,6 +143,16 @@ func (s *Service) ListDevices(ctx context.Context, userID string) ([]Device, err
 // distinguishes a fresh device (the caller should re-sync the kernel) from an
 // existing one.
 func (s *Service) DeviceForKey(ctx context.Context, userID, uaKey, label string, metadataValues ...DeviceMetadata) (device Device, created, found bool, err error) {
+	return s.routeDeviceForKey(ctx, userID, uaKey, label, true, metadataValues...)
+}
+
+// MatchDeviceForKey is DeviceForKey without auto-creation: browser-style user
+// agents keep routing to their existing device but never mint new ones.
+func (s *Service) MatchDeviceForKey(ctx context.Context, userID, uaKey, label string, metadataValues ...DeviceMetadata) (device Device, created, found bool, err error) {
+	return s.routeDeviceForKey(ctx, userID, uaKey, label, false, metadataValues...)
+}
+
+func (s *Service) routeDeviceForKey(ctx context.Context, userID, uaKey, label string, allowCreate bool, metadataValues ...DeviceMetadata) (device Device, created, found bool, err error) {
 	var metadata DeviceMetadata
 	if len(metadataValues) > 0 {
 		metadata = metadataValues[0]
@@ -166,6 +176,9 @@ func (s *Service) DeviceForKey(ctx context.Context, userID, uaKey, label string,
 		}
 		_ = s.store.UpdateDeviceMetadata(ctx, userID, existing.ID, metadata, 5*time.Minute)
 		return existing, false, true, nil
+	}
+	if !allowCreate {
+		return Device{}, false, false, nil
 	}
 	count, err := s.store.CountDevices(ctx, userID)
 	if err != nil {

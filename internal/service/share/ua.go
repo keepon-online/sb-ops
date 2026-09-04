@@ -16,12 +16,16 @@ func normalizeClientToken(userAgent string) string {
 
 // UAInfo 是订阅请求中可安全持久化的客户端观测结果。Key 只由客户端
 // 应用名决定，版本变化不会创建新设备；Version 仅用于展示最近一次观测值。
+// AutoCreate 为 false 时（浏览器样式的 UA）Key 仅用于匹配既有设备——
+// 客户端可能被手动改成浏览器 UA 长期使用，不能丢路由；但浏览器直接打开
+// 订阅链接不应触发自动建设备。
 type UAInfo struct {
-	Key      string
-	Label    string
-	Client   string
-	Platform string
-	Version  string
+	Key        string
+	Label      string
+	Client     string
+	Platform   string
+	Version    string
+	AutoCreate bool
 }
 
 // ParseUserAgent 识别订阅下载请求的客户端与平台。平台无法从 UA 可靠判断时
@@ -38,19 +42,24 @@ func ParseUserAgent(userAgent string) UAInfo {
 			return UAInfo{
 				Key: client.prefix, Label: client.label, Client: client.label,
 				Platform: detectPlatform(trimmed), Version: extractVersion(trimmed, client.prefix),
+				AutoCreate: true,
 			}
 		}
 	}
-	// 未匹配到受支持客户端，但仍保留稳定 key，兼容当前自动发现行为；
-	// 展示名截断到安全长度。
 	if isBrowserUA(trimmed) {
-		// 浏览器直接打开订阅链接只用于预览/复制，不该消耗设备配额或触发内核重载；
-		// Key 留空使调用方跳过自动建设备、走既有回退路径。
-		return UAInfo{Platform: detectPlatform(trimmed)}
+		// 浏览器样式的 UA：保留稳定 key 以匹配既有设备（手动改 UA 的客户端
+		// 不受影响），但不自动新建，浏览器预览订阅链接不再消耗设备配额。
+		return UAInfo{
+			Key: "ua-" + token, Label: truncateUA(fields[0]), Client: truncateUA(fields[0]),
+			Platform: detectPlatform(trimmed), Version: extractVersion(trimmed, token),
+		}
 	}
+	// 未匹配到受支持客户端，仍保留稳定 key，兼容当前自动发现行为；
+	// 展示名截断到安全长度。
 	return UAInfo{
 		Key: "ua-" + token, Label: truncateUA(fields[0]), Client: truncateUA(fields[0]),
 		Platform: detectPlatform(trimmed), Version: extractVersion(trimmed, token),
+		AutoCreate: true,
 	}
 }
 

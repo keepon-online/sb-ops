@@ -90,11 +90,13 @@ func TestParseUserAgentKeyLabel(t *testing.T) {
 		{"Stash/2.8.0", "stash", "Stash"},
 		{"MyClient/1.0", "ua-myclient", "MyClient/1.0"},
 		{"", "", ""},
-		// 浏览器 UA 不自动建设备：Key 留空，Label 留空。
-		{"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", "", ""},
-		{"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15", "", ""},
-		{"Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0", "", ""},
-		{"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 Edg/126.0.0.0", "", ""},
+		// 浏览器样式的 UA：保留稳定 key 以匹配既有设备（手动改 UA 的客户端
+		// 不丢路由），AutoCreate=false 使其不再自动新建（见
+		// TestParseUserAgentAutoCreate）。
+		{"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", "ua-mozilla", "Mozilla/5.0"},
+		{"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15", "ua-mozilla", "Mozilla/5.0"},
+		{"Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0", "ua-mozilla", "Mozilla/5.0"},
+		{"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 Edg/126.0.0.0", "ua-mozilla", "Mozilla/5.0"},
 	}
 	for _, tc := range cases {
 		info := ParseUserAgent(tc.ua)
@@ -113,15 +115,102 @@ func TestParseUserAgentMetadata(t *testing.T) {
 		{"ClashforWindows/0.20.39 (Windows)", "clashforwindows", "Clash for Windows", "windows", "0.20.39"},
 		{"MyClient/1.0 (Linux)", "ua-myclient", "MyClient/1.0", "linux", "1.0"},
 		{"", "", "", "unknown", ""},
-		// 浏览器 UA：不建设备（Key 空），但平台仍按 UA 识别。
-		{"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", "", "", "windows", ""},
-		{"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15", "", "", "macos", ""},
+		// 浏览器样式的 UA：key 保留用于匹配既有设备，平台仍按 UA 识别；
+		// 版本取 Mozilla/5.0 的 "5.0"（仅展示）。
+		{"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", "ua-mozilla", "Mozilla/5.0", "windows", "5.0"},
+		{"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15", "ua-mozilla", "Mozilla/5.0", "macos", "5.0"},
 	}
 	for _, tc := range cases {
 		got := ParseUserAgent(tc.ua)
 		if got.Key != tc.key || got.Client != tc.client || got.Platform != tc.platform || got.Version != tc.version {
 			t.Fatalf("UA %q → %+v, want key=%q client=%q platform=%q version=%q", tc.ua, got, tc.key, tc.client, tc.platform, tc.version)
 		}
+	}
+}
+
+// TestParseUserAgentAutoCreate 固定「浏览器样式 UA 可匹配不新建」的边界：
+// 只有受支持客户端与普通未知客户端允许自动建设备。
+func TestParseUserAgentAutoCreate(t *testing.T) {
+	cases := []struct {
+		ua         string
+		autoCreate bool
+	}{
+		{"clash-verge/2.1.3", true},
+		{"MyClient/1.0", true},
+		{"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", false},
+		{"Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0", false},
+		{"", false},
+	}
+	for _, tc := range cases {
+		if got := ParseUserAgent(tc.ua).AutoCreate; got != tc.autoCreate {
+			t.Fatalf("UA %q AutoCreate=%v, want %v", tc.ua, got, tc.autoCreate)
+		}
+	}
+}
+
+// TestBrowserUserAgentMatchesWithoutCreating 固定浏览器样式 UA 的边界：
+// 浏览器预览订阅链接不建设备、不触发内核同步；而手动改成浏览器 UA 的
+// 既有设备仍按 ua-mozilla 键正常路由，不丢凭据。
+func TestBrowserUserAgentMatchesWithoutCreating(t *testing.T) {
+	share, users, recorder := newTestService(t)
+	userID, token := mustCreateUser(t, users)
+	recorder.userID = userID
+	browserUA := "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+
+	// 新用户浏览器首拉：不建设备（无产物可回退，返回错误而非悄悄建台）。
+	if _, err := share.ArtifactByToken(t.Context(), token, "clash.yaml", browserUA, "203.0.113.77"); err == nil {
+		t.Fatalf("browser UA on a fresh user must not serve anything")
+	}
+	var count int
+	if err := share.db.QueryRow(`SELECT COUNT(1) FROM devices WHERE user_id=?`, userID).Scan(&count); err != nil {
+		t.Fatalf("count devices: %v", err)
+	}
+	if count != 0 || recorder.calls != 0 {
+		t.Fatalf("devices=%d sync=%d, want 0/0 (browser UA must not auto-create)", count, recorder.calls)
+	}
+
+	// 受支持客户端正常建设备（基线，一次同步）。
+	first, err := share.ArtifactByToken(t.Context(), token, "clash.yaml", "clash-verge/2.1.3", "198.51.100.10")
+	if err != nil {
+		t.Fatalf("clash fetch: %v", err)
+	}
+	if recorder.calls != 1 {
+		t.Fatalf("sync calls=%d, want 1", recorder.calls)
+	}
+
+	// ua-mozilla 设备尚不存在：浏览器 UA 走回退产物，仍不建设备。
+	fallback, err := share.ArtifactByToken(t.Context(), token, "clash.yaml", browserUA, "203.0.113.77")
+	if err != nil {
+		t.Fatalf("browser fetch with existing artifact: %v", err)
+	}
+	if fallback.DeviceID != first.DeviceID {
+		t.Fatalf("browser UA should fall back to latest artifact %s, got %s", first.DeviceID, fallback.DeviceID)
+	}
+	if err := share.db.QueryRow(`SELECT COUNT(1) FROM devices WHERE user_id=?`, userID).Scan(&count); err != nil {
+		t.Fatalf("count devices: %v", err)
+	}
+	if count != 1 || recorder.calls != 1 {
+		t.Fatalf("devices=%d sync=%d, want 1/1 after fallback fetch", count, recorder.calls)
+	}
+
+	// 历史上（浏览器过滤前）由手动改 UA 建的 ua-mozilla 设备：浏览器 UA
+	// 仍应路由到它，凭据不丢。
+	legacy, created, found, err := users.DeviceForKey(t.Context(), userID, "ua-mozilla", "Mozilla/5.0", serviceuser.DeviceMetadata{SourceIP: "203.0.113.99"})
+	if err != nil || !created || !found {
+		t.Fatalf("seed legacy mozilla device created=%v found=%v err=%v", created, found, err)
+	}
+	if err := seedArtifact(share.db, userID, legacy.ID); err != nil {
+		t.Fatalf("seed artifact: %v", err)
+	}
+	routed, err := share.ArtifactByToken(t.Context(), token, "clash.yaml", browserUA, "203.0.113.99")
+	if err != nil {
+		t.Fatalf("browser fetch with legacy device: %v", err)
+	}
+	if routed.DeviceID != legacy.ID {
+		t.Fatalf("browser UA must route to legacy ua-mozilla device: got %s want %s", routed.DeviceID, legacy.ID)
+	}
+	if recorder.calls != 1 {
+		t.Fatalf("browser routing must not create devices: sync calls=%d", recorder.calls)
 	}
 }
 
