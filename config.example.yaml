@@ -3,7 +3,8 @@
 # 可选段(未配置时自动禁用):notifications(告警外发)、acme(证书签发)、
 # updates(面板自升级,repo+token)、traffic.retention_days(默认 90)、
 # audit.retention_days(审计日志保留,默认 180;0 均为永久保留)、probe(拨测目标与周期)、
-# certificates.expiry_warning(证书到期提醒阈值,默认 30 天)。
+# certificates.expiry_warning(证书到期提醒阈值,默认 30 天)、
+# solusvm(VPS 月流量计量,RackNerd 的 nerdvm 面板即是 SolusVM 1)。
 server:
   listen: ":8030"
   # 默认在 data_dir(./data)下建库;如需放仓库根可显式指定。
@@ -25,6 +26,15 @@ deployment:
 #   interval: "5m"
 # certificates:
 #   expiry_warning: "720h" # 30 天
+
+# 可选：VPS 月流量计量（提供商账单口径，RackNerd 的 nerdvm 即 SolusVM 1）。
+# 三项须同时提供；key/hash 在面板「API」标签页生成，注意该凭据同时具备
+# 重启这台 VPS 的权限——只写入本文件（0600、已 gitignore），勿提交入库。
+# 配置后总览页展示本月用量，用量达 80%/95% 与拉取持续失败会产生告警。
+# solusvm:
+#   endpoint: "https://nerdvm.racknerd.com/api/client/command.php"
+#   api_key: ""
+#   api_hash: ""
 
 # 本机/局域网开发测试时可临时开启,把私网/回环地址当作 public_address;
 # 正式对外部署必须删除 development 段(默认不存在)。

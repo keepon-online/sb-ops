@@ -59,3 +59,45 @@ func TestGetPrioritizesRecentSyncFailureOverUnconfiguredAddress(t *testing.T) {
 		t.Fatalf("runtime result = %#v", result)
 	}
 }
+
+func TestGetIncludesProviderBandwidthWhenAvailable(t *testing.T) {
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	db.SetMaxOpenConns(1)
+	if err := database.Migrate(context.Background(), db); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	service := NewServiceWithTraffic(db, deployment.NewSyncService(db, deployment.ApplyConfig{}), nil)
+	if result, err := service.Get(t.Context()); err != nil || result.Bandwidth != nil {
+		t.Fatalf("未注入数据源时 bandwidth 应为 nil：result=%+v err=%v", result.Bandwidth, err)
+	}
+
+	updatedAt := time.Date(2026, 9, 4, 12, 0, 0, 0, time.UTC)
+	var available bool
+	service.SetBandwidthSource(func() (Bandwidth, bool) {
+		if !available {
+			return Bandwidth{}, false
+		}
+		return Bandwidth{UsedBytes: 25292189863, TotalBytes: 2147483648000, Percent: 1.18, UpdatedAt: updatedAt}, true
+	})
+	available = true
+	result, err := service.Get(t.Context())
+	if err != nil {
+		t.Fatalf("get overview: %v", err)
+	}
+	if result.Bandwidth == nil {
+		t.Fatal("注入数据源后 bandwidth 不应为 nil")
+	}
+	if result.Bandwidth.UsedBytes != 25292189863 || result.Bandwidth.TotalBytes != 2147483648000 || !result.Bandwidth.UpdatedAt.Equal(updatedAt) {
+		t.Fatalf("bandwidth=%+v", result.Bandwidth)
+	}
+
+	// 数据源已配置但尚无采样（首轮轮询前）同样回落为 nil。
+	available = false
+	if result, err := service.Get(t.Context()); err != nil || result.Bandwidth != nil {
+		t.Fatalf("无采样时 bandwidth 应为 nil：result=%+v err=%v", result.Bandwidth, err)
+	}
+}

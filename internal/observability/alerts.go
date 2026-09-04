@@ -30,12 +30,37 @@ type Alert struct {
 
 type candidate struct{ alertType, severity, resourceType, resourceID, message string }
 
+// BandwidthStatus 是提供商带宽计量的注入视图（solusvm 轮询循环的快照换算），
+// 本地引用类型让 observability 不依赖 internal/solusvm（与 UnknownDeviceRef
+// 同例）。ok=false 表示未配置该数据源，不产生任何候选。
+type BandwidthStatus struct {
+	UsedBytes   int64
+	TotalBytes  int64
+	LastSuccess time.Time
+	// Failed 表示最近一轮拉取失败；短暂失败不清既有采样，配合 staleAfter
+	// 阈值避免单次抖动直接告警。
+	Failed bool
+}
+
+const (
+	// bandwidthWarnPercent / bandwidthCriticalPercent 是 VPS 月流量预算的
+	// 告警阈值：80% 提前量足够人肉干预（提醒重度用户/临时调小配额），95%
+	// 视为接近超额。
+	bandwidthWarnPercent     = 80
+	bandwidthCriticalPercent = 95
+	// bandwidthStaleAfter 是计量拉取持续无成功采样的告警阈值：小时级轮询
+	// 下即连续 6 轮失败（API 被提供商禁用/凭据失效等），数据源静默失效
+	// 必须可见。
+	bandwidthStaleAfter = 6 * time.Hour
+)
+
 type Service struct {
 	db            *sql.DB
 	notifier      Notifier
 	now           func() time.Time
 	expiryWarning func() time.Duration
 	maxDBSize     int64
+	bandwidth     func() (BandwidthStatus, bool)
 }
 
 func NewService(db *sql.DB, notifier Notifier) *Service {
@@ -46,6 +71,11 @@ func NewService(db *sql.DB, notifier Notifier) *Service {
 // observability package to the config package.
 func (s *Service) SetExpiryWarning(value func() time.Duration) {
 	s.expiryWarning = value
+}
+
+// SetBandwidthSource 注入提供商带宽计量视图（未注入或返回 ok=false 时不评估）。
+func (s *Service) SetBandwidthSource(source func() (BandwidthStatus, bool)) {
+	s.bandwidth = source
 }
 
 func (s *Service) Evaluate(ctx context.Context, aggregationErr error, trafficStalled bool) error {
@@ -75,6 +105,25 @@ func (s *Service) Evaluate(ctx context.Context, aggregationErr error, trafficSta
 	}
 	if trafficStalled {
 		values = append(values, candidate{"traffic_stalled", "warning", "control_plane", "traffic", "traffic collection loop has not completed a successful cycle within the threshold while active proxy connections exist (V2Ray stats query or ingest keeps failing)"})
+	}
+	// VPS 月流量预算（提供商账单口径）：用量越线告警 + 数据源持续失效告警，
+	// 由 solusvm 轮询循环注入快照驱动。
+	if s.bandwidth != nil {
+		if status, ok := s.bandwidth(); ok {
+			if status.TotalBytes > 0 {
+				percent := float64(status.UsedBytes) / float64(status.TotalBytes) * 100
+				summary := fmt.Sprintf("VPS 月流量（提供商账单口径）已用 %.1f%%（%.1f GiB / %.0f GiB）", percent, float64(status.UsedBytes)/(1<<30), float64(status.TotalBytes)/(1<<30))
+				switch {
+				case percent >= bandwidthCriticalPercent:
+					values = append(values, candidate{"vps_bandwidth_high", "critical", "control_plane", "bandwidth", summary + "，即将超额"})
+				case percent >= bandwidthWarnPercent:
+					values = append(values, candidate{"vps_bandwidth_high", "warning", "control_plane", "bandwidth", summary + "，接近月度配额"})
+				}
+			}
+			if status.Failed && now.Sub(status.LastSuccess) > bandwidthStaleAfter {
+				values = append(values, candidate{"vps_bandwidth_stalled", "warning", "control_plane", "bandwidth", fmt.Sprintf("VPS 流量计量已超过 %s 无成功采样（SolusVM API 持续拉取失败），月流量预算失去数据源", formatDuration(bandwidthStaleAfter))})
+			}
+		}
 	}
 	// 协议端到端拨测失败行驱动告警（行翻绿后下一轮自动恢复）；skipped 行
 	// （停用/无凭据）不告警。直查 probe_results 与上面直查 runtime_state 同例。

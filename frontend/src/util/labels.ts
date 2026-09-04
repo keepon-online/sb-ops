@@ -121,7 +121,9 @@ export const alertTypeLabels: Record<string, string> = {
   aggregation_failed: '流量聚合失败',
   traffic_stalled: '流量采集停滞',
   protocol_probe_failed: '协议链路拨测失败',
-  certificate_expiring: '证书即将到期'
+  certificate_expiring: '证书即将到期',
+  vps_bandwidth_high: 'VPS 月流量用量过高',
+  vps_bandwidth_stalled: 'VPS 月流量计量停滞'
 };
 
 export function alertTypeLabel(type: string): string {

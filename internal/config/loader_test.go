@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -213,5 +214,65 @@ updates:
 	summary := ClassifyRuntimeConfigChanges(RuntimeConfig{}, RuntimeConfig{Updates: UpdatesConfig{Repo: "a/b"}})
 	if len(summary.Immediate) != 1 || summary.Immediate[0] != "updates" {
 		t.Fatalf("updates change should classify as immediate, got %+v", summary)
+	}
+}
+
+func TestSolusVMConfigAllOrNothingAndHTTPSOnly(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	write := func(content string) {
+		atomicWriteConfig(t, path, []byte(content))
+	}
+
+	// 三字段齐全 + HTTPS：通过并归一化空白。
+	write(`
+server:
+  listen: "127.0.0.1:8030"
+solusvm:
+  endpoint: " https://nerdvm.racknerd.com/api/client/command.php "
+  api_key: " key-1 "
+  api_hash: " hash-1 "
+`)
+	cfg, _, err := LoadRuntimeConfig(path)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if cfg.SolusVM.Endpoint != "https://nerdvm.racknerd.com/api/client/command.php" || cfg.SolusVM.APIKey != "key-1" || cfg.SolusVM.APIHash != "hash-1" {
+		t.Fatalf("solusvm normalize unexpected: %+v", cfg.SolusVM)
+	}
+
+	// 缺一不可：只给 endpoint 应被校验拒绝。
+	write(`
+server:
+  listen: "127.0.0.1:8030"
+solusvm:
+  endpoint: "https://nerdvm.racknerd.com/api/client/command.php"
+`)
+	if _, _, err := LoadRuntimeConfig(path); err == nil || !strings.Contains(err.Error(), "solusvm") {
+		t.Fatalf("残缺配置应被拒绝，got err=%v", err)
+	}
+
+	// 凭据不得明文走 HTTP。
+	write(`
+server:
+  listen: "127.0.0.1:8030"
+solusvm:
+  endpoint: "http://nerdvm.racknerd.com/api/client/command.php"
+  api_key: "key-1"
+  api_hash: "hash-1"
+`)
+	if _, _, err := LoadRuntimeConfig(path); err == nil || !strings.Contains(err.Error(), "HTTPS") {
+		t.Fatalf("HTTP endpoint 应被拒绝，got err=%v", err)
+	}
+}
+
+func TestSolusVMChangesAreImmediate(t *testing.T) {
+	previous := DefaultRuntimeConfig()
+	next := previous
+	next.SolusVM.Endpoint = "https://nerdvm.racknerd.com/api/client/command.php"
+	next.SolusVM.APIKey = "key-1"
+	next.SolusVM.APIHash = "hash-1"
+	summary := ClassifyRuntimeConfigChanges(previous, next)
+	if len(summary.Immediate) != 1 || summary.Immediate[0] != "solusvm" {
+		t.Fatalf("summary=%+v", summary)
 	}
 }

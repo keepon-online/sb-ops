@@ -209,3 +209,108 @@ func TestHealthStateTracksTrafficCollection(t *testing.T) {
 		t.Fatalf("trafficCollection after failure=%+v", snapshot.Checks["trafficCollection"])
 	}
 }
+
+func newAlertTestService(t *testing.T) *Service {
+	t.Helper()
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	db.SetMaxOpenConns(1)
+	t.Cleanup(func() { _ = db.Close() })
+	for _, ddl := range []string{resource.Schema, Schema, ProbeSchema} {
+		if _, err := db.Exec(ddl); err != nil {
+			t.Fatalf("apply schema: %v", err)
+		}
+	}
+	return NewService(db, nil)
+}
+
+func openAlerts(t *testing.T, service *Service, alertType string) []Alert {
+	t.Helper()
+	alerts, err := service.List(context.Background(), "open", "", alertType)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	return alerts
+}
+
+func TestEvaluateVPSBandwidthHighEscalatesAndResolves(t *testing.T) {
+	now := time.Date(2026, 9, 4, 12, 0, 0, 0, time.UTC)
+	service := newAlertTestService(t)
+	service.now = func() time.Time { return now }
+	var status BandwidthStatus
+	var configured bool
+	service.SetBandwidthSource(func() (BandwidthStatus, bool) { return status, configured })
+
+	// 未配置数据源：任何状态都不产生候选。
+	configured = false
+	status = BandwidthStatus{Failed: true}
+	if err := service.Evaluate(context.Background(), nil, false); err != nil {
+		t.Fatalf("Evaluate (unconfigured): %v", err)
+	}
+	if len(openAlerts(t, service, "")) != 0 {
+		t.Fatal("未配置数据源不应产生任何告警")
+	}
+
+	configured = true
+	cases := []struct {
+		name       string
+		used, tota int64
+		severity   string
+	}{
+		{"79% 不告警", 79, 100, ""},
+		{"80% warning", 80, 100, "warning"},
+		{"95% critical", 96, 100, "critical"},
+		{"回落自动恢复", 10, 100, ""},
+	}
+	for _, testCase := range cases {
+		status = BandwidthStatus{UsedBytes: testCase.used, TotalBytes: testCase.tota}
+		if err := service.Evaluate(context.Background(), nil, false); err != nil {
+			t.Fatalf("Evaluate (%s): %v", testCase.name, err)
+		}
+		alerts := openAlerts(t, service, "vps_bandwidth_high")
+		if testCase.severity == "" {
+			if len(alerts) != 0 {
+				t.Fatalf("%s：不应有 open 告警，got %+v", testCase.name, alerts)
+			}
+			continue
+		}
+		if len(alerts) != 1 || alerts[0].Severity != testCase.severity {
+			t.Fatalf("%s：alerts=%+v want 1 条 %s", testCase.name, alerts, testCase.severity)
+		}
+	}
+}
+
+func TestEvaluateVPSBandwidthStalledOnlyAfterSustainedFailure(t *testing.T) {
+	now := time.Date(2026, 9, 4, 12, 0, 0, 0, time.UTC)
+	service := newAlertTestService(t)
+	service.now = func() time.Time { return now }
+	var status BandwidthStatus
+	service.SetBandwidthSource(func() (BandwidthStatus, bool) { return status, true })
+
+	// 短暂失败（1 小时前仍有成功采样）不打扰。
+	status = BandwidthStatus{Failed: true, LastSuccess: now.Add(-1 * time.Hour)}
+	if err := service.Evaluate(context.Background(), nil, false); err != nil {
+		t.Fatalf("Evaluate (brief failure): %v", err)
+	}
+	if alerts := openAlerts(t, service, "vps_bandwidth_stalled"); len(alerts) != 0 {
+		t.Fatalf("短暂失败不应告警：%+v", alerts)
+	}
+
+	// 持续失败超过阈值（6 小时无成功采样）告警，恢复成功后自动解除。
+	status = BandwidthStatus{Failed: true, LastSuccess: now.Add(-7 * time.Hour)}
+	if err := service.Evaluate(context.Background(), nil, false); err != nil {
+		t.Fatalf("Evaluate (sustained failure): %v", err)
+	}
+	if alerts := openAlerts(t, service, "vps_bandwidth_stalled"); len(alerts) != 1 || alerts[0].Severity != "warning" {
+		t.Fatalf("alerts=%+v want 1 条 warning", alerts)
+	}
+	status = BandwidthStatus{LastSuccess: now}
+	if err := service.Evaluate(context.Background(), nil, false); err != nil {
+		t.Fatalf("Evaluate (recovered): %v", err)
+	}
+	if alerts := openAlerts(t, service, "vps_bandwidth_stalled"); len(alerts) != 0 {
+		t.Fatalf("恢复后应自动解除：%+v", alerts)
+	}
+}

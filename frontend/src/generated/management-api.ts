@@ -2174,6 +2174,17 @@ export interface components {
              * @description When the traffic collection loop last completed a successful cycle; absent before the first successful collection.
              */
             lastTrafficCollectedAt?: string;
+            bandwidth?: components["schemas"]["ManagementOverviewBandwidth"];
+        };
+        /** @description Provider-metered (SolusVM client API, billing basis) monthly VPS bandwidth. Covers all NIC traffic including host-side overhead — a different basis than traffic24h (tunnel traffic only). Absent when the solusvm config section is unset or the first poll has not succeeded yet. */
+        ManagementOverviewBandwidth: {
+            /** Format: int64 */
+            usedBytes: number;
+            /** Format: int64 */
+            totalBytes: number;
+            percent: number;
+            /** Format: date-time */
+            updatedAt: string;
         };
         /** @description Fleet-wide device stats; activeDay counts devices whose subscription was fetched in the last 24 hours. */
         ManagementOverviewDevices: {

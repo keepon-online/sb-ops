@@ -20,6 +20,7 @@ type RuntimeConfig struct {
 	Acme          AcmeConfig             `mapstructure:"acme"`
 	Probe         ProbeConfig            `mapstructure:"probe"`
 	Certificates  CertificateConfig      `mapstructure:"certificates"`
+	SolusVM       SolusVMConfig          `mapstructure:"solusvm"`
 	Panel         PanelConfig            `mapstructure:"panel"`
 	Development   DevelopmentConfig      `mapstructure:"development"`
 }
@@ -106,6 +107,16 @@ type ProbeConfig struct {
 
 type CertificateConfig struct {
 	ExpiryWarning time.Duration `mapstructure:"expiry_warning"`
+}
+
+// SolusVMConfig 指向 VPS 提供商的 SolusVM 1 客户端 API（RackNerd 的
+// nerdvm 即是），按账单口径监控 VPS 月流量。三字段须同时提供（任一为空即
+// 整段禁用）；key/hash 在面板 API 标签页生成，凭据同时具备重启该 VPS 的
+// 权限，属敏感信息——只写入工作目录 config.yaml（0600、不入库）。
+type SolusVMConfig struct {
+	Endpoint string `mapstructure:"endpoint"`
+	APIKey   string `mapstructure:"api_key"`
+	APIHash  string `mapstructure:"api_hash"`
 }
 
 type AppServerConfig struct {
@@ -204,6 +215,9 @@ func NormalizeRuntimeConfig(cfg RuntimeConfig) RuntimeConfig {
 	cfg.Acme.Email = strings.TrimSpace(cfg.Acme.Email)
 	cfg.Acme.DNSProvider = strings.ToLower(strings.TrimSpace(cfg.Acme.DNSProvider))
 	cfg.Acme.APIToken = strings.TrimSpace(cfg.Acme.APIToken)
+	cfg.SolusVM.Endpoint = strings.TrimSpace(cfg.SolusVM.Endpoint)
+	cfg.SolusVM.APIKey = strings.TrimSpace(cfg.SolusVM.APIKey)
+	cfg.SolusVM.APIHash = strings.TrimSpace(cfg.SolusVM.APIHash)
 	if cfg.Acme.DNSProvider == "" {
 		cfg.Acme.DNSProvider = "cloudflare"
 	}
@@ -260,6 +274,16 @@ func ValidateRuntimeConfig(cfg RuntimeConfig) error {
 	parsed, err := url.Parse(cfg.Probe.TargetURL)
 	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
 		return fmt.Errorf("probe.target_url 必须是包含主机的 HTTP 或 HTTPS 地址")
+	}
+	solusvm := cfg.SolusVM
+	if solusvm.Endpoint != "" || solusvm.APIKey != "" || solusvm.APIHash != "" {
+		if solusvm.Endpoint == "" || solusvm.APIKey == "" || solusvm.APIHash == "" {
+			return fmt.Errorf("solusvm 配置不完整：endpoint/api_key/api_hash 须同时提供或全部留空")
+		}
+		parsed, err := url.Parse(solusvm.Endpoint)
+		if err != nil || parsed.Scheme != "https" || parsed.Host == "" {
+			return fmt.Errorf("solusvm.endpoint 必须是包含主机的 HTTPS 地址（API 凭据不得明文走 HTTP）")
+		}
 	}
 	return nil
 }

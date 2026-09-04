@@ -2597,6 +2597,22 @@ components:
           type: string
           format: date-time
           description: When the traffic collection loop last completed a successful cycle; absent before the first successful collection.
+        bandwidth:
+          $ref: '#/components/schemas/ManagementOverviewBandwidth'
+    ManagementOverviewBandwidth:
+      type: object
+      additionalProperties: false
+      required: [usedBytes, totalBytes, percent, updatedAt]
+      description: >-
+        Provider-metered (SolusVM client API, billing basis) monthly VPS
+        bandwidth. Covers all NIC traffic including host-side overhead — a
+        different basis than traffic24h (tunnel traffic only). Absent when the
+        solusvm config section is unset or the first poll has not succeeded yet.
+      properties:
+        usedBytes: {type: integer, format: int64, minimum: 0}
+        totalBytes: {type: integer, format: int64, minimum: 0}
+        percent: {type: number, minimum: 0, maximum: 100}
+        updatedAt: {type: string, format: date-time}
     ManagementOverviewDevices:
       type: object
       additionalProperties: false

@@ -35,6 +35,7 @@ import (
 	servicesingbox "github.com/keepon-online/sb-ops/internal/service/singbox"
 	controlupgrade "github.com/keepon-online/sb-ops/internal/service/upgrade"
 	serviceuser "github.com/keepon-online/sb-ops/internal/service/user"
+	controlsolusvm "github.com/keepon-online/sb-ops/internal/solusvm"
 	controltraffic "github.com/keepon-online/sb-ops/internal/traffic"
 	"github.com/keepon-online/sb-ops/internal/web"
 )
@@ -125,6 +126,37 @@ func newOps(db *sql.DB, sessionTTL time.Duration, apply deployment.ApplyConfig, 
 	events := controlevents.NewBus(db)
 	alerts := controlobservability.NewService(db, newAlertNotifier(events, configProvider))
 	alerts.SetExpiryWarning(func() time.Duration { return configProvider().Certificates.ExpiryWarning })
+	// 提供商带宽计量（SolusVM API，账单口径）：轮询 state 同时喂给告警评估
+	// 与总览卡片；未配置 solusvm 段时两侧都不评估（ok=false）。
+	solusvmState := controlsolusvm.NewState()
+	bandwidthConfigured := func() bool {
+		cfg := configProvider().SolusVM
+		return cfg.Endpoint != "" && cfg.APIKey != "" && cfg.APIHash != ""
+	}
+	alerts.SetBandwidthSource(func() (controlobservability.BandwidthStatus, bool) {
+		if !bandwidthConfigured() {
+			return controlobservability.BandwidthStatus{}, false
+		}
+		snapshot := solusvmState.Snapshot()
+		status := controlobservability.BandwidthStatus{LastSuccess: snapshot.LastSuccess, Failed: snapshot.LastError != ""}
+		if snapshot.Sample != nil {
+			status.UsedBytes, status.TotalBytes = snapshot.Sample.UsedBytes, snapshot.Sample.TotalBytes
+		}
+		return status, true
+	})
+	overview.SetBandwidthSource(func() (controloverview.Bandwidth, bool) {
+		if !bandwidthConfigured() {
+			return controloverview.Bandwidth{}, false
+		}
+		snapshot := solusvmState.Snapshot()
+		if snapshot.Sample == nil {
+			return controloverview.Bandwidth{}, false
+		}
+		return controloverview.Bandwidth{
+			UsedBytes: snapshot.Sample.UsedBytes, TotalBytes: snapshot.Sample.TotalBytes,
+			Percent: snapshot.Sample.Percent, UpdatedAt: snapshot.Sample.At,
+		}, true
+	})
 	// 协议端到端拨测：内核 running 且配置 applied 才放行（内核故障已有
 	// runtime_sync_failed 告警，拨测此时写失败行只会制造误报）。
 	prober := controlprobe.NewProberWithTargetURLProvider(db, func(ctx context.Context) (bool, string) {
@@ -221,6 +253,12 @@ func newOps(db *sql.DB, sessionTTL time.Duration, apply deployment.ApplyConfig, 
 		defer value.wg.Done()
 		runProtocolProbeLoop(background, prober, logger, configProvider)
 	}()
+	// VPS 月流量计量：启动即首轮，之后小时级轮询；未配置即空转。
+	value.wg.Add(1)
+	go func() {
+		defer value.wg.Done()
+		runSolusVMMetering(background, solusvmState, configProvider, logger)
+	}()
 	return value, nil
 }
 
@@ -247,6 +285,33 @@ func runProtocolProbeLoop(ctx context.Context, prober *controlprobe.Prober, logg
 			interval = controlprobe.ProbeInterval
 		}
 		timer.Reset(interval)
+	}
+}
+
+// runSolusVMMetering 按小时轮询提供商的 SolusVM 客户端 API，把账单口径的
+// 月流量采样写进共享 state（总览卡片与告警评估的输入）。凭据每轮从
+// configProvider 现取（config.yaml 改动热生效）；单次失败只记状态与日志，
+// 持续失败由 vps_bandwidth_stalled 告警兜底，不打断轮询节奏。
+func runSolusVMMetering(ctx context.Context, state *controlsolusvm.State, configProvider func() config.RuntimeConfig, logger *logging.Logger) {
+	timer := time.NewTimer(0) // 启动即首轮，避免重启后长时间无数据。
+	defer timer.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-timer.C:
+		}
+		if cfg := configProvider().SolusVM; cfg.Endpoint != "" && cfg.APIKey != "" && cfg.APIHash != "" {
+			sample, err := controlsolusvm.NewClient(cfg.Endpoint, cfg.APIKey, cfg.APIHash).Info(ctx)
+			if err != nil {
+				state.RecordError(err)
+				logger.Error().Err(err).Msg("SolusVM 流量计量拉取失败")
+			} else {
+				// 成功不打日志（小时级节奏下纯属噪音），最新采样面板可见。
+				state.Record(sample)
+			}
+		}
+		timer.Reset(controlsolusvm.PollInterval)
 	}
 }
 

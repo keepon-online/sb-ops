@@ -99,6 +99,25 @@ export function OverviewPage() {
         : null}
     </section>
 
+    {value?.bandwidth ? <section className="overview-card">
+      <div className="overview-card-title"><Typography.Title level={4} style={{ margin: 0 }}>VPS 月流量</Typography.Title><Typography.Text type="secondary">提供商计量 · 账单口径</Typography.Text></div>
+      <Space size={36} wrap>
+        <Statistic title="已用" value={formatBytes(value.bandwidth.usedBytes)} />
+        <Statistic title="月度配额" value={formatBytes(value.bandwidth.totalBytes)} />
+        <Statistic title="已用比例" value={`${value.bandwidth.percent.toFixed(1)}%`} />
+        <Statistic title="最近采样" value={new Date(value.bandwidth.updatedAt).toLocaleString()} />
+      </Space>
+      <Progress
+        style={{ maxWidth: 480, marginTop: 8 }}
+        percent={Math.min(100, value.bandwidth.percent)}
+        status={value.bandwidth.percent >= 80 ? 'exception' : 'normal'}
+        strokeColor={value.bandwidth.percent >= 95 ? '#cf1322' : undefined}
+      />
+      <Typography.Paragraph type="secondary" style={{ marginTop: 8, marginBottom: 0 }}>
+        数字来自 VPS 提供商（SolusVM API），是账单计费口径——含全部网卡流量与宿主层开销，与上方 24 小时隧道口径不同；用量随账单月由提供商重置。
+      </Typography.Paragraph>
+    </section> : null}
+
     <section className="overview-card">
       <div className="overview-card-title"><Typography.Title level={4} style={{ margin: 0 }}>用户历史流量排行</Typography.Title></div>
       {value?.topUsers?.length

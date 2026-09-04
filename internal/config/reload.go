@@ -65,5 +65,9 @@ func ClassifyRuntimeConfigChanges(previous, next RuntimeConfig) ReloadSummary {
 		// The upgrade service reads the repo/token live on every operation.
 		summary.Immediate = append(summary.Immediate, "updates")
 	}
+	if previous.SolusVM != next.SolusVM {
+		// 轮询循环每轮从 configProvider 现取凭据，改动下一轮即生效。
+		summary.Immediate = append(summary.Immediate, "solusvm")
+	}
 	return summary
 }

@@ -32,6 +32,16 @@ type Devices struct {
 	Platforms map[string]int `json:"platforms"`
 }
 
+// Bandwidth 是提供商（SolusVM API）计量的 VPS 月流量：账单口径，含全部
+// 网卡流量与宿主层开销，与 traffic24h 的隧道口径刻意分离。未配置数据源或
+// 尚无采样时为 nil。
+type Bandwidth struct {
+	UsedBytes  int64     `json:"usedBytes"`
+	TotalBytes int64     `json:"totalBytes"`
+	Percent    float64   `json:"percent"`
+	UpdatedAt  time.Time `json:"updatedAt"`
+}
+
 type Result struct {
 	Counts          map[string]int           `json:"counts"`
 	Devices         Devices                  `json:"devices"`
@@ -49,16 +59,24 @@ type Result struct {
 	Traffic24h      controltraffic.Summary   `json:"traffic24h"`
 	TopUsers        []controltraffic.Ranking `json:"topUsers"`
 	LastCollectedAt *time.Time               `json:"lastTrafficCollectedAt,omitempty"`
+	Bandwidth       *Bandwidth               `json:"bandwidth,omitempty"`
 }
 
 type Service struct {
-	db      *sql.DB
-	sync    *deployment.SyncService
-	traffic *controltraffic.Service
+	db        *sql.DB
+	sync      *deployment.SyncService
+	traffic   *controltraffic.Service
+	bandwidth func() (Bandwidth, bool)
 }
 
 func NewServiceWithTraffic(db *sql.DB, syncer *deployment.SyncService, traffic *controltraffic.Service) *Service {
 	return &Service{db: db, sync: syncer, traffic: traffic}
+}
+
+// SetBandwidthSource 注入提供商计量视图（solusvm 轮询 state 的换算闭包，
+// 由装配层提供），保持 overview 包不依赖 internal/solusvm。
+func (s *Service) SetBandwidthSource(source func() (Bandwidth, bool)) {
+	s.bandwidth = source
 }
 
 func (s *Service) Get(ctx context.Context) (Result, error) {
@@ -147,6 +165,11 @@ FROM devices`, dayStart).Scan(&result.Devices.Total, &result.Devices.Auto, &resu
 		result.Traffic24h, result.TopUsers = traffic, rankings
 		if last := s.traffic.LastCollectedAt(); !last.IsZero() {
 			result.LastCollectedAt = &last
+		}
+	}
+	if s.bandwidth != nil {
+		if bandwidth, ok := s.bandwidth(); ok {
+			result.Bandwidth = &bandwidth
 		}
 	}
 	result.Tasks = onboardingTasks(result)
