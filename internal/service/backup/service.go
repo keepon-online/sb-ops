@@ -25,8 +25,9 @@ const maxBackups = 20
 const backupDirName = "backups"
 
 // backupNamePattern 严格限定备份文件名（sb-ops-backup-YYYYMMDD-HHMMSS.db，
-// 时间戳 UTC）。读取类操作先过它，杜绝路径穿越与任意文件读取。
-var backupNamePattern = regexp.MustCompile(`^sb-ops-backup-\d{8}-\d{6}\.db$`)
+// 时间戳 UTC）。读取类操作先过它，杜绝路径穿越与任意文件读取；子匹配用于
+// StaleSnapshot 提取文件名内嵌的生成时间。
+var backupNamePattern = regexp.MustCompile(`^sb-ops-backup-(\d{8}-\d{6})\.db$`)
 
 // Service 持有与主库相同的 *sql.DB（SetMaxOpenConns(1) 下备份期间其它
 // 查询短暂排队，个人规模库亚秒级）。dir 闭包实时返回 data_dir，服务不
@@ -58,6 +59,9 @@ func (s *Service) Create(ctx context.Context) (BackupInfo, error) {
 	// VACUUM INTO 对 WAL 库产出含未 checkpoint 事务的完整快照；目标已存在
 	// 时 SQLite 自身也会报错，上面的 Stat 只为给出更友好的 ErrDuplicate。
 	if _, err := s.db.ExecContext(ctx, "VACUUM INTO ?", target); err != nil {
+		// 中途失败（含停机 ctx 取消触发 interrupt）SQLite 不保证删除目标
+		// 文件，兜底清掉半成品，防止截断快照混进备份列表。
+		_ = os.Remove(target)
 		return BackupInfo{}, fmt.Errorf("执行 VACUUM INTO 失败: %w", err)
 	}
 	if err := os.Chmod(target, 0o600); err != nil {
@@ -137,6 +141,38 @@ func (s *Service) Path(name string) (string, error) {
 
 func (s *Service) backupDir() string {
 	return filepath.Join(s.dir(), backupDirName)
+}
+
+// StaleSnapshot 返回磁盘上最新一份快照的生成时间（取文件名内嵌时间戳，比
+// modtime 权威且可测试），以及它是否已超过 SnapshotStaleAfter 未更新。
+// 目录不存在、读取失败或没有合法命名的快照时 ok=false——告警评估据此
+// 区分「全新部署尚未产生快照」与「备份链断裂」，前者不评估。
+func (s *Service) StaleSnapshot() (newest time.Time, stale bool) {
+	entries, err := os.ReadDir(s.backupDir())
+	if err != nil {
+		return time.Time{}, false
+	}
+	found := false
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		m := backupNamePattern.FindStringSubmatch(entry.Name())
+		if m == nil {
+			continue
+		}
+		ts, err := time.ParseInLocation("20060102-150405", m[1], time.UTC)
+		if err != nil {
+			continue // \d{8} 允许 20261305 这类非法日期，跳过防御
+		}
+		if !found || ts.After(newest) {
+			newest, found = ts, true
+		}
+	}
+	if !found || s.now().Sub(newest) <= SnapshotStaleAfter {
+		return newest, false
+	}
+	return newest, true
 }
 
 // prune 裁掉超限的最旧备份；best-effort，失败静默（手动删除兜底），不

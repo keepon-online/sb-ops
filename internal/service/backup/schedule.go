@@ -13,6 +13,11 @@ import (
 // 尚未实现（待定），本轮只做本地定时快照。
 const ScheduleHour = 4
 
+// SnapshotStaleAfter 是「备份链断裂」的判定阈值：24h 调度间隔 + 1h 余量
+// （覆盖 VACUUM INTO 执行时长与调度抖动）。健康稳态下最新快照的年龄不会
+// 超过 24h；告警评估在定时循环首跑前（重启后）据此按磁盘事实兜底。
+const SnapshotStaleAfter = 25 * time.Hour
+
 // NextRun 返回 now 之后下一个本地时区 04:00；恰在整点触发时顺延到次日，
 // 避免零偏移导致的重复调度。
 func NextRun(now time.Time) time.Time {

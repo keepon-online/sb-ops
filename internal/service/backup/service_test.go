@@ -173,6 +173,7 @@ func TestNextRunUsesLocalFourAMAndSkipsCurrentMinute(t *testing.T) {
 		{"before", time.Date(2026, 9, 5, 3, 59, 0, 0, loc), time.Date(2026, 9, 5, 4, 0, 0, 0, loc)},
 		{"at", time.Date(2026, 9, 5, 4, 0, 0, 0, loc), time.Date(2026, 9, 6, 4, 0, 0, 0, loc)},
 		{"after", time.Date(2026, 9, 5, 12, 0, 0, 0, loc), time.Date(2026, 9, 6, 4, 0, 0, 0, loc)},
+		{"month boundary", time.Date(2026, 9, 30, 23, 0, 0, 0, loc), time.Date(2026, 10, 1, 4, 0, 0, 0, loc)},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -201,5 +202,64 @@ func TestScheduleStateTracksLastResult(t *testing.T) {
 	lastSuccess, lastError, attempted := state.Snapshot()
 	if !attempted || lastError != "" || !lastSuccess.Equal(now) {
 		t.Fatalf("success snapshot=%s %q %v", lastSuccess, lastError, attempted)
+	}
+}
+
+func TestStaleSnapshot(t *testing.T) {
+	service, _ := newTestService(t)
+	base := time.Date(2026, 9, 5, 4, 0, 0, 0, time.UTC)
+	clock := base
+	service.now = func() time.Time { clock = clock.Add(time.Second); return clock }
+
+	// 无快照：不评估（区分全新部署与备份链断裂）。
+	if _, stale := service.StaleSnapshot(); stale {
+		t.Fatal("目录为空时不应判定 stale")
+	}
+
+	// 造两份快照，最新一份的文件名时间戳是权威判定依据。
+	if _, err := service.Create(context.Background()); err != nil {
+		t.Fatalf("创建备份失败: %v", err)
+	}
+	if _, err := service.Create(context.Background()); err != nil {
+		t.Fatalf("创建备份失败: %v", err)
+	}
+	newest := clock // now 闭包先推进再返回，最后一次 Create 的文件名时间即 clock 当前值
+
+	// 快照尚新（< 25h）不判 stale。
+	service.now = func() time.Time { return base.Add(2 * time.Hour) }
+	if _, stale := service.StaleSnapshot(); stale {
+		t.Fatal("快照 2 小时前生成时不应判定 stale")
+	}
+
+	// 超过 SnapshotStaleAfter（25h）判 stale，并返回文件名内嵌的最新时间。
+	service.now = func() time.Time { return base.Add(26 * time.Hour) }
+	got, stale := service.StaleSnapshot()
+	if !stale {
+		t.Fatal("快照 26 小时未更新应判定 stale")
+	}
+	if !got.Equal(newest) {
+		t.Fatalf("最新快照时间应为文件名时间戳 %v，实际 %v", newest, got)
+	}
+}
+
+func TestCreateFailureLeavesNoTarget(t *testing.T) {
+	service, dir := newTestService(t)
+	service.now = func() time.Time { return time.Date(2026, 9, 5, 10, 30, 0, 0, time.UTC) }
+	// 关闭底层库制造 VACUUM INTO 执行失败（ErrDuplicate 之外的错误路径）。
+	if err := service.db.Close(); err != nil {
+		t.Fatalf("关闭数据库失败: %v", err)
+	}
+
+	_, err := service.Create(context.Background())
+	if err == nil {
+		t.Fatal("库已关闭时创建备份应失败")
+	}
+
+	entries, readErr := os.ReadDir(filepath.Join(dir, "backups"))
+	if readErr != nil && !os.IsNotExist(readErr) {
+		t.Fatalf("读取备份目录失败: %v", readErr)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("失败的备份不应遗留目标文件，实际: %v", entries)
 	}
 }

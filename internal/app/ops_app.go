@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"sync"
 	"time"
@@ -176,12 +177,21 @@ func newOps(db *sql.DB, sessionTTL time.Duration, apply deployment.ApplyConfig, 
 	// 数据备份：dir 闭包现取 data_dir（服务不 import internal/config，照
 	// upgrade 的 Source 闭包先例）。
 	backupService := servicebackup.NewService(db, func() string { return configProvider().Server.DataDir })
-	// 定时备份快照（每日 04:00 一轮）同时喂给 backup_failed 告警评估；
-	// 首轮之前 attempted=false，两侧都不评估。
+	// 定时备份快照（每日 04:00 一轮）同时喂给 backup_failed 告警评估。
+	// ScheduleState 纯内存，重启清零：attempted=false（重启后、首轮之前）
+	// 时按磁盘事实兜底——最新快照超过 25h 未更新说明备份链断裂（重启前
+	// 失败未恢复或停机跨过 04:00 漏跑），照常产生候选防告警被洗白；全新
+	// 部署（无快照）与快照尚新不评估。
 	backupSchedule := servicebackup.NewScheduleState()
 	alerts.SetBackupSource(func() (controlobservability.BackupStatus, bool) {
 		lastSuccess, lastError, attempted := backupSchedule.Snapshot()
 		if !attempted {
+			if newest, stale := backupService.StaleSnapshot(); stale {
+				return controlobservability.BackupStatus{
+					LastSuccess: newest,
+					LastError:   fmt.Sprintf("最新备份快照 %s（UTC）已超过 %d 小时未更新", newest.Format("2006-01-02 15:04"), int(servicebackup.SnapshotStaleAfter.Hours())),
+				}, true
+			}
 			return controlobservability.BackupStatus{}, false
 		}
 		return controlobservability.BackupStatus{LastSuccess: lastSuccess, LastError: lastError}, true
