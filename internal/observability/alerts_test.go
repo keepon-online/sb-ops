@@ -444,3 +444,37 @@ func TestStatsEmptyDatabaseOmitsMttr(t *testing.T) {
 		t.Fatalf("mttr should be omitted without resolved samples: %d", *stats.MttrSeconds)
 	}
 }
+
+func TestEvaluateBackupFailedOpensAndResolves(t *testing.T) {
+	now := time.Date(2026, 9, 5, 12, 0, 0, 0, time.UTC)
+	service := newAlertTestService(t)
+	service.now = func() time.Time { return now }
+	var status BackupStatus
+	configured := false
+	service.SetBackupSource(func() (BackupStatus, bool) { return status, configured })
+
+	if err := service.Evaluate(context.Background(), nil, false); err != nil {
+		t.Fatalf("Evaluate unconfigured: %v", err)
+	}
+	if alerts := openAlerts(t, service, "backup_failed"); len(alerts) != 0 {
+		t.Fatalf("unconfigured backup should be silent: %+v", alerts)
+	}
+
+	configured = true
+	status.LastError = "disk full"
+	if err := service.Evaluate(context.Background(), nil, false); err != nil {
+		t.Fatalf("Evaluate failed: %v", err)
+	}
+	alerts := openAlerts(t, service, "backup_failed")
+	if len(alerts) != 1 || alerts[0].Severity != "warning" || !strings.Contains(alerts[0].Message, "disk full") {
+		t.Fatalf("backup alert=%+v", alerts)
+	}
+
+	status = BackupStatus{LastSuccess: now}
+	if err := service.Evaluate(context.Background(), nil, false); err != nil {
+		t.Fatalf("Evaluate recovered: %v", err)
+	}
+	if alerts := openAlerts(t, service, "backup_failed"); len(alerts) != 0 {
+		t.Fatalf("recovered backup should resolve: %+v", alerts)
+	}
+}

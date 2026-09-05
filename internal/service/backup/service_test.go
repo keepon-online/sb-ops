@@ -162,3 +162,44 @@ func TestListWithoutAnyBackup(t *testing.T) {
 		t.Fatalf("应为空列表，实际 %+v", values)
 	}
 }
+
+func TestNextRunUsesLocalFourAMAndSkipsCurrentMinute(t *testing.T) {
+	loc := time.FixedZone("CST", 8*60*60)
+	cases := []struct {
+		name string
+		now  time.Time
+		want time.Time
+	}{
+		{"before", time.Date(2026, 9, 5, 3, 59, 0, 0, loc), time.Date(2026, 9, 5, 4, 0, 0, 0, loc)},
+		{"at", time.Date(2026, 9, 5, 4, 0, 0, 0, loc), time.Date(2026, 9, 6, 4, 0, 0, 0, loc)},
+		{"after", time.Date(2026, 9, 5, 12, 0, 0, 0, loc), time.Date(2026, 9, 6, 4, 0, 0, 0, loc)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := NextRun(tc.now); !got.Equal(tc.want) {
+				t.Fatalf("NextRun=%s want %s", got, tc.want)
+			}
+			if got := NextRun(tc.now).Location(); got != loc {
+				t.Fatalf("location=%v want %v", got, loc)
+			}
+		})
+	}
+}
+
+func TestScheduleStateTracksLastResult(t *testing.T) {
+	state := NewScheduleState()
+	if _, _, attempted := state.Snapshot(); attempted {
+		t.Fatal("fresh state should not be attempted")
+	}
+	state.RecordFailure(errors.New("disk full"))
+	_, lastError, attempted := state.Snapshot()
+	if !attempted || lastError != "disk full" {
+		t.Fatalf("failure snapshot=%q attempted=%v", lastError, attempted)
+	}
+	now := time.Date(2026, 9, 5, 4, 0, 0, 0, time.UTC)
+	state.RecordSuccess(now)
+	lastSuccess, lastError, attempted := state.Snapshot()
+	if !attempted || lastError != "" || !lastSuccess.Equal(now) {
+		t.Fatalf("success snapshot=%s %q %v", lastSuccess, lastError, attempted)
+	}
+}

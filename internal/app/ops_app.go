@@ -29,6 +29,7 @@ import (
 	serviceargo "github.com/keepon-online/sb-ops/internal/service/argo"
 	servicebackup "github.com/keepon-online/sb-ops/internal/service/backup"
 	servicecertificate "github.com/keepon-online/sb-ops/internal/service/certificate"
+	common "github.com/keepon-online/sb-ops/internal/service/common"
 	servicepolicy "github.com/keepon-online/sb-ops/internal/service/policy"
 	serviceprotocol "github.com/keepon-online/sb-ops/internal/service/protocol"
 	"github.com/keepon-online/sb-ops/internal/service/secret"
@@ -175,6 +176,16 @@ func newOps(db *sql.DB, sessionTTL time.Duration, apply deployment.ApplyConfig, 
 	// 数据备份：dir 闭包现取 data_dir（服务不 import internal/config，照
 	// upgrade 的 Source 闭包先例）。
 	backupService := servicebackup.NewService(db, func() string { return configProvider().Server.DataDir })
+	// 定时备份快照（每日 04:00 一轮）同时喂给 backup_failed 告警评估；
+	// 首轮之前 attempted=false，两侧都不评估。
+	backupSchedule := servicebackup.NewScheduleState()
+	alerts.SetBackupSource(func() (controlobservability.BackupStatus, bool) {
+		lastSuccess, lastError, attempted := backupSchedule.Snapshot()
+		if !attempted {
+			return controlobservability.BackupStatus{}, false
+		}
+		return controlobservability.BackupStatus{LastSuccess: lastSuccess, LastError: lastError}, true
+	})
 	// 新版本自动发现：升级服务缓存最近一次检查结果（页面展示同一份缓存），
 	// 有可升级版本时经 upgrade_available 告警外发。
 	alerts.SetUpgradeSource(func() (controlobservability.UpgradeStatus, bool) {
@@ -284,6 +295,13 @@ func newOps(db *sql.DB, sessionTTL time.Duration, apply deployment.ApplyConfig, 
 		defer value.wg.Done()
 		runUpgradeCheckLoop(background, upgradeService, logger)
 	}()
+	// 定时数据库备份：每日 04:00（本地时区）复用一键备份路径生成快照并裁剪，
+	// 失败经 backup_failed 告警外发。
+	value.wg.Add(1)
+	go func() {
+		defer value.wg.Done()
+		runBackupScheduleLoop(background, backupService, backupSchedule, logger)
+	}()
 	return value, nil
 }
 
@@ -347,6 +365,34 @@ const (
 	upgradeCheckInitialDelay = 2 * time.Minute
 	upgradeCheckInterval     = 6 * time.Hour
 )
+
+// runBackupScheduleLoop 每日 04:00（本地时区，钟点常量在 backup.ScheduleHour）
+// 复用一键备份的服务路径（VACUUM INTO 快照 + 保留裁剪）。成功不打日志（备份
+// 列表面板自可见），失败打错误日志并经 backup_failed 告警外发、下轮成功自动
+// 恢复；失败不重试，最迟次日同一钟点重试——告警保证静默失败可见。与手动备份
+// 同秒撞车（ErrDuplicate）按成功对待：那一刻库快照刚刚落盘。
+func runBackupScheduleLoop(ctx context.Context, backups *servicebackup.Service, state *servicebackup.ScheduleState, logger *logging.Logger) {
+	timer := time.NewTimer(time.Until(servicebackup.NextRun(time.Now())))
+	defer timer.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-timer.C:
+		}
+		if _, err := backups.Create(ctx); err != nil {
+			if errors.Is(err, common.ErrDuplicate) {
+				state.RecordSuccess(time.Now())
+			} else {
+				state.RecordFailure(err)
+				logger.Error().Err(err).Msg("定时数据库备份失败")
+			}
+		} else {
+			state.RecordSuccess(time.Now())
+		}
+		timer.Reset(time.Until(servicebackup.NextRun(time.Now())))
+	}
+}
 
 // runUpgradeCheckLoop 周期检查 GitHub 最新 Release，把结果写进升级服务缓存
 // （系统页展示同一份，页面不再需要手动点检查）；有可升级版本时

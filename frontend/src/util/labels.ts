@@ -128,7 +128,8 @@ export const alertTypeLabels: Record<string, string> = {
   certificate_expiring: '证书即将到期',
   vps_bandwidth_high: 'VPS 月流量用量过高',
   vps_bandwidth_stalled: 'VPS 月流量计量停滞',
-  upgrade_available: '面板有新版本'
+  upgrade_available: '面板有新版本',
+  backup_failed: '定时备份失败'
 };
 
 export function alertTypeLabel(type: string): string {

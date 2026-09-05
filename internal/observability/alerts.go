@@ -62,6 +62,7 @@ type Service struct {
 	maxDBSize     int64
 	bandwidth     func() (BandwidthStatus, bool)
 	upgrade       func() (UpgradeStatus, bool)
+	backup        func() (BackupStatus, bool)
 }
 
 func NewService(db *sql.DB, notifier Notifier) *Service {
@@ -91,6 +92,19 @@ type UpgradeStatus struct {
 // SetUpgradeSource 注入面板版本视图（未注入或返回 ok=false 时不评估）。
 func (s *Service) SetUpgradeSource(source func() (UpgradeStatus, bool)) {
 	s.upgrade = source
+}
+
+// BackupStatus 是定时备份循环的注入视图（runBackupScheduleLoop 的快照），
+// 本地引用类型同 BandwidthStatus 例。ok=false 表示尚未跑过首轮（面板在
+// 首个 04:00 之前），不产生候选；LastError 非空表示最近一轮失败。
+type BackupStatus struct {
+	LastSuccess time.Time
+	LastError   string
+}
+
+// SetBackupSource 注入定时备份视图（未注入或返回 ok=false 时不评估）。
+func (s *Service) SetBackupSource(source func() (BackupStatus, bool)) {
+	s.backup = source
 }
 
 func (s *Service) Evaluate(ctx context.Context, aggregationErr error, trafficStalled bool) error {
@@ -146,6 +160,18 @@ func (s *Service) Evaluate(ctx context.Context, aggregationErr error, trafficSta
 		if status, ok := s.upgrade(); ok && status.Available {
 			values = append(values, candidate{"upgrade_available", "warning", "system_upgrade", "panel",
 				fmt.Sprintf("面板有新版本 %s（当前 %s），可在「系统升级」页查看说明并升级", status.LatestVersion, status.CurrentVersion)})
+		}
+	}
+	// 定时数据库备份：每日 04:00 一轮，失败行驱动 backup_failed（warning），
+	// 下轮成功自动恢复；手动一键备份不经此评估（备份列表自可见）。
+	if s.backup != nil {
+		if status, ok := s.backup(); ok && status.LastError != "" {
+			lastSuccess := "从未成功"
+			if !status.LastSuccess.IsZero() {
+				lastSuccess = formatDuration(now.Sub(status.LastSuccess)) + " 前"
+			}
+			values = append(values, candidate{"backup_failed", "warning", "database", "backups",
+				fmt.Sprintf("数据库定时备份失败：%s（最近成功：%s）", status.LastError, lastSuccess)})
 		}
 	}
 	// 协议端到端拨测失败行驱动告警（行翻绿后下一轮自动恢复）；skipped 行
