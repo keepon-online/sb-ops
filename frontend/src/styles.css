@@ -355,6 +355,55 @@ body {
   box-shadow: var(--card-shadow); padding: 18px 20px; margin-bottom: 16px;
 }
 .overview-card-title { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+
+/* 服务配置页面卡片与布局 */
+.singbox-hero-card {
+  position: relative;
+  overflow: hidden;
+  padding: 20px 24px;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: var(--bg-container);
+  box-shadow: var(--card-shadow);
+  margin-bottom: 16px;
+}
+.singbox-hero-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.singbox-hero-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.singbox-config-card {
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: var(--bg-container);
+  box-shadow: var(--card-shadow);
+  padding: 20px;
+  margin-bottom: 16px;
+}
+.singbox-config-card-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border-color);
+}
+.conn-filter-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+}
 .workspace-section { width: 100%; padding: 18px 0; border-top: 1px solid var(--border-color); }
 .section-heading { display: flex; width: 100%; justify-content: space-between; margin-bottom: 12px; }
 .traffic-chart { position: relative; width: 100%; height: 280px; min-height: 280px; }
