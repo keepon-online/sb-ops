@@ -46,6 +46,12 @@ export const usersApi = {
   batchStatus: (ids: string[], enabled: boolean) => managementRequest<void>('/api/v1/users/batch-status', {
     method: 'POST', body: JSON.stringify({ ids, enabled })
   }),
+  batchQuota: (ids: string[], input: Omit<components['schemas']['ResourceBatchUserQuotaRequest'], 'ids'>) => managementRequest<void>('/api/v1/users/batch-quota', {
+    method: 'POST', body: JSON.stringify({ ids, ...input })
+  }),
+  batchProtocols: (ids: string[], input: Omit<components['schemas']['ResourceBatchUserProtocolsRequest'], 'ids'>) => managementRequest<void>('/api/v1/users/batch-protocols', {
+    method: 'POST', body: JSON.stringify({ ids, ...input })
+  }),
   listDevices: (id: string) => managementRequest<components['schemas']['ResourceDeviceList']>(userPath(id, '/devices')),
   updateDevice: (id: string, did: string, enabled: boolean) => managementRequest<void>(userPath(id, `/devices/${encodeURIComponent(did)}`), {
     method: 'PATCH', body: JSON.stringify({ enabled })

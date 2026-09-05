@@ -86,6 +86,8 @@ func RegisterRoutes(router *gin.Engine, dependencies Dependencies) {
 		users.PATCH("/:id", h.updateUser)
 		users.DELETE("/:id", h.deleteUser)
 		users.POST("/batch-status", h.batchUserStatus)
+		users.POST("/batch-quota", h.batchUserQuota)
+		users.POST("/batch-protocols", h.batchUserProtocols)
 
 		userSubscription := authenticated.Group("/users/:id/subscription")
 		userSubscription.POST("/rotate", h.rotateUserSubscription)

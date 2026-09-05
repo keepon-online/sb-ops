@@ -111,6 +111,31 @@ func (s *Service) BatchStatus(ctx context.Context, ids []string, enabled bool) e
 	return s.store.SetStatus(ctx, uniqueStrings(ids), enabled, s.now())
 }
 
+// BatchQuota 批量调整所选用户的额度，输入语义同单用户 AdjustQuota。
+func (s *Service) BatchQuota(ctx context.Context, ids []string, input TrafficInput) error {
+	if len(ids) == 0 {
+		return &common.ValidationError{Fields: map[string]string{"ids": "must not be empty"}}
+	}
+	return s.store.BatchQuota(ctx, uniqueStrings(ids), input.Mode, input.Bytes, s.now())
+}
+
+// BatchProtocols 批量分配协议：set 覆盖 / add 追加 / remove 移除。
+func (s *Service) BatchProtocols(ctx context.Context, ids []string, mode string, protocolIDs []string) error {
+	if len(ids) == 0 {
+		return &common.ValidationError{Fields: map[string]string{"ids": "must not be empty"}}
+	}
+	switch mode {
+	case "set", "add", "remove":
+	default:
+		return &common.ValidationError{Fields: map[string]string{"mode": "must be set, add or remove"}}
+	}
+	protocolIDs = uniqueStrings(protocolIDs)
+	if err := s.store.ValidateReferences(ctx, protocolIDs, nil); err != nil {
+		return err
+	}
+	return s.store.BatchProtocols(ctx, uniqueStrings(ids), mode, protocolIDs, s.now())
+}
+
 // SubscriptionToken 返回用户级订阅链接 token（存量用户惰性签发）。
 func (s *Service) SubscriptionToken(ctx context.Context, userID string) (string, error) {
 	return s.store.UserToken(ctx, userID)

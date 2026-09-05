@@ -211,6 +211,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/users/batch-quota": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Adjust traffic quota for multiple users (add delta or set absolute, all-or-nothing) */
+        post: operations["batchAdjustUserQuota"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/users/batch-protocols": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Assign protocols to multiple users (set replaces, add appends, remove detaches, all-or-nothing) */
+        post: operations["batchUpdateUserProtocols"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/users/{id}/subscription/rotate": {
         parameters: {
             query?: never;
@@ -1529,6 +1563,28 @@ export interface components {
         ResourceBatchUserStatusRequest: {
             ids: string[];
             enabled: boolean;
+        };
+        ResourceBatchUserQuotaRequest: {
+            ids: string[];
+            /**
+             * @description Same semantics as single-user quota adjust.
+             * @enum {string}
+             */
+            mode: "add" | "set";
+            /**
+             * Format: int64
+             * @description add: signed delta (refuses to go negative); set: absolute quota where 0 means unlimited.
+             */
+            bytes: number;
+        };
+        ResourceBatchUserProtocolsRequest: {
+            ids: string[];
+            /**
+             * @description set replaces all assignments (empty list clears them), add appends, remove detaches.
+             * @enum {string}
+             */
+            mode: "set" | "add" | "remove";
+            protocolIds: string[];
         };
         ResourceTrafficAdjustmentRequest: {
             /** @enum {string} */
@@ -3059,6 +3115,58 @@ export interface operations {
         };
         responses: {
             /** @description Status updated */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    batchAdjustUserQuota: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResourceBatchUserQuotaRequest"];
+            };
+        };
+        responses: {
+            /** @description Quota updated */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    batchUpdateUserProtocols: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResourceBatchUserProtocolsRequest"];
+            };
+        };
+        responses: {
+            /** @description Protocol assignments updated */
             204: {
                 headers: {
                     [name: string]: unknown;

@@ -410,6 +410,89 @@ func (s *Store) SetStatus(ctx context.Context, ids []string, enabled bool, now t
 	return tx.Commit()
 }
 
+// BatchQuota 批量调整额度，语义与单用户 AdjustQuota 完全一致（set 0 = 无限额，
+// add 不允许把额度扣成负数），单事务全或无。
+func (s *Store) BatchQuota(ctx context.Context, ids []string, mode string, bytes int64, now time.Time) error {
+	var query string
+	switch mode {
+	case "set":
+		query = `UPDATE users SET quota_bytes=?,revision=revision+1,updated_at=? WHERE id=? AND ?>=0`
+	case "add":
+		query = `UPDATE users SET quota_bytes=quota_bytes+?,revision=revision+1,updated_at=? WHERE id=? AND quota_bytes+?>=0`
+	default:
+		return &common.ValidationError{Fields: map[string]string{"mode": "must be add or set"}}
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	for _, id := range ids {
+		result, err := tx.ExecContext(ctx, query, bytes, common.UnixTime(now), id, bytes)
+		if err != nil {
+			return err
+		}
+		if changed, _ := result.RowsAffected(); changed == 0 {
+			// 0 行命中要么用户不存在、要么额度约束（变负）拦截，与单用户路径同判。
+			var exists int
+			switch err := tx.QueryRowContext(ctx, `SELECT 1 FROM users WHERE id=?`, id).Scan(&exists); {
+			case err == sql.ErrNoRows:
+				return common.ErrNotFound
+			case err != nil:
+				return err
+			}
+			return &common.ValidationError{Fields: map[string]string{"bytes": "quota must not be negative"}}
+		}
+	}
+	return tx.Commit()
+}
+
+// BatchProtocols 批量分配协议：set 覆盖、add 追加、remove 移除，单事务全或无；
+// 不触碰用户的分流策略引用。协议存在性由 Service 层先行校验，这里 FK 兜底。
+func (s *Store) BatchProtocols(ctx context.Context, ids []string, mode string, protocolIDs []string, now time.Time) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	for _, id := range ids {
+		var exists int
+		if err := tx.QueryRowContext(ctx, `SELECT 1 FROM users WHERE id=?`, id).Scan(&exists); err != nil {
+			if err == sql.ErrNoRows {
+				return common.ErrNotFound
+			}
+			return err
+		}
+		switch mode {
+		case "set":
+			if _, err := tx.ExecContext(ctx, `DELETE FROM user_protocols WHERE user_id=?`, id); err != nil {
+				return err
+			}
+			for _, protocolID := range protocolIDs {
+				if _, err := tx.ExecContext(ctx, `INSERT INTO user_protocols(user_id,protocol_id) VALUES(?,?)`, id, protocolID); err != nil {
+					return common.MapSQLiteError(err)
+				}
+			}
+		case "add":
+			for _, protocolID := range protocolIDs {
+				if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO user_protocols(user_id,protocol_id) VALUES(?,?)`, id, protocolID); err != nil {
+					return common.MapSQLiteError(err)
+				}
+			}
+		case "remove":
+			for _, protocolID := range protocolIDs {
+				if _, err := tx.ExecContext(ctx, `DELETE FROM user_protocols WHERE user_id=? AND protocol_id=?`, id, protocolID); err != nil {
+					return err
+				}
+			}
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE users SET revision=revision+1,updated_at=? WHERE id=?`, common.UnixTime(now), id); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
 // IssueUserToken signs a fresh user-level subscription token (does not persist).
 func (s *Store) IssueUserToken(ctx context.Context) (userToken, error) {
 	token, err := randomHex(24)

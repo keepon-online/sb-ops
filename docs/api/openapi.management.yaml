@@ -325,6 +325,40 @@ paths:
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
+  /api/v1/users/batch-quota:
+    post:
+      tags: [Users]
+      operationId: batchAdjustUserQuota
+      summary: Adjust traffic quota for multiple users (add delta or set absolute, all-or-nothing)
+      security: [{BearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ResourceBatchUserQuotaRequest'}
+      responses:
+        '204': {description: Quota updated}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /api/v1/users/batch-protocols:
+    post:
+      tags: [Users]
+      operationId: batchUpdateUserProtocols
+      summary: Assign protocols to multiple users (set replaces, add appends, remove detaches, all-or-nothing)
+      security: [{BearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ResourceBatchUserProtocolsRequest'}
+      responses:
+        '204': {description: Protocol assignments updated}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
   /api/v1/users/{id}/subscription/rotate:
     post:
       tags: [Users]
@@ -1823,6 +1857,33 @@ components:
           uniqueItems: true
           items: {type: string, format: uuid}
         enabled: {type: boolean}
+    ResourceBatchUserQuotaRequest:
+      type: object
+      additionalProperties: false
+      required: [ids, mode, bytes]
+      properties:
+        ids:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: {type: string, format: uuid}
+        mode: {type: string, enum: [add, set], description: Same semantics as single-user quota adjust.}
+        bytes: {type: integer, format: int64, description: 'add: signed delta (refuses to go negative); set: absolute quota where 0 means unlimited.'}
+    ResourceBatchUserProtocolsRequest:
+      type: object
+      additionalProperties: false
+      required: [ids, mode, protocolIds]
+      properties:
+        ids:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: {type: string, format: uuid}
+        mode: {type: string, enum: [set, add, remove], description: 'set replaces all assignments (empty list clears them), add appends, remove detaches.'}
+        protocolIds:
+          type: array
+          uniqueItems: true
+          items: {type: string, format: uuid}
     ResourceTrafficAdjustmentRequest:
       type: object
       additionalProperties: false

@@ -400,3 +400,129 @@ func TestFindDeviceByIDAndClaimDevice(t *testing.T) {
 		t.Fatalf("device after claim: %+v (claimed=%+v)", devices[0], claimed)
 	}
 }
+
+func insertTestProtocol(t *testing.T, store *Store, id string, port int) {
+	t.Helper()
+	if _, err := store.db.Exec(`INSERT INTO protocols(id,name,type,listen_port,created_at,updated_at) VALUES(?,?,'vless',?,0,0)`, id, id, port); err != nil {
+		t.Fatalf("insert protocol %s: %v", id, err)
+	}
+}
+
+func TestBatchQuotaAddSetAndRollback(t *testing.T) {
+	store := newTestStore(t)
+	svc := NewService(store)
+	first, _, err := svc.Create(t.Context(), CreateInput{Name: "batch-quota-a", Enabled: true})
+	if err != nil {
+		t.Fatalf("create a: %v", err)
+	}
+	second, _, err := svc.Create(t.Context(), CreateInput{Name: "batch-quota-b", Enabled: true})
+	if err != nil {
+		t.Fatalf("create b: %v", err)
+	}
+
+	if err := svc.BatchQuota(t.Context(), []string{first.ID, second.ID}, TrafficInput{Mode: "add", Bytes: 2 << 30}); err != nil {
+		t.Fatalf("batch add: %v", err)
+	}
+	for _, id := range []string{first.ID, second.ID} {
+		value, err := svc.Get(t.Context(), id)
+		if err != nil || value.QuotaBytes != 2<<30 {
+			t.Fatalf("user %s quota=%d err=%v, want %d", id, value.QuotaBytes, err, 2<<30)
+		}
+	}
+
+	if err := svc.BatchQuota(t.Context(), []string{first.ID}, TrafficInput{Mode: "set", Bytes: 0}); err != nil {
+		t.Fatalf("batch set: %v", err)
+	}
+	value, _ := svc.Get(t.Context(), first.ID)
+	if value.QuotaBytes != 0 {
+		t.Fatalf("set 0 should mean unlimited, got %d", value.QuotaBytes)
+	}
+
+	// 扣成负数必须整批回滚：第一个用户额度为 0（不限额），负增量只在第二个用户上越界，
+	// 事务回滚后第二个用户的额度保持原值。
+	err = svc.BatchQuota(t.Context(), []string{first.ID, second.ID}, TrafficInput{Mode: "add", Bytes: -(10 << 30)})
+	if _, ok := err.(*common.ValidationError); !ok {
+		t.Fatalf("want validation error, got %v", err)
+	}
+	kept, err := svc.Get(t.Context(), second.ID)
+	if err != nil || kept.QuotaBytes != 2<<30 {
+		t.Fatalf("rollback check: quota=%d err=%v, want unchanged %d", kept.QuotaBytes, err, 2<<30)
+	}
+
+	if err := svc.BatchQuota(t.Context(), nil, TrafficInput{Mode: "add", Bytes: 1}); err == nil {
+		t.Fatal("empty ids must be rejected")
+	}
+	if err := svc.BatchQuota(t.Context(), []string{"missing"}, TrafficInput{Mode: "add", Bytes: 1}); err != common.ErrNotFound {
+		t.Fatalf("unknown user: %v", err)
+	}
+}
+
+func TestBatchProtocolsModes(t *testing.T) {
+	store := newTestStore(t)
+	svc := NewService(store)
+	first, _, err := svc.Create(t.Context(), CreateInput{Name: "batch-proto-a", Enabled: true})
+	if err != nil {
+		t.Fatalf("create a: %v", err)
+	}
+	second, _, err := svc.Create(t.Context(), CreateInput{Name: "batch-proto-b", Enabled: true})
+	if err != nil {
+		t.Fatalf("create b: %v", err)
+	}
+	insertTestProtocol(t, store, "proto-1", 4443)
+	insertTestProtocol(t, store, "proto-2", 8443)
+
+	if err := svc.BatchProtocols(t.Context(), []string{first.ID, second.ID}, "add", []string{"proto-1", "proto-2"}); err != nil {
+		t.Fatalf("batch add: %v", err)
+	}
+	value, _ := svc.Get(t.Context(), first.ID)
+	if len(value.ProtocolIDs) != 2 {
+		t.Fatalf("protocols=%v, want both", value.ProtocolIDs)
+	}
+	revisionAfterAdd := value.Revision
+
+	// add 幂等：重复追加不报错、不产生重复行。
+	if err := svc.BatchProtocols(t.Context(), []string{first.ID}, "add", []string{"proto-1"}); err != nil {
+		t.Fatalf("idempotent add: %v", err)
+	}
+	value, _ = svc.Get(t.Context(), first.ID)
+	if len(value.ProtocolIDs) != 2 {
+		t.Fatalf("duplicate add produced %v", value.ProtocolIDs)
+	}
+
+	if err := svc.BatchProtocols(t.Context(), []string{first.ID}, "remove", []string{"proto-1"}); err != nil {
+		t.Fatalf("remove: %v", err)
+	}
+	value, _ = svc.Get(t.Context(), first.ID)
+	if len(value.ProtocolIDs) != 1 || value.ProtocolIDs[0] != "proto-2" {
+		t.Fatalf("after remove: %v", value.ProtocolIDs)
+	}
+
+	// set 覆盖：两用户同时收敛为 proto-1，且用户 revision 递增（订阅产物感知变化）。
+	if err := svc.BatchProtocols(t.Context(), []string{first.ID, second.ID}, "set", []string{"proto-1"}); err != nil {
+		t.Fatalf("set: %v", err)
+	}
+	value, _ = svc.Get(t.Context(), first.ID)
+	if len(value.ProtocolIDs) != 1 || value.ProtocolIDs[0] != "proto-1" || value.Revision <= revisionAfterAdd {
+		t.Fatalf("after set: protocols=%v revision=%d", value.ProtocolIDs, value.Revision)
+	}
+
+	// set 空列表 = 清空。
+	if err := svc.BatchProtocols(t.Context(), []string{second.ID}, "set", nil); err != nil {
+		t.Fatalf("set empty: %v", err)
+	}
+	value, _ = svc.Get(t.Context(), second.ID)
+	if len(value.ProtocolIDs) != 0 {
+		t.Fatalf("set empty should clear, got %v", value.ProtocolIDs)
+	}
+
+	err = svc.BatchProtocols(t.Context(), []string{first.ID}, "add", []string{"missing-proto"})
+	if _, ok := err.(*common.ValidationError); !ok {
+		t.Fatalf("unknown protocol: %v", err)
+	}
+	if err := svc.BatchProtocols(t.Context(), []string{"missing-user"}, "add", []string{"proto-1"}); err != common.ErrNotFound {
+		t.Fatalf("unknown user: %v", err)
+	}
+	if err := svc.BatchProtocols(t.Context(), []string{first.ID}, "merge", nil); err == nil {
+		t.Fatal("invalid mode must be rejected")
+	}
+}

@@ -62,6 +62,8 @@ type UserFormValues = {
 
 type QuotaFormValues = { mode: 'add' | 'sub' | 'reset'; gb: number };
 
+type BatchProtocolsFormValues = { mode: 'set' | 'add' | 'remove'; protocolIds: string[] };
+
 const statusMeta: Record<ResourceUserStatus, { label: string; color: string }> = {
   active: { label: '可用', color: 'success' },
   disabled: { label: '停用', color: 'default' },
@@ -123,8 +125,12 @@ export function UsersPage() {
   const [qrFormat, setQrFormat] = useState<string>();
   const [devicesUser, setDevicesUser] = useState<ResourceUser | null>(null);
   const [trafficUser, setTrafficUser] = useState<ResourceUser | null>(null);
+  const [batchQuotaOpen, setBatchQuotaOpen] = useState(false);
+  const [batchProtocolsOpen, setBatchProtocolsOpen] = useState(false);
   const [form] = Form.useForm<UserFormValues>();
   const [trafficForm] = Form.useForm<QuotaFormValues>();
+  const [batchQuotaForm] = Form.useForm<QuotaFormValues>();
+  const [batchProtocolsForm] = Form.useForm<BatchProtocolsFormValues>();
 
   const params = useMemo(() => ({ cursor, limit: 20, query: search || undefined, status, sort }), [cursor, search, status, sort]);
   const users = useQuery({ queryKey: ['resources', 'users', params], queryFn: () => usersApi.list(params), retry: false });
@@ -211,6 +217,31 @@ export function UsersPage() {
   const batchStatus = useMutation({
     mutationFn: (enabled: boolean) => usersApi.batchStatus(selected.map(String), enabled),
     onSuccess: () => { setSelected([]); void refresh(); message.success('用户状态已更新'); },
+    onError: reportError
+  });
+  const batchQuota = useMutation({
+    mutationFn: (values: QuotaFormValues) => usersApi.batchQuota(selected.map(String), {
+      mode: 'add',
+      bytes: Math.round((values.gb || 0) * 1024 * 1024 * 1024) * (values.mode === 'sub' ? -1 : 1)
+    }),
+    onSuccess: () => {
+      setSelected([]);
+      setBatchQuotaOpen(false);
+      batchQuotaForm.resetFields();
+      void refresh();
+      message.success('所选用户额度已调整');
+    },
+    onError: reportError
+  });
+  const batchProtocols = useMutation({
+    mutationFn: (values: BatchProtocolsFormValues) => usersApi.batchProtocols(selected.map(String), { mode: values.mode, protocolIds: values.protocolIds || [] }),
+    onSuccess: () => {
+      setSelected([]);
+      setBatchProtocolsOpen(false);
+      batchProtocolsForm.resetFields();
+      void refresh();
+      message.success('所选用户的协议分配已更新');
+    },
     onError: reportError
   });
   const resetTraffic = useMutation({
@@ -360,6 +391,9 @@ export function UsersPage() {
           <Typography.Text type="secondary">已选择 {selected.length} 项</Typography.Text>
           <Button size="small" onClick={() => batchStatus.mutate(true)}>启用</Button>
           <Button size="small" onClick={() => batchStatus.mutate(false)}>停用</Button>
+          <Button size="small" onClick={() => setBatchQuotaOpen(true)}>调额度</Button>
+          <Button size="small" onClick={() => setBatchProtocolsOpen(true)}>分配协议</Button>
+          <Button size="small" type="text" onClick={() => setSelected([])}>清除选择</Button>
         </Space>
       ) : null}
       <Table<ResourceUser>
@@ -475,6 +509,96 @@ export function UsersPage() {
                   </Typography.Paragraph>
                 ) : null}
               </>;
+            }}
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={`批量调整 ${selected.length} 个用户的额度`}
+        open={batchQuotaOpen}
+        confirmLoading={batchQuota.isPending}
+        onOk={() => batchQuotaForm.submit()}
+        onCancel={() => setBatchQuotaOpen(false)}
+        destroyOnClose
+      >
+        <Typography.Paragraph type="secondary" style={{ marginBottom: 16 }}>
+          对所选用户统一加/减额度；减少后任一用户额度为负都会整批拒绝，不会部分生效。
+        </Typography.Paragraph>
+        <Form<QuotaFormValues> form={batchQuotaForm} layout="vertical" initialValues={{ mode: 'add' }} onFinish={(values) => batchQuota.mutate(values)}>
+          <Form.Item name="mode" label="方式" rules={[{ required: true }]}>
+            <Select options={[{ value: 'add', label: '增加额度' }, { value: 'sub', label: '减少额度' }]} />
+          </Form.Item>
+          <Form.Item noStyle shouldUpdate={(prev, next) => prev.mode !== next.mode}>
+            {({ getFieldValue }) => {
+              const mode = getFieldValue('mode') as QuotaFormValues['mode'];
+              return <Form.Item
+                name="gb"
+                label="额度（GB）"
+                extra={mode === 'add' ? '逐用户在现有额度上累加' : '逐用户从现有额度中扣减'}
+                rules={[
+                  { required: true, message: '请输入额度数值' },
+                  { validator: (_: unknown, value: number) => (Number(value) > 0 ? Promise.resolve() : Promise.reject(new Error('请输入大于 0 的数值'))) }
+                ]}
+              >
+                <InputNumber step={0.1} min={0} placeholder="输入额度数值（GB），支持小数" style={{ width: '100%' }} />
+              </Form.Item>;
+            }}
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={`批量分配协议（${selected.length} 个用户）`}
+        open={batchProtocolsOpen}
+        confirmLoading={batchProtocols.isPending}
+        onOk={() => batchProtocolsForm.submit()}
+        onCancel={() => setBatchProtocolsOpen(false)}
+        destroyOnClose
+      >
+        <Form<BatchProtocolsFormValues> form={batchProtocolsForm} layout="vertical" initialValues={{ mode: 'add' }} onFinish={(values) => batchProtocols.mutate(values)}>
+          <Form.Item noStyle shouldUpdate={(prev, next) => prev.mode !== next.mode}>
+            {({ getFieldValue }) => {
+              const mode = getFieldValue('mode') as BatchProtocolsFormValues['mode'];
+              return <Form.Item
+                name="mode"
+                label="方式"
+                extra={
+                  mode === 'set'
+                    ? '覆盖模式将替换所选用户的全部可用协议，留空即清空（他们的订阅将不可用），请谨慎操作。'
+                    : mode === 'remove'
+                      ? '从所选用户移除指定协议；移除全部协议同样会导致订阅不可用。'
+                      : '在所选用户已有协议的基础上追加。'
+                }
+                rules={[{ required: true }]}
+              >
+                <Select options={[
+                  { value: 'add', label: '追加协议' },
+                  { value: 'set', label: '覆盖全部协议' },
+                  { value: 'remove', label: '移除协议' }
+                ]} />
+              </Form.Item>;
+            }}
+          </Form.Item>
+          <Form.Item noStyle shouldUpdate={(prev, next) => prev.mode !== next.mode}>
+            {({ getFieldValue }) => {
+              const mode = getFieldValue('mode') as BatchProtocolsFormValues['mode'];
+              return <Form.Item
+                name="protocolIds"
+                label="协议"
+                rules={[
+                  { validator: (_: unknown, value: string[]) => (mode === 'set' || (value && value.length > 0) ? Promise.resolve() : Promise.reject(new Error('请至少选择一个协议'))) }
+                ]}
+              >
+                <Select
+                  mode="multiple"
+                  placeholder={mode === 'set' ? '留空即清空所选用户的全部协议' : '选择协议'}
+                  options={protocols.data?.items.map((item) => ({
+                    value: item.id,
+                    label: `${item.name} (${item.type})${item.enabled ? '' : ' - 已停用'}`
+                  }))}
+                />
+              </Form.Item>;
             }}
           </Form.Item>
         </Form>

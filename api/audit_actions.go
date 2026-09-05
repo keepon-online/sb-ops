@@ -96,13 +96,15 @@ const (
 	actionRuleOrder    = "rule.order"
 
 	// 用户
-	actionUserCreate        = "user.create"
-	actionUserUpdate        = "user.update"
-	actionUserDelete        = "user.delete"
-	actionUserBatchStatus   = "user.batch-status"
-	actionUserTrafficReset  = "user.traffic.reset"
-	actionUserTrafficAdjust = "user.traffic.adjust"
-	actionUserQuotaAdjust   = "user.quota.adjust"
+	actionUserCreate         = "user.create"
+	actionUserUpdate         = "user.update"
+	actionUserDelete         = "user.delete"
+	actionUserBatchStatus    = "user.batch-status"
+	actionUserBatchQuota     = "user.batch-quota"
+	actionUserBatchProtocols = "user.batch-protocols"
+	actionUserTrafficReset   = "user.traffic.reset"
+	actionUserTrafficAdjust  = "user.traffic.adjust"
+	actionUserQuotaAdjust    = "user.quota.adjust"
 
 	// 后台周期额度重置（internal/app 运维循环发起，无登录 actor）
 	ActionUserTrafficAutoReset = "user.traffic.auto-reset"

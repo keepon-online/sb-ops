@@ -37,6 +37,19 @@ type batchStatusRequest struct {
 	Enabled *bool    `json:"enabled" binding:"required"`
 }
 
+// batchQuotaRequest 复用单用户额度调整的口径：mode add|set + bytes（set 0 = 无限额）。
+type batchQuotaRequest struct {
+	IDs   []string `json:"ids" binding:"required"`
+	Mode  string   `json:"mode" binding:"required"`
+	Bytes int64    `json:"bytes"`
+}
+
+type batchProtocolsRequest struct {
+	IDs         []string `json:"ids" binding:"required"`
+	Mode        string   `json:"mode" binding:"required"`
+	ProtocolIDs []string `json:"protocolIds"`
+}
+
 func (h *handler) listUsers(c *gin.Context) {
 	limit, _ := strconv.Atoi(c.Query("limit"))
 	page, err := h.Users.List(c.Request.Context(), serviceuser.ListInput{
@@ -110,6 +123,30 @@ func (h *handler) batchUserStatus(c *gin.Context) {
 	}
 	err := h.Users.BatchStatus(c.Request.Context(), request.IDs, *request.Enabled)
 	if !h.mutate(c, err, actionUserBatchStatus, ResourceUser, "", "") {
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+func (h *handler) batchUserQuota(c *gin.Context) {
+	var request batchQuotaRequest
+	if !httpx.BindJSON(c, &request, "请选择用户并填写调整方式") {
+		return
+	}
+	err := h.Users.BatchQuota(c.Request.Context(), request.IDs, serviceuser.TrafficInput{Mode: request.Mode, Bytes: request.Bytes})
+	if !h.mutate(c, err, actionUserBatchQuota, ResourceUser, "", "") {
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+func (h *handler) batchUserProtocols(c *gin.Context) {
+	var request batchProtocolsRequest
+	if !httpx.BindJSON(c, &request, "请选择用户并指定分配方式") {
+		return
+	}
+	err := h.Users.BatchProtocols(c.Request.Context(), request.IDs, request.Mode, request.ProtocolIDs)
+	if !h.mutate(c, err, actionUserBatchProtocols, ResourceUser, "", "") {
 		return
 	}
 	c.Status(http.StatusNoContent)
