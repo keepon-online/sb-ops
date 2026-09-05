@@ -256,6 +256,81 @@ body {
   justify-content: space-between;
   width: 100%;
   gap: 8px;
+  line-height: 1.5;
+}
+
+/* 子菜单标题项预留右侧折叠箭头安全间距，彻底消除箭头与右侧徽标重叠 */
+.sider .ant-menu-submenu-title .nav-menu-item-content,
+.mobile-navigation .ant-menu-submenu-title .nav-menu-item-content {
+  padding-right: 22px;
+}
+
+/* 侧边栏专属状态徽标（告警计数） */
+.nav-menu-badge-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  font-family: 'JetBrains Mono', monospace;
+  color: #ffffff;
+  flex-shrink: 0;
+  transition: var(--transition-smooth);
+}
+
+.nav-menu-badge-count.is-critical {
+  background-color: var(--color-error);
+  box-shadow: 0 2px 6px rgba(239, 68, 68, 0.35);
+}
+
+.nav-menu-badge-count.is-warning {
+  background-color: var(--color-warning);
+  box-shadow: 0 2px 6px rgba(245, 158, 11, 0.3);
+}
+
+/* 侧边栏专属特性胶囊（New 标记） */
+.nav-menu-badge-new {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 9px;
+  letter-spacing: 0.3px;
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  color: var(--primary-color);
+  background: rgba(var(--primary-color-rgb), 0.12);
+  border: 1px solid rgba(var(--primary-color-rgb), 0.28);
+  box-shadow: 0 1px 4px rgba(var(--primary-color-rgb), 0.08);
+  flex-shrink: 0;
+  transition: var(--transition-smooth);
+}
+
+.dark-theme .nav-menu-badge-new {
+  background: rgba(var(--primary-color-rgb), 0.18);
+  border-color: rgba(var(--primary-color-rgb), 0.38);
+}
+
+/* 菜单项选中激活态自适应：告别死黑底色，融合半透磨砂质感 */
+.sider .ant-menu-item-selected .nav-menu-badge-new,
+.mobile-navigation .ant-menu-item-selected .nav-menu-badge-new {
+  color: #ffffff !important;
+  background: rgba(255, 255, 255, 0.22) !important;
+  border-color: rgba(255, 255, 255, 0.45) !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15) !important;
+}
+
+.sider .ant-menu-item-selected .nav-menu-badge-count,
+.mobile-navigation .ant-menu-item-selected .nav-menu-badge-count {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
 }
 
 /* Ant Design Menu 折叠悬浮子菜单（.ant-menu-submenu-popup）弹性排版兼容 */

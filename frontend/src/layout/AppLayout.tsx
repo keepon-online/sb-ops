@@ -99,7 +99,7 @@ export function AppLayout() {
 
   // 内容区独立滚动后，切换路由需要手动回滚顶部，避免沿用上一页的滚动位置。
   useEffect(() => {
-    contentRef.current?.scrollTo({ top: 0 });
+    contentRef.current?.scrollTo?.({ top: 0 });
   }, [location.pathname]);
   const selected = location.pathname.startsWith('/policies/')
     ? '/policies'
@@ -190,14 +190,9 @@ export function AppLayout() {
         <span className="nav-menu-item-content">
           <span>运行告警</span>
           {openAlertsCount > 0 && !siderCollapsed && (
-            <Badge
-              count={openAlertsCount}
-              size="small"
-              style={{
-                backgroundColor: hasCriticalAlert ? 'var(--color-error)' : 'var(--color-warning)',
-                boxShadow: 'none'
-              }}
-            />
+            <span className={`nav-menu-badge-count ${hasCriticalAlert ? 'is-critical' : 'is-warning'}`}>
+              {openAlertsCount > 99 ? '99+' : openAlertsCount}
+            </span>
           )}
         </span>
       )
@@ -212,10 +207,8 @@ export function AppLayout() {
       label: (
         <span className="nav-menu-item-content">
           <span>系统运维</span>
-          {hasUpgradeAlert && !siderCollapsed && (
-            <Tag color="processing" bordered={false} style={{ margin: 0, fontSize: 10, lineHeight: '16px', padding: '0 4px' }}>
-              New
-            </Tag>
+          {hasUpgradeAlert && !siderCollapsed && !openKeys.includes('system-group') && (
+            <span className="nav-menu-badge-new">New</span>
           )}
         </span>
       ),
@@ -227,11 +220,7 @@ export function AppLayout() {
           label: (
             <span className="nav-menu-item-content">
               <span>系统管理</span>
-              {hasUpgradeAlert && (
-                <Tag color="processing" bordered={false} style={{ margin: 0, fontSize: 10, lineHeight: '16px', padding: '0 4px' }}>
-                  New
-                </Tag>
-              )}
+              {hasUpgradeAlert && <span className="nav-menu-badge-new">New</span>}
             </span>
           )
         },
