@@ -58,7 +58,7 @@ go test -tags=with_quic,with_utls,with_clash_api,with_v2ray_api,with_wireguard,w
 - API 契约 `docs/api/openapi.management.yaml`；改 API 必须同步契约，跑 `make api` 重生成 `frontend/src/generated/management-api.ts`，再 `make frontend-check`。
 - 前端构建产物同步到 `internal/web/embedded/`（`index.html` 已跟踪、`assets/` 目录 gitignore）；前端改动后 `index.html` 的 asset hash 变更属正常，需一并提交。
 - **订阅产物只有 `clash.yaml` 一种格式**（`runtime_artifacts` 落库硬编码）；前端订阅链接也只展示它。`sbox.json`/`clmi.yaml`/`jhsub.txt` 曾是 404 死链已删——除非后端真的实现生成器，不要再加回前端格式列表。
-- **已删除勿恢复**：`config/validation.go`（agent 时代自由 sb.json 校验，仅测试引用）、流量归档/清理 API（`Archive`/`Purge`/`EstimateBefore` + `/traffic/archive|purge` 路由；`PurgeBefore` 保留供留存任务）、协议类型 `naive`/`shadowtls`（sing-box 独有协议，mihomo/clash 不支持、永远进不了 clash.yaml 订阅，2026-08 移除；保留 `anytls`——mihomo 支持）。
+- **已删除勿恢复**：`config/validation.go`（agent 时代自由 sb.json 校验，仅测试引用）、流量归档/清理 API（`Archive`/`Purge`/`EstimateBefore` + `/traffic/archive|purge` 路由；`PurgeBefore` 保留供留存任务）、协议类型 `naive`/`shadowtls`（sing-box 独有协议，mihomo/clash 不支持、永远进不了 clash.yaml 订阅，2026-08 移除；保留 `anytls`——mihomo 支持）、流量/审计 CSV 导出（曾列 v0.4.0 路线，2026-09 评估价值不大明确不做，勿再提）。
 
 ## 前端视觉、交互与主题规范（勿破坏）
 
