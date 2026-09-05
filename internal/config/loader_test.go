@@ -217,6 +217,37 @@ updates:
 	}
 }
 
+func TestNotificationsConfigNormalization(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	atomicWriteConfig(t, path, []byte(`
+server:
+  listen: "127.0.0.1:8030"
+notifications:
+  webhook_url: " https://hooks.example.com/alert "
+  feishu_webhook_url: " https://open.feishu.cn/open-apis/bot/v2/hook/abc "
+  feishu_secret: " feishu-secret "
+  dingtalk_webhook_url: " https://oapi.dingtalk.com/robot/send?access_token=abc "
+  dingtalk_secret: " ding-secret "
+  wecom_webhook_url: " https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=abc "
+`))
+	cfg, _, err := LoadRuntimeConfig(path)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if cfg.Notifications.WebhookURL != "https://hooks.example.com/alert" {
+		t.Fatalf("webhook_url normalize unexpected: %q", cfg.Notifications.WebhookURL)
+	}
+	if cfg.Notifications.FeishuWebhookURL != "https://open.feishu.cn/open-apis/bot/v2/hook/abc" || cfg.Notifications.FeishuSecret != "feishu-secret" {
+		t.Fatalf("feishu normalize unexpected: %+v", cfg.Notifications)
+	}
+	if cfg.Notifications.DingTalkWebhookURL != "https://oapi.dingtalk.com/robot/send?access_token=abc" || cfg.Notifications.DingTalkSecret != "ding-secret" {
+		t.Fatalf("dingtalk normalize unexpected: %+v", cfg.Notifications)
+	}
+	if cfg.Notifications.WeComWebhookURL != "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=abc" {
+		t.Fatalf("wecom normalize unexpected: %+v", cfg.Notifications)
+	}
+}
+
 func TestSolusVMConfigAllOrNothingAndHTTPSOnly(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	write := func(content string) {

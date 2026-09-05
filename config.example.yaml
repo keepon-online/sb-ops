@@ -5,6 +5,18 @@
 # audit.retention_days(审计日志保留,默认 180;0 均为永久保留)、probe(拨测目标与周期)、
 # certificates.expiry_warning(证书到期提醒阈值,默认 30 天)、
 # solusvm(VPS 月流量计量,RackNerd 的 nerdvm 面板即是 SolusVM 1)。
+# notifications（可选）：告警外发，支持通用 Webhook / Telegram / 国内文本机器人，
+# 各渠道按需配置、并行发送。机器人 URL 与密钥 / token 属敏感配置，只放本文件，勿提交。
+# notifications:
+#   webhook_url: ""
+#   webhook_secret: ""
+#   telegram_bot_token: ""
+#   telegram_chat_id: ""
+#   feishu_webhook_url: "" # 飞书机器人；开启签名校验时填 feishu_secret
+#   feishu_secret: ""
+#   dingtalk_webhook_url: "" # 钉钉机器人；开启加签时填 dingtalk_secret
+#   dingtalk_secret: ""
+#   wecom_webhook_url: "" # 企业微信群机器人
 server:
   listen: ":8030"
   # 默认在 data_dir(./data)下建库;如需放仓库根可显式指定。

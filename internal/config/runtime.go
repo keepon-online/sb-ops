@@ -78,10 +78,15 @@ type DeploymentConfig struct {
 // optional: an empty webhook URL and empty Telegram credentials disable that
 // channel.
 type NotificationsConfig struct {
-	WebhookURL       string `mapstructure:"webhook_url"`
-	WebhookSecret    string `mapstructure:"webhook_secret"`
-	TelegramBotToken string `mapstructure:"telegram_bot_token"`
-	TelegramChatID   string `mapstructure:"telegram_chat_id"`
+	WebhookURL         string `mapstructure:"webhook_url"`
+	WebhookSecret      string `mapstructure:"webhook_secret"`
+	TelegramBotToken   string `mapstructure:"telegram_bot_token"`
+	TelegramChatID     string `mapstructure:"telegram_chat_id"`
+	FeishuWebhookURL   string `mapstructure:"feishu_webhook_url"`
+	FeishuSecret       string `mapstructure:"feishu_secret"`
+	DingTalkWebhookURL string `mapstructure:"dingtalk_webhook_url"`
+	DingTalkSecret     string `mapstructure:"dingtalk_secret"`
+	WeComWebhookURL    string `mapstructure:"wecom_webhook_url"`
 }
 
 // UpdatesConfig points the panel at the GitHub repository that hosts its own
@@ -215,6 +220,11 @@ func NormalizeRuntimeConfig(cfg RuntimeConfig) RuntimeConfig {
 	cfg.Notifications.WebhookSecret = strings.TrimSpace(cfg.Notifications.WebhookSecret)
 	cfg.Notifications.TelegramBotToken = strings.TrimSpace(cfg.Notifications.TelegramBotToken)
 	cfg.Notifications.TelegramChatID = strings.TrimSpace(cfg.Notifications.TelegramChatID)
+	cfg.Notifications.FeishuWebhookURL = strings.TrimSpace(cfg.Notifications.FeishuWebhookURL)
+	cfg.Notifications.FeishuSecret = strings.TrimSpace(cfg.Notifications.FeishuSecret)
+	cfg.Notifications.DingTalkWebhookURL = strings.TrimSpace(cfg.Notifications.DingTalkWebhookURL)
+	cfg.Notifications.DingTalkSecret = strings.TrimSpace(cfg.Notifications.DingTalkSecret)
+	cfg.Notifications.WeComWebhookURL = strings.TrimSpace(cfg.Notifications.WeComWebhookURL)
 	cfg.Updates.Repo = strings.TrimSpace(cfg.Updates.Repo)
 	cfg.Updates.Token = strings.TrimSpace(cfg.Updates.Token)
 	cfg.Acme.Email = strings.TrimSpace(cfg.Acme.Email)

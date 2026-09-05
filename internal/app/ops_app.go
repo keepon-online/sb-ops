@@ -487,6 +487,16 @@ func newAlertNotifier(events *controlevents.Bus, configProvider func() config.Ru
 				ChatID:   cfg.Notifications.TelegramChatID,
 			}, nil
 		}),
+		controlobservability.NewDomesticNotifier(func(context.Context) (controlobservability.DomesticConfig, error) {
+			cfg := configProvider()
+			return controlobservability.DomesticConfig{
+				FeishuWebhookURL:   cfg.Notifications.FeishuWebhookURL,
+				FeishuSecret:       cfg.Notifications.FeishuSecret,
+				DingTalkWebhookURL: cfg.Notifications.DingTalkWebhookURL,
+				DingTalkSecret:     cfg.Notifications.DingTalkSecret,
+				WeComWebhookURL:    cfg.Notifications.WeComWebhookURL,
+			}, nil
+		}),
 	)
 }
 
