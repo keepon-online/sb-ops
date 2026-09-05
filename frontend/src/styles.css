@@ -104,6 +104,21 @@ body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(var(--primary-color-rgb), 0.2) transparent;
+}
+
+.sider-navigation::-webkit-scrollbar {
+  width: 4px;
+}
+
+.sider-navigation::-webkit-scrollbar-thumb {
+  background: rgba(var(--primary-color-rgb), 0.2);
+  border-radius: 2px;
+}
+
+.sider-navigation::-webkit-scrollbar-thumb:hover {
+  background: rgba(var(--primary-color-rgb), 0.4);
 }
 
 .dark-theme .sider {
@@ -116,14 +131,65 @@ body {
   height: 64px;
   display: flex;
   align-items: center;
-  padding: 0 24px;
+  justify-content: space-between;
+  padding: 0 12px 0 16px;
+  border-bottom: 1px solid var(--border-color);
+  transition: var(--transition-smooth);
+}
+
+.brand-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  user-select: none;
+}
+
+.brand-icon {
   font-size: 20px;
+  color: var(--primary-color);
+  flex-shrink: 0;
+  transition: var(--transition-smooth);
+}
+
+.brand-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.brand-title {
+  font-size: 16px;
   font-weight: 800;
-  letter-spacing: 0;
+  letter-spacing: -0.3px;
   background: linear-gradient(135deg, var(--primary-color), var(--primary-accent));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
-  border-bottom: 1px solid var(--border-color);
+}
+
+.brand-version {
+  font-size: 10px;
+  line-height: 15px;
+  padding: 0 4px;
+  border-radius: 4px;
+  font-family: 'JetBrains Mono', monospace;
+  background: rgba(var(--primary-color-rgb), 0.12);
+  color: var(--primary-color);
+  margin: 0;
+  flex-shrink: 0;
+}
+
+.sider-toggle-btn {
+  color: var(--text-secondary) !important;
+  font-size: 14px;
+  border-radius: 6px;
+  transition: var(--transition-smooth);
+}
+
+.sider-toggle-btn:hover {
+  color: var(--text-color) !important;
+  background: rgba(var(--primary-color-rgb), 0.1) !important;
 }
 
 .sider-collapsed .brand {
@@ -131,9 +197,8 @@ body {
   padding: 0;
 }
 
-.brand-icon {
-  font-size: 24px;
-  color: var(--primary-color);
+.sider-collapsed .brand-icon:hover {
+  transform: scale(1.1);
 }
 
 .sider .ant-layout-sider-trigger {
@@ -151,6 +216,18 @@ body {
   display: none;
 }
 
+.theme-controls-collapsed {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px 0;
+  border-top: 1px solid var(--border-color);
+}
+
+.dark-theme .theme-controls-collapsed {
+  border-top-color: rgba(255, 255, 255, 0.05);
+}
+
 .dark-theme .brand {
   border-bottom-color: rgba(255, 255, 255, 0.05);
 }
@@ -161,7 +238,8 @@ body {
   padding: 12px 8px;
 }
 
-.sider .ant-menu-item {
+.sider .ant-menu-item,
+.sider .ant-menu-submenu-title {
   border-radius: 8px !important;
   margin-bottom: 4px !important;
   transition: var(--transition-smooth) !important;
@@ -170,6 +248,34 @@ body {
 .sider .ant-menu-item-selected {
   font-weight: 600;
   box-shadow: 0 4px 12px rgba(var(--primary-color-rgb), 0.15);
+}
+
+.nav-menu-item-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 8px;
+}
+
+/* Ant Design Menu 折叠悬浮子菜单（.ant-menu-submenu-popup）弹性排版兼容 */
+.ant-menu-submenu-popup .ant-menu-item {
+  display: flex !important;
+  align-items: center !important;
+  border-radius: 6px !important;
+}
+
+.ant-menu-submenu-popup .ant-menu-title-content {
+  flex: 1 1 auto !important;
+  display: flex !important;
+  align-items: center !important;
+  min-width: 0 !important;
+}
+
+.ant-menu-submenu-popup .ant-menu-sub {
+  min-width: 168px !important;
+  border-radius: 10px !important;
+  padding: 6px !important;
 }
 
 /* Topbar & Header */
@@ -564,6 +670,10 @@ body {
 
   .mobile-navigation .sider-content {
     min-height: 100%;
+  }
+
+  .mobile-navigation .theme-controls {
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
   }
 
   .content {

@@ -47,7 +47,7 @@ describe('overview navigation', () => {
   it('routes the runtime reason shortcut in-app without opening a browser window', async () => {
     const open = vi.spyOn(window, 'open');
     renderOverview();
-    fireEvent.click(await screen.findByRole('button', { name: '前往服务端配置' }));
+    fireEvent.click(await screen.findByRole('button', { name: '前往服务配置' }));
     expect(await screen.findByText('singbox destination')).toBeInTheDocument();
     expect(open).not.toHaveBeenCalled();
   });

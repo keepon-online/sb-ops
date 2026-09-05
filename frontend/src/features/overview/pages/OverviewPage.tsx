@@ -71,7 +71,7 @@ export function OverviewPage() {
     { name: '上行', color: 'var(--primary-color)', values: trafficPoints.map((p) => p.upBytes) }
   ];
 
-  return <Page title="总览">
+  return <Page title="控制总览">
     <div className="page-toolbar" style={{ marginBottom: 8 }}>
       <Typography.Text type="secondary">控制面与本地 sing-box 运行状态</Typography.Text>
       <Button icon={<ReloadOutlined />} loading={overview.isFetching} onClick={() => void overview.refetch()}>刷新</Button>
@@ -103,7 +103,7 @@ export function OverviewPage() {
         showIcon
         message="运行环境需要处理"
         description={value.runtimeReason}
-        action={<Button size="small" onClick={() => navigate('/singbox')}>前往服务端配置</Button>}
+        action={<Button size="small" onClick={() => navigate('/singbox')}>前往服务配置</Button>}
       />
     ) : null}
 
@@ -124,7 +124,7 @@ export function OverviewPage() {
           <div className="overview-card-title">
             <Typography.Title level={4} style={{ margin: 0 }}>实时连接</Typography.Title>
             <Space>
-              <Button size="small" icon={<SettingOutlined />} onClick={() => navigate('/singbox')}>服务端配置</Button>
+              <Button size="small" icon={<SettingOutlined />} onClick={() => navigate('/singbox')}>服务配置</Button>
               <Button size="small" icon={<LineChartOutlined />} onClick={() => navigate('/traffic?dimension=user')}>流量分析</Button>
             </Space>
           </div>

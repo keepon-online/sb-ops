@@ -1,13 +1,18 @@
 import {
+  AlertOutlined,
   ApiOutlined,
   AuditOutlined,
-  AlertOutlined,
   BellOutlined,
+  BgColorsOutlined,
+  CloseOutlined,
+  CloudServerOutlined,
   CloudUploadOutlined,
   ControlOutlined,
   DashboardOutlined,
+  LineChartOutlined,
   LockOutlined,
   LogoutOutlined,
+  MenuFoldOutlined,
   MenuOutlined,
   MonitorOutlined,
   MoonOutlined,
@@ -15,8 +20,7 @@ import {
   SettingOutlined,
   SunOutlined,
   TeamOutlined,
-  UserOutlined,
-  LineChartOutlined
+  UserOutlined
 } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import { Avatar, Badge, Button, Drawer, Dropdown, Grid, Layout, Menu, Popover, Space, Tag, Tooltip, Typography } from 'antd';
@@ -30,6 +34,7 @@ import { alertsApi } from '../services/alerts';
 import { controlPlaneApi } from '../services/controlPlane';
 import { clearSessionAndRedirect } from '../services/http';
 import { identityApi } from '../services/identity';
+import { systemApi } from '../services/system';
 import { useEventStream } from '../features/events/useEventStream';
 import { ChangePasswordModal } from '../features/auth/components/ChangePasswordModal';
 import { configStatusLabels, kernelStatusLabels } from '../util/labels';
@@ -37,29 +42,9 @@ import { configStatusLabels, kernelStatusLabels } from '../util/labels';
 const { Header, Content, Sider } = Layout;
 const { Text } = Typography;
 
-const SIDER_WIDTH = 236;
+const SIDER_WIDTH = 240;
 const SIDER_COLLAPSED_WIDTH = 72;
 const SIDER_COLLAPSED_STORAGE_KEY = 'sb-sider-collapsed';
-
-// 主导航只保留高频操作；审计日志折叠进低频「系统」分组。
-const navigationItems: ItemType[] = [
-  { key: '/overview', icon: <DashboardOutlined />, label: '总览' },
-  { key: '/users', icon: <TeamOutlined />, label: '用户订阅' },
-  { key: '/protocols', icon: <ApiOutlined />, label: '接入协议' },
-  { key: '/traffic', icon: <LineChartOutlined />, label: '流量分析' },
-  { key: '/alerts', icon: <AlertOutlined />, label: '运行告警' },
-  { key: '/policies', icon: <ControlOutlined />, label: '订阅分流' },
-  { key: '/singbox', icon: <SettingOutlined />, label: '服务端配置' },
-  {
-    type: 'group',
-    label: '系统',
-    children: [
-      { key: '/monitor', icon: <MonitorOutlined />, label: '服务器监控' },
-      { key: '/system', icon: <CloudUploadOutlined />, label: '系统升级' },
-      { key: '/audit', icon: <AuditOutlined />, label: '审计日志' }
-    ]
-  }
-];
 
 export function AppLayout() {
   useEventStream();
@@ -68,6 +53,14 @@ export function AppLayout() {
   const { data } = useIdentity();
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(SIDER_COLLAPSED_STORAGE_KEY) === '1');
+  const [openKeys, setOpenKeys] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('sb-menu-open-keys');
+      return saved ? JSON.parse(saved) : ['system-group'];
+    } catch {
+      return ['system-group'];
+    }
+  });
   const [passwordModalOpen, setPasswordModalOpen] = useState(false);
   const { themeMode, themeColor, setThemeColor, toggleThemeMode } = useAppTheme();
   const isMobile = useIsMobile();
@@ -86,10 +79,21 @@ export function AppLayout() {
     retry: false,
     refetchInterval: 30000
   });
+  const upgradeQuery = useQuery({
+    queryKey: ['system', 'upgrade'],
+    queryFn: systemApi.upgradeStatus,
+    retry: false,
+    staleTime: 60000
+  });
 
   const openAlerts = openAlertsQuery.data?.items || [];
   const openAlertsCount = openAlerts.length;
   const hasCriticalAlert = openAlerts.some((item) => item.severity === 'critical');
+  const hasUpgradeAlert = openAlerts.some((item) => item.type === 'upgrade_available') || Boolean(upgradeQuery.data?.latest?.upgradable);
+  // 接口失败时留空——版本号 Tag 随之隐藏，不显示过时的兜底版本。
+  const currentVersion = upgradeQuery.data?.currentVersion
+    ? (upgradeQuery.data.currentVersion.startsWith('v') ? upgradeQuery.data.currentVersion : `v${upgradeQuery.data.currentVersion}`)
+    : '';
   const kernelHealthy = overviewQuery.data?.kernelStatus === 'running';
   const kernelError = overviewQuery.data?.kernelStatus === 'unhealthy';
 
@@ -103,14 +107,52 @@ export function AppLayout() {
       ? '/overview'
       : location.pathname;
 
+  // 路由跳转至系统运维子项时，确保所属分组处于展开状态
+  const prevSelectedRef = useRef(selected);
+  useEffect(() => {
+    if (prevSelectedRef.current !== selected) {
+      prevSelectedRef.current = selected;
+      if (['/monitor', '/system', '/audit'].includes(selected)) {
+        setOpenKeys((prev) => (prev.includes('system-group') ? prev : [...prev, 'system-group']));
+      }
+    }
+  }, [selected]);
+
+  // 全局快捷键 Ctrl/Cmd + B 切换菜单折叠
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
+        const target = e.target as HTMLElement;
+        if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+          return;
+        }
+        e.preventDefault();
+        toggleCollapsed(!collapsed);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [collapsed]);
+
   const navigateFromMenu = (path: string) => {
-    navigate(path);
-    setMobileNavigationOpen(false);
+    if (path.startsWith('/')) {
+      navigate(path);
+      setMobileNavigationOpen(false);
+    }
   };
 
   const toggleCollapsed = (value: boolean) => {
     setCollapsed(value);
     localStorage.setItem(SIDER_COLLAPSED_STORAGE_KEY, value ? '1' : '0');
+  };
+
+  const handleOpenChange = (keys: string[]) => {
+    setOpenKeys(keys);
+    try {
+      localStorage.setItem('sb-menu-open-keys', JSON.stringify(keys));
+    } catch {
+      // ignore
+    }
   };
 
   const logout = async () => {
@@ -121,40 +163,216 @@ export function AppLayout() {
     }
   };
 
+  // 方案 A 菜单项：控制总览 → 业务与协议接入 → 策略规则 → 流量与告警 → 可折叠系统运维
+  const getNavigationItems = (siderCollapsed: boolean): ItemType[] => [
+    { key: '/overview', icon: <DashboardOutlined />, label: '控制总览' },
+    { key: '/users', icon: <TeamOutlined />, label: '用户订阅' },
+    { key: '/protocols', icon: <ApiOutlined />, label: '接入协议' },
+    { key: '/singbox', icon: <SettingOutlined />, label: '服务配置' },
+    { key: '/policies', icon: <ControlOutlined />, label: '订阅分流' },
+    { key: '/traffic', icon: <LineChartOutlined />, label: '流量分析' },
+    {
+      key: '/alerts',
+      icon: (
+        <Badge
+          count={siderCollapsed ? openAlertsCount : 0}
+          size="small"
+          dot={siderCollapsed && openAlertsCount > 0}
+          offset={[2, -2]}
+          style={{
+            backgroundColor: hasCriticalAlert ? 'var(--color-error)' : 'var(--color-warning)'
+          }}
+        >
+          <AlertOutlined />
+        </Badge>
+      ),
+      label: (
+        <span className="nav-menu-item-content">
+          <span>运行告警</span>
+          {openAlertsCount > 0 && !siderCollapsed && (
+            <Badge
+              count={openAlertsCount}
+              size="small"
+              style={{
+                backgroundColor: hasCriticalAlert ? 'var(--color-error)' : 'var(--color-warning)',
+                boxShadow: 'none'
+              }}
+            />
+          )}
+        </span>
+      )
+    },
+    {
+      key: 'system-group',
+      icon: (
+        <Badge dot={siderCollapsed && hasUpgradeAlert} offset={[2, -2]} status="processing">
+          <CloudServerOutlined />
+        </Badge>
+      ),
+      label: (
+        <span className="nav-menu-item-content">
+          <span>系统运维</span>
+          {hasUpgradeAlert && !siderCollapsed && (
+            <Tag color="processing" bordered={false} style={{ margin: 0, fontSize: 10, lineHeight: '16px', padding: '0 4px' }}>
+              New
+            </Tag>
+          )}
+        </span>
+      ),
+      children: [
+        { key: '/monitor', icon: <MonitorOutlined />, label: '主机监控' },
+        {
+          key: '/system',
+          icon: <CloudUploadOutlined />,
+          label: (
+            <span className="nav-menu-item-content">
+              <span>系统升级</span>
+              {hasUpgradeAlert && (
+                <Tag color="processing" bordered={false} style={{ margin: 0, fontSize: 10, lineHeight: '16px', padding: '0 4px' }}>
+                  New
+                </Tag>
+              )}
+            </span>
+          )
+        },
+        { key: '/audit', icon: <AuditOutlined />, label: '审计日志' }
+      ]
+    }
+  ];
+
   const renderNavigation = (siderCollapsed: boolean) => (
     <div className="sider-content">
       <div className="sider-navigation">
         <div className="brand">
-          {siderCollapsed ? <SafetyCertificateOutlined className="brand-icon" /> : 'Sing-box Ops'}
+          <div
+            className="brand-main"
+            onClick={() => {
+              if (siderCollapsed) {
+                toggleCollapsed(false);
+              } else {
+                navigateFromMenu('/overview');
+              }
+            }}
+            style={{ cursor: 'pointer' }}
+          >
+            <Tooltip title={siderCollapsed ? '展开菜单 (Ctrl+B)' : 'Sing-box Ops 控制台'} placement={siderCollapsed ? 'right' : 'bottom'}>
+              <SafetyCertificateOutlined className="brand-icon" />
+            </Tooltip>
+            {!siderCollapsed && (
+              <div className="brand-info">
+                <span className="brand-title">Sing-box Ops</span>
+                {currentVersion ? (
+                  <Tag bordered={false} className="brand-version">
+                    {currentVersion}
+                  </Tag>
+                ) : null}
+              </div>
+            )}
+          </div>
+          {!siderCollapsed && (
+            <Tooltip title={isMobile ? '关闭导航' : '收起菜单 (Ctrl+B)'} placement="right">
+              <Button
+                type="text"
+                size="small"
+                className="sider-toggle-btn"
+                icon={isMobile ? <CloseOutlined /> : <MenuFoldOutlined />}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (isMobile) {
+                    setMobileNavigationOpen(false);
+                  } else {
+                    toggleCollapsed(true);
+                  }
+                }}
+                aria-label={isMobile ? '关闭导航' : '收起菜单'}
+              />
+            </Tooltip>
+          )}
         </div>
         <Menu
           theme={themeMode}
           mode="inline"
+          inlineCollapsed={siderCollapsed}
           selectedKeys={[selected]}
-          items={navigationItems}
+          openKeys={siderCollapsed ? undefined : openKeys}
+          onOpenChange={handleOpenChange}
+          items={getNavigationItems(siderCollapsed)}
           onClick={(item) => navigateFromMenu(item.key)}
         />
       </div>
-      <div className="theme-controls">
-        <Space size={6}>
-          {(['blue', 'purple', 'green', 'orange'] as ThemeColor[]).map((color) => (
-            <button
-              key={color}
-              className="theme-swatch"
-              style={{
-                backgroundColor: themeColors[color][themeMode],
-                borderColor: themeColor === color ? 'var(--text-color)' : 'transparent'
-              }}
-              aria-label={`切换为${color}主题`}
-              title={color}
-              onClick={() => setThemeColor(color)}
-            />
-          ))}
-        </Space>
-        <Tooltip title={themeMode === 'light' ? '深色模式' : '浅色模式'}>
-          <Button type="text" shape="circle" icon={themeMode === 'light' ? <MoonOutlined /> : <SunOutlined />} onClick={toggleThemeMode} />
-        </Tooltip>
-      </div>
+      {siderCollapsed ? (
+        <div className="theme-controls-collapsed">
+          <Popover
+            placement="rightBottom"
+            trigger="click"
+            title={<Text strong style={{ fontSize: 13 }}>外观与主题</Text>}
+            content={
+              <div style={{ padding: '4px 0', minWidth: 150 }}>
+                <div style={{ marginBottom: 12 }}>
+                  <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>主题色彩</Text>
+                  <Space size={8}>
+                    {(['blue', 'purple', 'green', 'orange'] as ThemeColor[]).map((color) => (
+                      <button
+                        key={color}
+                        className="theme-swatch"
+                        style={{
+                          backgroundColor: themeColors[color][themeMode],
+                          borderColor: themeColor === color ? 'var(--text-color)' : 'transparent',
+                          width: 22,
+                          height: 22
+                        }}
+                        aria-label={`切换为${color}主题`}
+                        title={color}
+                        onClick={() => setThemeColor(color)}
+                      />
+                    ))}
+                  </Space>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 8, borderTop: '1px solid var(--border-color)' }}>
+                  <Text type="secondary" style={{ fontSize: 12 }}>模式外观</Text>
+                  <Button
+                    size="small"
+                    icon={themeMode === 'light' ? <MoonOutlined /> : <SunOutlined />}
+                    onClick={toggleThemeMode}
+                  >
+                    {themeMode === 'light' ? '深色' : '浅色'}
+                  </Button>
+                </div>
+              </div>
+            }
+          >
+            <Tooltip title="切换主题外观" placement="right">
+              <Button
+                type="text"
+                shape="circle"
+                icon={<BgColorsOutlined style={{ color: 'var(--primary-color)', fontSize: 17 }} />}
+                aria-label="切换主题外观"
+              />
+            </Tooltip>
+          </Popover>
+        </div>
+      ) : (
+        <div className="theme-controls">
+          <Space size={6}>
+            {(['blue', 'purple', 'green', 'orange'] as ThemeColor[]).map((color) => (
+              <button
+                key={color}
+                className="theme-swatch"
+                style={{
+                  backgroundColor: themeColors[color][themeMode],
+                  borderColor: themeColor === color ? 'var(--text-color)' : 'transparent'
+                }}
+                aria-label={`切换为${color}主题`}
+                title={color}
+                onClick={() => setThemeColor(color)}
+              />
+            ))}
+          </Space>
+          <Tooltip title={themeMode === 'light' ? '深色模式' : '浅色模式'}>
+            <Button type="text" shape="circle" icon={themeMode === 'light' ? <MoonOutlined /> : <SunOutlined />} onClick={toggleThemeMode} />
+          </Tooltip>
+        </div>
+      )}
     </div>
   );
 

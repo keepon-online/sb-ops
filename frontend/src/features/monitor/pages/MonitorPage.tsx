@@ -55,8 +55,8 @@ export function MonitorPage() {
   const monitor = useQuery({ queryKey: ['monitor'], queryFn: monitorApi.status, retry: false, refetchInterval: 5000 });
   if (monitor.isError) return <Result status={monitor.error instanceof ApiError && monitor.error.status === 403 ? '403' : 'error'} title={monitor.error.message} extra={<Button type="primary" icon={<ReloadOutlined />} onClick={() => void monitor.refetch()}>重试</Button>} />;
   const value: MonitorStatus | undefined = monitor.data;
-  if (monitor.isLoading) return <Page title="服务器监控"><Spin size="large" style={{ display: 'block', margin: '80px auto' }} /></Page>;
-  if (value && !value.ready) return <Page title="服务器监控"><Alert type="info" showIcon message="正在等待首次采样" description="服务器指标采样随面板启动，几秒后自动刷新。" /></Page>;
+  if (monitor.isLoading) return <Page title="主机监控"><Spin size="large" style={{ display: 'block', margin: '80px auto' }} /></Page>;
+  if (value && !value.ready) return <Page title="主机监控"><Alert type="info" showIcon message="正在等待首次采样" description="服务器指标采样随面板启动，几秒后自动刷新。" /></Page>;
 
   const history = value?.history || [];
   const labels = history.map((point) => dayjs(point.time).format('HH:mm:ss'));
@@ -64,7 +64,7 @@ export function MonitorPage() {
   const peakRecv = Math.max(0, ...history.map((point) => point.netRecvRate));
   const peakSend = Math.max(0, ...history.map((point) => point.netSendRate));
 
-  return <Page title="服务器监控">
+  return <Page title="主机监控">
     <div className="page-toolbar">
       <Typography.Text type="secondary">主机 CPU / 内存 / 磁盘 / 网络实时指标，每 5 秒自动刷新{sampledAt ? `，采样于 ${sampledAt}` : ''}</Typography.Text>
       <Button icon={<ReloadOutlined />} loading={monitor.isFetching} onClick={() => void monitor.refetch()}>刷新</Button>
