@@ -12,6 +12,7 @@ import (
 	controloverview "github.com/keepon-online/sb-ops/internal/overview"
 	controlprobe "github.com/keepon-online/sb-ops/internal/probe"
 	serviceargo "github.com/keepon-online/sb-ops/internal/service/argo"
+	servicebackup "github.com/keepon-online/sb-ops/internal/service/backup"
 	servicecertificate "github.com/keepon-online/sb-ops/internal/service/certificate"
 	servicepolicy "github.com/keepon-online/sb-ops/internal/service/policy"
 	serviceprotocol "github.com/keepon-online/sb-ops/internal/service/protocol"
@@ -46,6 +47,7 @@ type Dependencies struct {
 	Config       func() config.RuntimeConfig
 	Argo         *serviceargo.Service
 	Upgrade      *controlupgrade.Service
+	Backup       *servicebackup.Service
 	// Prober 跑协议端到端拨测；测试可缺省（对应端点返回 503）。
 	Prober *controlprobe.Prober
 	// ArgoManager restarts tunnel processes; the supervisor may be absent in
@@ -221,6 +223,13 @@ func RegisterRoutes(router *gin.Engine, dependencies Dependencies) {
 		systemUpgrade.GET("/status", h.getUpgradeStatus)
 		systemUpgrade.POST("/check", h.checkUpgrade)
 		systemUpgrade.POST("/start", h.startUpgrade)
+	}
+	if h.Backup != nil {
+		systemBackups := authenticated.Group("/system/backups")
+		systemBackups.GET("", h.listBackups)
+		systemBackups.POST("", h.createBackup)
+		systemBackups.GET("/:name/download", h.downloadBackup)
+		systemBackups.DELETE("/:name", h.deleteBackup)
 	}
 }
 

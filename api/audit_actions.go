@@ -121,6 +121,12 @@ const (
 	resourceSystemUpgrade    = "system_upgrade"
 	actionSystemUpgradeCheck = "system.upgrade.check"
 	actionSystemUpgradeStart = "system.upgrade.start"
+
+	// 数据备份
+	resourceSystemBackup       = "system_backup"
+	actionSystemBackupCreate   = "system.backup.create"
+	actionSystemBackupDownload = "system.backup.download"
+	actionSystemBackupDelete   = "system.backup.delete"
 )
 
 // 单例资源的固定 resourceID：singbox_config 是 store 层 id=1 的单行表，

@@ -226,7 +226,7 @@ export function AppLayout() {
           icon: <CloudUploadOutlined />,
           label: (
             <span className="nav-menu-item-content">
-              <span>系统升级</span>
+              <span>系统管理</span>
               {hasUpgradeAlert && (
                 <Tag color="processing" bordered={false} style={{ margin: 0, fontSize: 10, lineHeight: '16px', padding: '0 4px' }}>
                   New

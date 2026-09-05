@@ -1,10 +1,11 @@
-import { CloudUploadOutlined, ReloadOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
+import { CloudUploadOutlined, DatabaseOutlined, DeleteOutlined, DownloadOutlined, ReloadOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { App as AntApp, Alert, Button, Descriptions, Popconfirm, Space, Spin, Steps, Tag, Typography } from 'antd';
-import { useEffect, useRef } from 'react';
+import { App as AntApp, Alert, Button, Descriptions, Popconfirm, Space, Spin, Steps, Table, Tag, Tooltip, Typography } from 'antd';
+import type { ColumnsType } from 'antd/es/table';
+import { useEffect, useRef, useState } from 'react';
 import { Page } from '../../../components/Page';
 import { ApiError } from '../../../services/http';
-import { systemApi, type UpgradeStatus } from '../../../services/system';
+import { backupDownload, systemApi, type BackupFile, type UpgradeStatus } from '../../../services/system';
 
 // 升级流水线的对外阶段 → 展示步骤；checking 瞬时完成不进 Steps。
 const activeStepIndex: Partial<Record<UpgradeStatus['phase'], number>> = {
@@ -16,7 +17,25 @@ const activeStepIndex: Partial<Record<UpgradeStatus['phase'], number>> = {
 
 const phaseActive = (phase: UpgradeStatus['phase']) => phase in activeStepIndex;
 
+const describeError = (error: unknown) => (error instanceof ApiError ? `${error.message}（${error.requestId ?? '无请求标识'}）` : String(error));
+
+// 字节格式化（与设备抽屉同款；仓库暂无共享 util，按页局部实现）。
+function formatBytes(value: number): string {
+  if (value <= 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const exponent = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1);
+  const size = value / 1024 ** exponent;
+  return `${size.toFixed(size >= 10 || exponent === 0 ? 0 : 1)} ${units[exponent]}`;
+}
+
 export function SystemPage() {
+  return <Page title="系统管理">
+    <UpgradeSection />
+    <BackupSection />
+  </Page>;
+}
+
+function UpgradeSection() {
   const { notification } = AntApp.useApp();
   const queryClient = useQueryClient();
   const status = useQuery({
@@ -26,8 +45,6 @@ export function SystemPage() {
     // 进行中每 2 秒轮询进度；idle/failed 停表（SSE upgrade.* 事件兜底失效）。
     refetchInterval: (query) => (phaseActive(query.state.data?.phase ?? 'idle') ? 2000 : false)
   });
-
-  const describeError = (error: unknown) => (error instanceof ApiError ? `${error.message}（${error.requestId ?? '无请求标识'}）` : String(error));
 
   const check = useMutation({
     mutationFn: systemApi.upgradeCheck,
@@ -86,16 +103,14 @@ export function SystemPage() {
     };
   }, [phase]);
 
-  if (status.isLoading) return <Page title="系统升级"><Spin size="large" style={{ display: 'block', margin: '80px auto' }} /></Page>;
+  if (status.isLoading) return <Spin style={{ display: 'block', margin: '48px 0' }} />;
   if (status.isError) {
-    return <Page title="系统升级">
-      <Alert type="error" showIcon message="无法获取升级状态" description={describeError(status.error)}
-        action={<Button icon={<ReloadOutlined />} onClick={() => void status.refetch()}>重试</Button>} />
-    </Page>;
+    return <Alert type="error" showIcon message="无法获取升级状态" description={describeError(status.error)}
+      action={<Button icon={<ReloadOutlined />} onClick={() => void status.refetch()}>重试</Button>} />;
   }
 
   const busy = phaseActive(phase);
-  return <Page title="系统升级">
+  return <>
     <div className="page-toolbar">
       <Typography.Text type="secondary">从 GitHub Releases 拉取面板自身的新版本，下载校验通过后自动替换并重启</Typography.Text>
       <Button icon={<ReloadOutlined />} loading={check.isPending} disabled={busy || !value?.configured} onClick={() => check.mutate()}>检查更新</Button>
@@ -164,5 +179,77 @@ export function SystemPage() {
         <Typography.Text type="secondary">升级前自动备份当前二进制为 .bak，失败可登录服务器手动换回。</Typography.Text>
       </Space>
     </section>
-  </Page>;
+  </>;
+}
+
+function BackupSection() {
+  const { notification } = AntApp.useApp();
+  const queryClient = useQueryClient();
+  const backups = useQuery({ queryKey: ['system', 'backups'], queryFn: systemApi.backupList, retry: false });
+
+  const create = useMutation({
+    mutationFn: systemApi.backupCreate,
+    onSuccess: (value) => {
+      void queryClient.invalidateQueries({ queryKey: ['system', 'backups'] });
+      notification.success({ message: '备份完成', description: `${value.name}（${formatBytes(value.sizeBytes)}）已保存到服务器 backups 目录。` });
+    },
+    onError: (error) => notification.error({ message: '创建备份失败', description: describeError(error) })
+  });
+
+  const remove = useMutation({
+    mutationFn: systemApi.backupDelete,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['system', 'backups'] });
+      notification.success({ message: '备份已删除' });
+    },
+    onError: (error) => notification.error({ message: '删除备份失败', description: describeError(error) })
+  });
+
+  // 下载不是 react-query mutation（返回 blob 而非信封），用行级 state 标记 loading。
+  const [downloading, setDownloading] = useState<string>();
+  const handleDownload = async (name: string) => {
+    setDownloading(name);
+    try {
+      await backupDownload(name);
+    } catch (error) {
+      notification.error({ message: '下载备份失败', description: describeError(error) });
+    } finally {
+      setDownloading(undefined);
+    }
+  };
+
+  const columns: ColumnsType<BackupFile> = [
+    { title: '文件名', dataIndex: 'name', ellipsis: true, render: (value: string) => <Typography.Text code style={{ fontSize: 12 }}>{value}</Typography.Text> },
+    { title: '大小', dataIndex: 'sizeBytes', width: 100, render: (value: number) => formatBytes(value) },
+    { title: '创建时间', dataIndex: 'createdAt', width: 180, render: (value: number) => new Date(value * 1000).toLocaleString() },
+    {
+      title: '操作', width: 110, render: (_, row) => (
+        <Space size={2}>
+          <Tooltip title="下载到本地">
+            <Button type="text" size="small" aria-label={`下载备份 ${row.name}`} icon={<DownloadOutlined />} loading={downloading === row.name} onClick={() => void handleDownload(row.name)} />
+          </Tooltip>
+          <Popconfirm title="确认删除该备份？" okText="删除" cancelText="取消" okButtonProps={{ danger: true }} onConfirm={() => remove.mutate(row.name)}>
+            <Tooltip title="删除"><Button type="text" danger size="small" aria-label={`删除备份 ${row.name}`} icon={<DeleteOutlined />} /></Tooltip>
+          </Popconfirm>
+        </Space>
+      )
+    }
+  ];
+
+  return <section className="workspace-section">
+    <Typography.Title level={4}>数据备份</Typography.Title>
+    <div className="page-toolbar" style={{ marginBottom: 12 }}>
+      <Typography.Text type="secondary">基于 VACUUM INTO 的在线快照（WAL 安全，无需停机）；备份含凭据主密钥与订阅 token，请妥善保管</Typography.Text>
+      <Button type="primary" icon={<DatabaseOutlined />} loading={create.isPending} onClick={() => create.mutate()}>立即备份</Button>
+    </div>
+    {backups.isError && (
+      <Alert style={{ marginBottom: 12 }} type="error" showIcon message="无法获取备份列表" description={describeError(backups.error)}
+        action={<Button size="small" icon={<ReloadOutlined />} onClick={() => void backups.refetch()}>重试</Button>} />
+    )}
+    <Table rowKey="name" size="small" pagination={false} loading={backups.isLoading}
+      dataSource={backups.data?.items || []} columns={columns} locale={{ emptyText: '暂无备份' }} />
+    <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginTop: 12, marginBottom: 0 }}>
+      自动保留最近 20 份，超出裁剪最旧；恢复时停机将备份文件替换 data 目录下的 singbox-web.db（并删除同名 -wal/-shm 文件）后重启面板。
+    </Typography.Paragraph>
+  </section>;
 }

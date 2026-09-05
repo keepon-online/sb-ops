@@ -20,6 +20,7 @@ export const resourceTypeLabels: Record<string, string> = {
   permission: '权限',
   system: '系统',
   system_upgrade: '面板升级',
+  system_backup: '数据备份',
   database: '数据库',
   control_plane: '控制面',
   singbox_rule_set: '服务器规则集',
@@ -99,7 +100,10 @@ const auditActionOverrides: Record<string, string> = {
   'auth.login': '登录',
   'auth.logout': '登出',
   'system.upgrade.check': '检查面板更新',
-  'system.upgrade.start': '开始面板升级'
+  'system.upgrade.start': '开始面板升级',
+  'system.backup.create': '创建数据备份',
+  'system.backup.download': '下载数据备份',
+  'system.backup.delete': '删除数据备份'
 };
 
 export function auditActionLabel(action: string): string {
@@ -170,7 +174,7 @@ export function kernelStatusLabel(value: string): string {
 export const auditResourceTypeValues = [
   'account', 'session', 'user', 'protocol', 'certificate', 'policy', 'rule',
   'singbox_config', 'singbox_outbound', 'singbox_route_rule', 'singbox_rule_set',
-  'singbox_runtime', 'singbox_connection', 'argo_tunnel', 'system_upgrade', 'alert'
+  'singbox_runtime', 'singbox_connection', 'argo_tunnel', 'system_upgrade', 'system_backup', 'alert'
 ];
 
 export const auditActionValues = [
@@ -195,5 +199,6 @@ export const auditActionValues = [
   'argo.tunnel.create', 'argo.tunnel.update', 'argo.tunnel.delete', 'argo.tunnel.restart',
   'runtime.sync',
   'system.upgrade.check', 'system.upgrade.start',
+  'system.backup.create', 'system.backup.download', 'system.backup.delete',
   'alert.acknowledge'
 ];

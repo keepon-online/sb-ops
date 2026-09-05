@@ -1533,6 +1533,58 @@ paths:
         '403': {$ref: '#/components/responses/Forbidden'}
         '409': {$ref: '#/components/responses/Conflict'}
         '502': {description: GitHub API unreachable, content: {application/json: {schema: {$ref: '#/components/schemas/ManagementErrorResponse'}}}}
+  /api/v1/system/backups:
+    get:
+      tags: [System]
+      operationId: listSystemBackups
+      summary: List database backup snapshots under <data_dir>/backups, newest first
+      security: [{BearerAuth: []}]
+      responses:
+        '200': {description: Backup list, content: {application/json: {schema: {allOf: [{$ref: '#/components/schemas/SuccessEnvelope'}, {properties: {data: {type: object, additionalProperties: false, required: [items], properties: {items: {type: array, items: {$ref: '#/components/schemas/BackupFile'}}}}}}]}}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+    post:
+      tags: [System]
+      operationId: createSystemBackup
+      summary: Create an online database snapshot via VACUUM INTO (WAL-safe, consistent, compacted)
+      security: [{BearerAuth: []}]
+      responses:
+        '201': {description: Created backup metadata, content: {application/json: {schema: {allOf: [{$ref: '#/components/schemas/SuccessEnvelope'}, {properties: {data: {$ref: '#/components/schemas/BackupFile'}}}]}}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '500': {description: Snapshot creation failed, content: {application/json: {schema: {$ref: '#/components/schemas/ManagementErrorResponse'}}}}
+  /api/v1/system/backups/{name}:
+    delete:
+      tags: [System]
+      operationId: deleteSystemBackup
+      summary: Delete a backup snapshot
+      security: [{BearerAuth: []}]
+      parameters: [{name: name, in: path, required: true, schema: {type: string, pattern: '^sb-ops-backup-[0-9]{8}-[0-9]{6}\.db$'}}]
+      responses:
+        '204': {description: Deleted}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /api/v1/system/backups/{name}/download:
+    get:
+      tags: [System]
+      operationId: downloadSystemBackup
+      summary: Download a backup snapshot (binary stream, outside the JSON envelope)
+      security: [{BearerAuth: []}]
+      parameters: [{name: name, in: path, required: true, schema: {type: string, pattern: '^sb-ops-backup-[0-9]{8}-[0-9]{6}\.db$'}}]
+      responses:
+        '200':
+          description: Backup file stream; snapshots contain credential master keys, keep them safe
+          headers:
+            Content-Disposition:
+              schema: {type: string}
+          content:
+            application/octet-stream:
+              schema: {type: string, format: binary}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
 components:
   securitySchemes:
     BearerAuth:
@@ -2959,6 +3011,14 @@ components:
         latest: {$ref: '#/components/schemas/UpgradeRelease'}
         error: {type: string, description: Failure detail when phase is failed}
         updatedAt: {type: integer, format: int64, minimum: 0, description: Unix seconds of the last state change}
+    BackupFile:
+      type: object
+      additionalProperties: false
+      required: [name, sizeBytes, createdAt]
+      properties:
+        name: {type: string, description: "Snapshot filename, e.g. sb-ops-backup-20260905-103000.db (UTC timestamp)"}
+        sizeBytes: {type: integer, format: int64, minimum: 1}
+        createdAt: {type: integer, format: int64, minimum: 0, description: Unix seconds of snapshot completion}
     LivenessResponse:
       type: object
       additionalProperties: false
@@ -3012,9 +3072,10 @@ components:
             1001 参数校验失败、1002 内部服务器错误、1003 资源不存在、1004 流量查询参数无效、
             2001 未登录或会话失效、2002 用户名或密码错误、2003 密码不符合要求、2004 登录尝试过于频繁、
             2005 管理员已初始化、2006 用户名已存在、3001 资源已被修改、3002 资源正在被引用、
-            3003 名称已存在、3004 凭据需先轮换、5001 sing-box 运行时尚未配置、
+            3003 名称已存在、3004 凭据需先轮换、4001 升级源未配置、4002 查询 GitHub 最新版本失败、
+            4003 已有升级正在进行、4004 当前已是最新版本、5001 sing-box 运行时尚未配置、
             5002 sing-box 运行时操作失败、5003 sing-box 配置同步失败。
-          enum: [1001, 1002, 1003, 1004, 2001, 2002, 2003, 2004, 2005, 2006, 3001, 3002, 3003, 3004, 5001, 5002, 5003]
+          enum: [1001, 1002, 1003, 1004, 2001, 2002, 2003, 2004, 2005, 2006, 3001, 3002, 3003, 3004, 4001, 4002, 4003, 4004, 5001, 5002, 5003]
         message:
           type: string
         data: {type: 'null'}

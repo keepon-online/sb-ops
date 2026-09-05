@@ -27,6 +27,7 @@ import (
 	controlprobe "github.com/keepon-online/sb-ops/internal/probe"
 	argoruntime "github.com/keepon-online/sb-ops/internal/runtime/argo"
 	serviceargo "github.com/keepon-online/sb-ops/internal/service/argo"
+	servicebackup "github.com/keepon-online/sb-ops/internal/service/backup"
 	servicecertificate "github.com/keepon-online/sb-ops/internal/service/certificate"
 	servicepolicy "github.com/keepon-online/sb-ops/internal/service/policy"
 	serviceprotocol "github.com/keepon-online/sb-ops/internal/service/protocol"
@@ -171,6 +172,9 @@ func newOps(db *sql.DB, sessionTTL time.Duration, apply deployment.ApplyConfig, 
 		cfg := configProvider()
 		return cfg.Updates.Repo, cfg.Updates.Token
 	}, version, restart, events)
+	// 数据备份：dir 闭包现取 data_dir（服务不 import internal/config，照
+	// upgrade 的 Source 闭包先例）。
+	backupService := servicebackup.NewService(db, func() string { return configProvider().Server.DataDir })
 	// 新版本自动发现：升级服务缓存最近一次检查结果（页面展示同一份缓存），
 	// 有可升级版本时经 upgrade_available 告警外发。
 	alerts.SetUpgradeSource(func() (controlobservability.UpgradeStatus, bool) {
@@ -194,6 +198,7 @@ func newOps(db *sql.DB, sessionTTL time.Duration, apply deployment.ApplyConfig, 
 		Identity: auth, Store: identityStore, Users: users, Protocols: protocols, Certificates: certificates, Policies: policies, SingBox: singBox, Sync: syncer,
 		Overview: overview, AuditLogs: auditLogs, Share: subscriptions, Traffic: traffic, Events: events, Alerts: alerts, Config: configProvider,
 		Argo: argoService, ArgoManager: argoManager, Monitor: monitor, Upgrade: upgradeService, Prober: prober,
+		Backup: backupService,
 	})
 	background, cancel := context.WithCancel(context.Background())
 	value := &OpsApp{
