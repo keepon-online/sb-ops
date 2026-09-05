@@ -152,11 +152,11 @@ export function UsersPage() {
         expiresAt: 'expiresAt',
         resetIntervalDays: 'resetIntervalDays',
         protocolIds: 'protocolIds',
-        policyIds: 'policyId'
+        policyId: 'policyId'
       };
-      form.setFields(Object.entries(error.fieldErrors)
-        .filter(([name]) => Boolean(fieldNames[name]))
-        .map(([name, errors]) => ({ name: fieldNames[name], errors: [errors] })));
+      const errors = Object.entries(error.fieldErrors)
+        .map(([name, message]) => ({ name: fieldNames[name] ?? name, errors: [message] }));
+      form.setFields(errors);
     }
     return syncFailed;
   };
