@@ -245,6 +245,26 @@ func TestClashRulesPinPanelAddressDirect(t *testing.T) {
 	if combinedRules[0] != "DOMAIN,panel.example.com,DIRECT" || combinedRules[1] != "IP-CIDR,203.0.113.7/32,DIRECT,no-resolve" {
 		t.Fatalf("combined rules = %#v, want domain then IP-CIDR", combinedRules)
 	}
+	// public_address 为 IP、配置 panel_domain 且配置独立 subscription_url_base：订阅域名最前、面板次之、IP-CIDR 第三。
+	subURLInput := input("203.0.113.7")
+	subURLInput.PanelDomain = "panel.example.com"
+	subURLInput.SubscriptionURLBase = "https://sub.example.com:8443"
+	subRules, err := clashRules(subURLInput, user)
+	if err != nil {
+		t.Fatalf("clashRules(subURL): %v", err)
+	}
+	if subRules[0] != "DOMAIN,sub.example.com,DIRECT" || subRules[1] != "DOMAIN,panel.example.com,DIRECT" || subRules[2] != "IP-CIDR,203.0.113.7/32,DIRECT,no-resolve" {
+		t.Fatalf("subRules = %#v, want sub domain, panel domain, then IP-CIDR", subRules)
+	}
+	// subscription_url_base 主机为 IPv6 字面量时钉 IP-CIDR6，而非 DOMAIN。
+	subURLInput.SubscriptionURLBase = "https://[2001:db8::1]:8443"
+	v6Rules, err := clashRules(subURLInput, user)
+	if err != nil {
+		t.Fatalf("clashRules(subURL-v6): %v", err)
+	}
+	if v6Rules[0] != "IP-CIDR6,2001:db8::1/128,DIRECT,no-resolve" {
+		t.Fatalf("v6 rules = %#v, want IP-CIDR6 first", v6Rules)
+	}
 	// 有策略规则的订阅同样把面板地址钉在最前，避免被用户规则覆盖。
 	policyInput := Input{PublicAddress: "panel.example.com", UserPolicies: map[string]map[string]bool{"user": {"p1": true}}}
 	policyInput.Policies = []servicepolicy.Policy{{ID: "p1", Name: "custom", Enabled: true, DefaultAction: "proxy"}}

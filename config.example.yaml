@@ -19,6 +19,11 @@ logging:
 deployment:
   # 客户端拨打的地址,用于订阅与证书生成(公网 IPv4 或域名)。
   public_address: "203.0.113.10"
+  # 可选：面板自环保护域名，用于当 public_address 为 IP 时防自环。
+  # panel_domain: "panel.example.com"
+  # 可选：对外分发的订阅根地址（支持独立域名、CDN 域名或特定端口，如 "https://sub.example.com"）。
+  # 配置后订阅链接一律使用此基准地址；未配置时自动回退为当前请求 Host。
+  # subscription_url_base: ""
 
 # 可选：协议端到端拨测。默认目标为 gstatic 204，默认每 5 分钟一轮。
 # probe:

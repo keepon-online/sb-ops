@@ -84,3 +84,22 @@ rules:
   - MATCH,节点选择
 `, reason, reason))
 }
+
+// subscriptionBaseURL 返回对外分发订阅链接所使用的根地址。
+//  1. 若配置了 deployment.subscription_url_base，以此为单一事实来源（加载期已
+//     归一化：绝对 http(s) 地址、无末尾斜杠）；
+//  2. 未配置时，从当前 HTTP 请求头动态提取（支持反向代理 X-Forwarded-Proto 与 X-Forwarded-Host）。
+func (h *handler) subscriptionBaseURL(c *gin.Context) string {
+	if base := h.Config().Deployment.SubscriptionURLBase; base != "" {
+		return base
+	}
+	scheme := "http"
+	if c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https" {
+		scheme = "https"
+	}
+	host := c.GetHeader("X-Forwarded-Host")
+	if host == "" {
+		host = c.Request.Host
+	}
+	return scheme + "://" + host
+}

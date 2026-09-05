@@ -276,3 +276,36 @@ func TestSolusVMChangesAreImmediate(t *testing.T) {
 		t.Fatalf("summary=%+v", summary)
 	}
 }
+
+func TestSubscriptionURLBaseValidateAndNormalize(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	atomicWriteConfig(t, path, []byte(`
+server:
+  listen: "127.0.0.1:8030"
+deployment:
+  subscription_url_base: " https://sub.example.com/ "
+`))
+	cfg, _, err := LoadRuntimeConfig(path)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if cfg.Deployment.SubscriptionURLBase != "https://sub.example.com" {
+		t.Fatalf("subscription_url_base 归一化异常: %q", cfg.Deployment.SubscriptionURLBase)
+	}
+
+	base := NormalizeRuntimeConfig(DefaultRuntimeConfig())
+	for _, value := range []string{"sub.example.com", "sub.example.com:8443", "ftp://sub.example.com", "https://", "://"} {
+		base.Deployment.SubscriptionURLBase = value
+		if err := ValidateRuntimeConfig(base); err == nil {
+			t.Fatalf("subscription_url_base %q 应校验失败", value)
+		}
+	}
+	base.Deployment.SubscriptionURLBase = "https://sub.example.com:8443"
+	if err := ValidateRuntimeConfig(base); err != nil {
+		t.Fatalf("合法 subscription_url_base 应通过校验: %v", err)
+	}
+	base.Deployment.SubscriptionURLBase = ""
+	if err := ValidateRuntimeConfig(base); err != nil {
+		t.Fatalf("留空 subscription_url_base 应通过校验: %v", err)
+	}
+}

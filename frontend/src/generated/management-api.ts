@@ -1447,6 +1447,8 @@ export interface components {
             subscriptionToken: string;
             /** @description Maximum number of devices allowed for this user. */
             maxDevices: number;
+            /** @description Base URL for subscription links. */
+            subscriptionBaseUrl?: string;
         };
         ResourceDeviceUpdateRequest: {
             enabled: boolean;
@@ -1504,6 +1506,8 @@ export interface components {
         ResourceUserMutationResponse: {
             user: components["schemas"]["ResourceUser"];
             subscriptionToken: string;
+            /** @description Base URL for subscription links. */
+            subscriptionBaseUrl?: string;
         };
         ResourceBatchUserStatusRequest: {
             ids: string[];
@@ -3048,6 +3052,8 @@ export interface operations {
                 content: {
                     "application/json": {
                         subscriptionToken: string;
+                        /** @description Base URL for subscription links. */
+                        subscriptionBaseUrl?: string;
                     };
                 };
             };

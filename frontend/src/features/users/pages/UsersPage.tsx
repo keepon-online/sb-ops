@@ -119,6 +119,7 @@ export function UsersPage() {
   const [editing, setEditing] = useState<ResourceUser | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [issuedToken, setIssuedToken] = useState<string | null>(null);
+  const [issuedBaseUrl, setIssuedBaseUrl] = useState<string | undefined>(undefined);
   const [qrFormat, setQrFormat] = useState<string>();
   const [devicesUser, setDevicesUser] = useState<ResourceUser | null>(null);
   const [trafficUser, setTrafficUser] = useState<ResourceUser | null>(null);
@@ -179,6 +180,7 @@ export function UsersPage() {
       void refresh();
       closeDrawer();
       setIssuedToken(result.subscriptionToken);
+      setIssuedBaseUrl(result.subscriptionBaseUrl);
       message.success('用户已创建并同步到 sing-box');
     },
     onError: (error: Error) => { if (reportError(error)) closeDrawer(); }
@@ -258,14 +260,16 @@ export function UsersPage() {
   const handleQuickCopySubscription = async (user: ResourceUser) => {
     setCopyingUserId(user.id);
     try {
-      const cached = queryClient.getQueryData<{ subscriptionToken?: string }>(['resources', 'users', user.id, 'devices']);
+      const cached = queryClient.getQueryData<{ subscriptionToken?: string; subscriptionBaseUrl?: string }>(['resources', 'users', user.id, 'devices']);
       let token = cached?.subscriptionToken;
+      let baseUrl = cached?.subscriptionBaseUrl;
       if (!token) {
         const devices = await usersApi.listDevices(user.id);
         token = devices.subscriptionToken;
+        baseUrl = devices.subscriptionBaseUrl;
       }
       if (token) {
-        const url = subscriptionUrl(token, 'clash.yaml');
+        const url = subscriptionUrl(token, 'clash.yaml', baseUrl);
         await navigator.clipboard.writeText(url);
         message.success(`已复制 ${user.name} 的 Clash 订阅链接`);
       } else {
@@ -476,7 +480,7 @@ export function UsersPage() {
         </Form>
       </Modal>
 
-      <Modal title="订阅链接" width={620} open={Boolean(issuedToken)} footer={<Button type="primary" onClick={() => { setIssuedToken(null); setQrFormat(undefined); }}>我已保存</Button>} closable={false}>
+      <Modal title="订阅链接" width={620} open={Boolean(issuedToken)} footer={<Button type="primary" onClick={() => { setIssuedToken(null); setIssuedBaseUrl(undefined); setQrFormat(undefined); }}>我已保存</Button>} closable={false}>
         {issuedToken ? (
           <Descriptions column={1} size="small" bordered>
             <Descriptions.Item label="订阅 Token"><Typography.Text code copyable>{issuedToken}</Typography.Text></Descriptions.Item>
@@ -484,14 +488,14 @@ export function UsersPage() {
               <Descriptions.Item key={format} label={<Space size={4}>{format}</Space>}>
                 <Space direction="vertical" size={4} style={{ width: '100%' }}>
                   <Space size={4} wrap>
-                    <Typography.Text copyable={{ text: subscriptionUrl(issuedToken, format) }} ellipsis style={{ maxWidth: 420 }}>
-                      {subscriptionUrl(issuedToken, format)}
+                    <Typography.Text copyable={{ text: subscriptionUrl(issuedToken, format, issuedBaseUrl) }} ellipsis style={{ maxWidth: 420 }}>
+                      {subscriptionUrl(issuedToken, format, issuedBaseUrl)}
                     </Typography.Text>
                     <Button type="text" size="small" icon={<QrcodeOutlined />} aria-label={`${format} 二维码`} onClick={() => setQrFormat(qrFormat === format ? undefined : format)} />
                   </Space>
                   {qrFormat === format ? (
                     <Space direction="vertical" align="center" size={4} style={{ width: '100%', padding: '4px 0' }}>
-                      <QRCode value={subscriptionUrl(issuedToken, format)} size={150} bordered={false} />
+                      <QRCode value={subscriptionUrl(issuedToken, format, issuedBaseUrl)} size={150} bordered={false} />
                       <Typography.Text type="secondary" style={{ fontSize: 12 }}>用客户端扫码后导入订阅</Typography.Text>
                     </Space>
                   ) : null}

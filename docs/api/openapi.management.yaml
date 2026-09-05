@@ -343,6 +343,7 @@ paths:
                 required: [subscriptionToken]
                 properties:
                   subscriptionToken: {type: string, minLength: 32}
+                  subscriptionBaseUrl: {type: string, description: Base URL for subscription links.}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
@@ -1707,6 +1708,7 @@ components:
           items: {$ref: '#/components/schemas/ResourceDevice'}
         subscriptionToken: {type: string, description: The user-level subscription link token; devices are auto-discovered when clients import it.}
         maxDevices: {type: integer, minimum: 1, description: Maximum number of devices allowed for this user.}
+        subscriptionBaseUrl: {type: string, description: Base URL for subscription links.}
     ResourceDeviceUpdateRequest:
       type: object
       additionalProperties: false
@@ -1796,6 +1798,7 @@ components:
       properties:
         user: {$ref: '#/components/schemas/ResourceUser'}
         subscriptionToken: {type: string, minLength: 32}
+        subscriptionBaseUrl: {type: string, description: Base URL for subscription links.}
     ResourceBatchUserStatusRequest:
       type: object
       additionalProperties: false

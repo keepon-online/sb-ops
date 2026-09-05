@@ -66,8 +66,12 @@ type DeploymentConfig struct {
 	// 面板另有域名时填写，订阅会把它钉为最前置的 DIRECT 规则；留空则只钉
 	// public_address。不要在代码里硬编码任何具体域名。
 	PanelDomain string `mapstructure:"panel_domain"`
-	TLSCertPath string `mapstructure:"tls_cert_path"`
-	TLSKeyPath  string `mapstructure:"tls_key_path"`
+	// SubscriptionURLBase 是对外分发的订阅根地址（例如 "https://sub.example.com" 或
+	// "https://sub.example.com:8443"）。配置后订阅链接一律使用此基准地址，且该域名
+	// 自动追加为 DIRECT 规则防自环；未配置时回退为当前请求 Host。
+	SubscriptionURLBase string `mapstructure:"subscription_url_base"`
+	TLSCertPath         string `mapstructure:"tls_cert_path"`
+	TLSKeyPath          string `mapstructure:"tls_key_path"`
 }
 
 // NotificationsConfig holds outbound alert delivery endpoints. All fields are
@@ -204,6 +208,7 @@ func NormalizeRuntimeConfig(cfg RuntimeConfig) RuntimeConfig {
 	}
 	cfg.Deployment.PublicAddress = strings.TrimSpace(cfg.Deployment.PublicAddress)
 	cfg.Deployment.PanelDomain = strings.TrimSpace(cfg.Deployment.PanelDomain)
+	cfg.Deployment.SubscriptionURLBase = strings.TrimRight(strings.TrimSpace(cfg.Deployment.SubscriptionURLBase), "/")
 	cfg.Deployment.TLSCertPath = strings.TrimSpace(cfg.Deployment.TLSCertPath)
 	cfg.Deployment.TLSKeyPath = strings.TrimSpace(cfg.Deployment.TLSKeyPath)
 	cfg.Notifications.WebhookURL = strings.TrimSpace(cfg.Notifications.WebhookURL)
@@ -274,6 +279,12 @@ func ValidateRuntimeConfig(cfg RuntimeConfig) error {
 	parsed, err := url.Parse(cfg.Probe.TargetURL)
 	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
 		return fmt.Errorf("probe.target_url 必须是包含主机的 HTTP 或 HTTPS 地址")
+	}
+	if cfg.Deployment.SubscriptionURLBase != "" {
+		parsed, err := url.Parse(cfg.Deployment.SubscriptionURLBase)
+		if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+			return fmt.Errorf("deployment.subscription_url_base 必须是包含主机的 HTTP 或 HTTPS 地址（如 https://sub.example.com）")
+		}
 	}
 	solusvm := cfg.SolusVM
 	if solusvm.Endpoint != "" || solusvm.APIKey != "" || solusvm.APIHash != "" {

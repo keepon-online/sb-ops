@@ -28,7 +28,12 @@ func (h *handler) listUserDevices(c *gin.Context) {
 		writeResourceError(c, err)
 		return
 	}
-	httpx.OK(c, gin.H{"items": devices, "subscriptionToken": token, "maxDevices": serviceuser.MaxDevicesPerUser})
+	httpx.OK(c, gin.H{
+		"items":               devices,
+		"subscriptionToken":   token,
+		"maxDevices":          serviceuser.MaxDevicesPerUser,
+		"subscriptionBaseUrl": h.subscriptionBaseURL(c),
+	})
 }
 
 // rotateUserSubscription re-issues the user-level subscription link.
@@ -39,7 +44,10 @@ func (h *handler) rotateUserSubscription(c *gin.Context) {
 		return
 	}
 	h.audit(c, actionUserSubscriptionRotate, ResourceUser, c.Param("id"), ResultSuccess)
-	httpx.OK(c, gin.H{"subscriptionToken": token})
+	httpx.OK(c, gin.H{
+		"subscriptionToken":   token,
+		"subscriptionBaseUrl": h.subscriptionBaseURL(c),
+	})
 }
 
 func (h *handler) updateUserDevice(c *gin.Context) {

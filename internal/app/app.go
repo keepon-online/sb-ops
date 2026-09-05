@@ -46,6 +46,7 @@ func New(cfg *config.RuntimeConfigHolder, stop func(), logger *logging.Logger, v
 		CertificateDir:      current.SingBox.CertificateDir,
 		PublicAddress:       current.Deployment.PublicAddress,
 		PanelDomain:         current.Deployment.PanelDomain,
+		SubscriptionURLBase: current.Deployment.SubscriptionURLBase,
 		TLSCertPath:         current.Deployment.TLSCertPath,
 		TLSKeyPath:          current.Deployment.TLSKeyPath,
 		CacheFilePath:       cacheFilePath,

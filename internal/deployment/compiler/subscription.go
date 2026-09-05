@@ -3,6 +3,7 @@ package compiler
 import (
 	"fmt"
 	"net"
+	"net/url"
 	"sort"
 	"strings"
 
@@ -284,29 +285,63 @@ func clashRules(input Input, user serviceuser.ArtifactUser) ([]string, error) {
 	}
 	if len(rules) == 0 {
 		rules = defaultClashRules()
-		return append(selfDirectRules(input.PublicAddress, input.PanelDomain), rules...), nil
+		return append(selfDirectRules(input.PublicAddress, input.PanelDomain, input.SubscriptionURLBase), rules...), nil
 	}
-	return append(append(selfDirectRules(input.PublicAddress, input.PanelDomain), rules...), "MATCH,"+defaultAction), nil
+	return append(append(selfDirectRules(input.PublicAddress, input.PanelDomain, input.SubscriptionURLBase), rules...), "MATCH,"+defaultAction), nil
 }
 
-// selfDirectRules 把面板自身地址钉在规则最前：TUN/系统代理下客户端的订阅
+// selfDirectRules 把面板自身与订阅分发地址钉在规则最前：TUN/系统代理下客户端的订阅
 // 更新与面板访问若走隧道，会由本机内核自环回面板——既采集不到真实来源地址，
-// 面板故障时客户端连订阅都无法刷新。public_address 是裸主机名或 IPv4；
-// panel_domain 是 public_address 配置为 IP 时面板额外的公网域名（可选，
-// 来自 deployment.panel_domain 配置，不在此硬编码任何具体域名）。
-func selfDirectRules(publicAddress, panelDomain string) []string {
+// 面板故障时客户端连订阅都无法刷新。
+// 地址来源包括：
+// 1. subscription_url_base 中的订阅域名或主机名（若已配置）；
+// 2. panel_domain 面板公网域名（若配置）；
+// 3. public_address 节点公网地址（IPv4 或域名）。
+func selfDirectRules(publicAddress, panelDomain, subscriptionURLBase string) []string {
 	var rules []string
-	if domain := strings.TrimSpace(panelDomain); domain != "" {
+	seen := make(map[string]bool)
+
+	addDomain := func(domain string) {
+		domain = strings.TrimSpace(domain)
+		if domain == "" || seen[domain] {
+			return
+		}
+		seen[domain] = true
 		rules = append(rules, "DOMAIN,"+domain+",DIRECT")
 	}
-	host := strings.TrimSpace(publicAddress)
-	if host == "" || host == strings.TrimSpace(panelDomain) {
-		return rules
+
+	addHost := func(host string) {
+		host = strings.TrimSpace(host)
+		if host == "" || seen[host] {
+			return
+		}
+		seen[host] = true
+		if ip := net.ParseIP(host); ip != nil {
+			if ip.To4() != nil {
+				rules = append(rules, "IP-CIDR,"+host+"/32,DIRECT,no-resolve")
+			} else {
+				rules = append(rules, "IP-CIDR6,"+host+"/128,DIRECT,no-resolve")
+			}
+			return
+		}
+		rules = append(rules, "DOMAIN,"+host+",DIRECT")
 	}
-	if ip := net.ParseIP(host); ip != nil && ip.To4() != nil {
-		return append(rules, "IP-CIDR,"+host+"/32,DIRECT,no-resolve")
+
+	// 配置层已把 subscription_url_base 校验为带主机的绝对 http(s) 地址，
+	// 这里只负责提取主机名（空主机由 addHost 兜底忽略）。
+	if subBase := strings.TrimSpace(subscriptionURLBase); subBase != "" {
+		if parsed, err := url.Parse(subBase); err == nil {
+			addHost(parsed.Hostname())
+		}
 	}
-	return append(rules, "DOMAIN,"+host+",DIRECT")
+
+	if domain := strings.TrimSpace(panelDomain); domain != "" {
+		addDomain(domain)
+	}
+
+	addHost(publicAddress)
+
+	return rules
 }
 
 func defaultClashRules() []string {

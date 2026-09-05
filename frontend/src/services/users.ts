@@ -21,8 +21,9 @@ function userPath(id: string, suffix = '') {
   return `/api/v1/users/${encodeURIComponent(id)}${suffix}`;
 }
 
-export function subscriptionUrl(token: string, format: string) {
-  return `${window.location.origin}/subscribe/${encodeURIComponent(token)}/${encodeURIComponent(format)}`;
+export function subscriptionUrl(token: string, format: string, baseUrl?: string) {
+  const base = (baseUrl || window.location.origin).replace(/\/+$/, '');
+  return `${base}/subscribe/${encodeURIComponent(token)}/${encodeURIComponent(format)}`;
 }
 
 export const usersApi = {
@@ -55,7 +56,7 @@ export const usersApi = {
   rotateDevice: (id: string, did: string) => managementRequest<components['schemas']['ResourceDeviceMutationResponse']>(userPath(id, `/devices/${encodeURIComponent(did)}/credentials/rotate`), {
     method: 'POST', body: '{}'
   }),
-  rotateSubscription: (id: string) => managementRequest<{ subscriptionToken: string }>(userPath(id, '/subscription/rotate'), {
+  rotateSubscription: (id: string) => managementRequest<{ subscriptionToken: string; subscriptionBaseUrl?: string }>(userPath(id, '/subscription/rotate'), {
     method: 'POST', body: '{}'
   }),
   resetTraffic: (id: string) => managementRequest<ResourceUser>(userPath(id, '/traffic/reset'), {

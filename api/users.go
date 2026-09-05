@@ -27,8 +27,9 @@ type userWriteRequest struct {
 
 // userMutationResponse 建号只回用户级订阅 token；设备凭据由设备接口返回。
 type userMutationResponse struct {
-	User         serviceuser.User `json:"user"`
-	Subscription *string          `json:"subscriptionToken,omitempty"`
+	User                serviceuser.User `json:"user"`
+	Subscription        *string          `json:"subscriptionToken,omitempty"`
+	SubscriptionBaseURL string           `json:"subscriptionBaseUrl,omitempty"`
 }
 
 type batchStatusRequest struct {
@@ -62,7 +63,11 @@ func (h *handler) createUser(c *gin.Context) {
 	if !h.mutate(c, err, actionUserCreate, ResourceUser, "", value.ID) {
 		return
 	}
-	httpx.Created(c, userMutationResponse{User: value, Subscription: &token})
+	httpx.Created(c, userMutationResponse{
+		User:                value,
+		Subscription:        &token,
+		SubscriptionBaseURL: h.subscriptionBaseURL(c),
+	})
 }
 
 func (h *handler) getUser(c *gin.Context) {
