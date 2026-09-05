@@ -2,6 +2,17 @@
 
 本文件记录 sb-ops 的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/)。
 
+## [未发布]
+
+### 新增
+
+- **订阅根地址 `subscription_url_base`**：新增 `config.yaml` 可选键 `deployment.subscription_url_base`——配置后订阅链接一律以它为基准，管理员经 SSH 隧道或内网地址访问面板时拷出的链接不再带不可达地址；加载期校验（带主机的绝对 http/https 地址）并归一化，非法值拒绝加载、热重载保留旧配置。未配置时回退请求头推导（支持反代 X-Forwarded-*），零配置环境行为不变。设备/轮换/建号接口同步下发 `subscriptionBaseUrl`；编译器把订阅域名钉为最前置 DIRECT 规则防自环（IPv6 主机落 IP-CIDR6）。
+- **设备抽屉 IP 与订阅链接脱敏**：设备来源 IP、设备名中的 IP、订阅链接的域名与 token 默认脱敏展示（复制仍写入完整链接），顶栏开关与 IP 标签点击切换明文，截屏分享面板不再泄露出口地址与订阅凭据。
+
+### 修复
+
+- **用户表单字段错误回填**：编辑用户时策略字段的校验错误因映射键名不一致（`policyIds` vs 请求体 `policyId`）被静默丢弃，现按 JSON 字段名直接映射，未知键透传表单名。
+
 ## [0.3.7] - 2026-09-05
 
 ### 新增
