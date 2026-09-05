@@ -249,7 +249,7 @@ function BackupSection() {
     <Table rowKey="name" size="small" pagination={false} loading={backups.isLoading}
       dataSource={backups.data?.items || []} columns={columns} locale={{ emptyText: '暂无备份' }} />
     <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginTop: 12, marginBottom: 0 }}>
-      每日 04:00 自动备份一次（除手动外，面板持续运行时每日固定留一份）；自动保留最近 20 份，超出裁剪最旧；恢复时停机将备份文件替换 data 目录下的 singbox-web.db（并删除同名 -wal/-shm 文件）后重启面板。
+      每日 04:00 自动备份一次（除手动外，面板持续运行时每日固定留一份）；自动保留最近 5 份，超出裁剪最旧；恢复时停机将备份文件替换 data 目录下的 singbox-web.db（并删除同名 -wal/-shm 文件）后重启面板。
     </Typography.Paragraph>
   </section>;
 }

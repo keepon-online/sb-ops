@@ -19,7 +19,7 @@ import (
 
 // maxBackups 是保留的最近备份份数，创建成功后自动裁剪最旧的超限备份
 // （常量硬编码，勿进 config.yaml）。
-const maxBackups = 20
+const maxBackups = 5
 
 // backupDirName 是 data_dir 下 dedicated 存放备份的子目录名。
 const backupDirName = "backups"
