@@ -134,6 +134,10 @@ func TestProbeEndToEndThroughRealKernel(t *testing.T) {
 	if len(stored) != 1 || stored[0].ProtocolID != protocol.ID || stored[0].Status != "ok" {
 		t.Fatalf("stored=%+v, want 一行 ok 结果", stored)
 	}
+	// 名字由读取面 JOIN 解析（拨测行只存 id）——总览卡依赖此字段。
+	if stored[0].ProtocolName != protocol.Name {
+		t.Fatalf("protocolName=%q, want %q", stored[0].ProtocolName, protocol.Name)
+	}
 
 	// 错误凭据场景：设备密码被改（服务端仍按原密码校验），拨测必须失败
 	// 且带错误信息——「端口在听但链路不通」正是本功能要暴露的故障形态。
@@ -154,6 +158,36 @@ func TestProbeEndToEndThroughRealKernel(t *testing.T) {
 	}
 	if stored[0].Status != "failed" {
 		t.Fatalf("stored status=%s, want failed 覆盖落库", stored[0].Status)
+	}
+}
+
+// TestListResolvesProtocolNames 读取面经 JOIN 把 protocol_id 解析成名字；
+// 协议删除后残留的拨测行回退显示 protocol_id（不因 JOIN 丢行）。
+func TestListResolvesProtocolNames(t *testing.T) {
+	db := newProbeTestDB(t)
+	protocol := seedProtocol(t, db, 18321) // 端口不需要真实监听：不走拨测，仅读写落库行
+	store := NewStore(db)
+	latency := int64(33)
+	if err := store.Upsert(t.Context(), []Item{{ProtocolID: protocol.ID, Status: "ok", LatencyMS: &latency, CheckedAt: time.Now().UTC()}}); err != nil {
+		t.Fatalf("Upsert: %v", err)
+	}
+	stored, err := store.List(t.Context())
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(stored) != 1 || stored[0].ProtocolName != protocol.Name {
+		t.Fatalf("stored=%+v, want name %q", stored, protocol.Name)
+	}
+
+	if _, err := db.Exec(`DELETE FROM protocols WHERE id=?`, protocol.ID); err != nil {
+		t.Fatalf("delete protocol: %v", err)
+	}
+	stored, err = store.List(t.Context())
+	if err != nil {
+		t.Fatalf("List after delete: %v", err)
+	}
+	if len(stored) != 1 || stored[0].ProtocolName != protocol.ID {
+		t.Fatalf("stored=%+v, want 残留行回退 protocol_id", stored)
 	}
 }
 

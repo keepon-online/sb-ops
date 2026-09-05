@@ -60,9 +60,11 @@ ON CONFLICT(protocol_id) DO UPDATE SET status=excluded.status,latency_ms=exclude
 	return tx.Commit()
 }
 
-// List 返回全部已落库的拨测结果（checked_at 升序，稳定展示）。
+// List 返回全部已落库的拨测结果（checked_at 升序，稳定展示）。名字读取时
+// 经 JOIN 解析（拨测行只存 protocol_id）——协议改名自动跟随；协议已删而
+// 残留行未级联时回退显示 protocol_id。
 func (s *Store) List(ctx context.Context) ([]Item, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT protocol_id,status,latency_ms,error,checked_at FROM probe_results ORDER BY checked_at,protocol_id`)
+	rows, err := s.db.QueryContext(ctx, `SELECT r.protocol_id,COALESCE(p.name,r.protocol_id),r.status,r.latency_ms,r.error,r.checked_at FROM probe_results r LEFT JOIN protocols p ON p.id=r.protocol_id ORDER BY r.checked_at,r.protocol_id`)
 	if err != nil {
 		return nil, fmt.Errorf("读取拨测结果失败: %w", err)
 	}
@@ -72,7 +74,7 @@ func (s *Store) List(ctx context.Context) ([]Item, error) {
 		var item Item
 		var latency sql.NullInt64
 		var checkedAt int64
-		if err := rows.Scan(&item.ProtocolID, &item.Status, &latency, &item.Error, &checkedAt); err != nil {
+		if err := rows.Scan(&item.ProtocolID, &item.ProtocolName, &item.Status, &latency, &item.Error, &checkedAt); err != nil {
 			return nil, err
 		}
 		if latency.Valid {
