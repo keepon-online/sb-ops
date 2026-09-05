@@ -6,6 +6,18 @@
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/keepon-online/sb-ops)](https://github.com/keepon-online/sb-ops/releases)
 
+## 界面预览
+
+<p align="center">
+  <img src="docs/images/dashboard-dark.png" alt="sb-ops 仪表盘（深色极客模式）" width="100%" />
+</p>
+
+| 浅色主题控制台 | 设备自动发现与独立凭据抽屉 |
+| :---: | :---: |
+| <img src="docs/images/dashboard-light.png" alt="浅色模式仪表盘" /> | <img src="docs/images/devices-drawer.png" alt="设备管理抽屉" /> |
+| **协议端口监听与端到端链路实测** | **24 小时多维流量趋势与活跃用户** |
+| <img src="docs/images/protocols-probe.png" alt="协议链路拨测" /> | <img src="docs/images/traffic-analytics.png" alt="流量分析趋势" /> |
+
 ## 为什么选 sb-ops
 
 在自用 VPS 上跑 sing-box，常见姿势是 x-ui 系面板或手写 `sb.json`。sb-ops 提供第三种选择：
@@ -15,6 +27,84 @@
 - **流量看得见**：内嵌内核的 V2Ray stats 按设备归因、汇总到用户，驱动 GB 额度扣减与超量阻断；Clash API 提供实时连接观测（入站 / 出口 / 命中规则）。
 - **改配置不掉链子**：保存资源即编译配置并热重建内核，新配置起不来自动回滚上一份成功配置；悬空出站引用有全链路校验（这类错误 sing-box 自检不报、内核照常启动、命中才断连）；全部管理操作留审计，更新类操作记录字段级 `{old, new}` diff。
 - **面板自升级**：配置 GitHub Release 源后，网页上一键检查并升级——sha256 校验、备份 `.bak`、原子替换、优雅重启，协议入站由启动同步自动恢复。
+
+## 架构设计
+
+sb-ops 采用高内聚的单进程设计，将配置编译、生命周期管理、协议拨测与前端控制台完整收敛：
+
+```mermaid
+flowchart TB
+    subgraph Clients["客户端与外部交互"]
+        ClientApp["代理客户端<br/>(Clash Verge / Mihomo / 系统代理)"]
+        AdminBrowser["管理员浏览器<br/>(Web 控制台 · 支持深/浅色与移动端)"]
+    end
+
+    subgraph Host["VPS 宿主层"]
+        Nginx["Nginx TLS 反代<br/>(:80 / :443 HTTPS)"]
+        ProtoPorts["协议入站端口<br/>(TCP / UDP 直连 · 端口跳跃 REDIRECT)"]
+    end
+
+    subgraph SBOps["sb-ops 单二进制进程 (Single Go Binary)"]
+        subgraph WebLayer["控制台与接入层 (Web & API)"]
+            WebUI["嵌入式 Web 控制台<br/>(React + AntD · 静态资源编译内嵌)"]
+            API["管理 API & 审计中间件<br/>(统一 JSON 信封 · 字段级 {old, new} Diff)"]
+            Subscribe["订阅端点 (/subscribe)<br/>clash.yaml 产物 · 设备自动发现指纹"]
+        end
+
+        subgraph CoreServices["业务控制面 (Control Plane)"]
+            Compiler["配置编译器 (Compiler)<br/>受管资源 → sb.json · 悬空引用全链路校验"]
+            Syncer["生命周期同步器 (Syncer)<br/>热加载内核 · 故障原子回滚"]
+            Prober["端到端协议拨测 (Prober)<br/>借用真实设备凭据 · 穿透入站实测链路"]
+            Profiler["设备画像引擎 (DeviceProfiler)<br/>实时连接域名分析 · 推断 OS 平台"]
+            Upgrader["面板自升级 (Upgrader)<br/>Release 下载 · sha256 校验 · 优雅重生"]
+        end
+
+        subgraph EmbeddedKernel["内嵌 sing-box 内核 (Embedded Kernel)"]
+            SingBox["sing-box 内核实例<br/>(VLESS / VMess / Trojan / Hy2 / TUIC / SS / AnyTLS)"]
+            V2RayStats["V2Ray Stats gRPC<br/>(按设备归因 · 驱动 GB 额度扣减与超量阻断)"]
+            ClashAPI["Clash API 观测<br/>(/connections 实时连接表)"]
+            LogWriter["PlatformLogWriter<br/>内核日志清洗入面板日志 · 屏蔽 ANSI/INFO 前缀"]
+        end
+
+        subgraph DataStorage["持久化存储 (Storage)"]
+            SQLite[("SQLite 数据库 (WAL 模式)<br/>用户 · 设备 · 协议 · 分流 · 审计 · 历史流量")]
+        end
+    end
+
+    subgraph External["外部基础设施与服务"]
+        Cloudflare["Cloudflare 生态<br/>(ACME DNS-01 · WARP 出站 · Argo 隧道)"]
+        SolusVM["SolusVM / 提供商 API<br/>(VPS 宿主层物理月流量对账)"]
+        AlertSink["告警外发通知<br/>(Telegram Bot · Webhook)"]
+    end
+
+    AdminBrowser -->|HTTPS 管理请求| Nginx
+    ClientApp -->|拉取 clash.yaml 订阅| Nginx
+    Nginx -->|反代本地 :8030| WebUI
+    Nginx -->|反代本地 :8030| API
+    Nginx -->|反代本地 :8030| Subscribe
+    ClientApp -->|代理流量直连| ProtoPorts
+    ProtoPorts --> SingBox
+
+    WebUI --> API
+    Subscribe -->|ETag / UA+IP 指纹| SQLite
+    API -->|读写业务数据| SQLite
+    API --> Compiler
+    Compiler -->|编译规则与出站| Syncer
+    Syncer -->|热加载 / 故障回滚| SingBox
+    Prober -->|环回穿透拨测| SingBox
+
+    SingBox -.->|流量计数| V2RayStats
+    SingBox -.->|连接快照| ClashAPI
+    SingBox -.->|日志输出| LogWriter
+
+    V2RayStats -->|用量扣减与超量阻断| SQLite
+    ClashAPI -->|活跃连接画像| Profiler
+    Profiler -->|更新设备平台| SQLite
+
+    CoreServices <--> Cloudflare
+    CoreServices --> SolusVM
+    CoreServices --> AlertSink
+```
 
 ## 特性
 
@@ -130,6 +220,7 @@ deployment:
   public_address: "203.0.113.10"  # 必改：客户端订阅里拨打的地址（公网 IPv4 或域名）
   # panel_domain: "panel.example.com"  # 可选：public_address 为 IP 而面板另有域名时填写，
   #                                    # 订阅会把它钉为最前置的 DIRECT 规则（防自环）
+  # subscription_url_base: "https://sub.example.com" # 可选：对外订阅根地址（支持独立域名、CDN 域名或特定端口）
   # tls_cert_path: ""             # 可选外部 TLS 证书；留空 = 面板生成的自签证书
   # tls_key_path: ""
 
