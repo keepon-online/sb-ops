@@ -1442,6 +1442,19 @@ paths:
         - {name: severity, in: query, schema: {type: string, enum: [warning, critical]}}
         - {name: type, in: query, schema: {type: string}}
       responses: {'200': {description: Alert list, content: {application/json: {schema: {$ref: '#/components/schemas/AlertPage'}}}}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}}
+  /api/v1/alerts/stats:
+    get:
+      tags: [Alerts]
+      operationId: listAlertStats
+      summary: Aggregated alert trend over recent days (opened/resolved per local day, MTTR)
+      security: [{BearerAuth: []}]
+      parameters:
+        - {name: days, in: query, schema: {type: integer, minimum: 1, maximum: 90, default: 30}}
+      responses:
+        '200': {description: Alert trend stats, content: {application/json: {schema: {allOf: [{$ref: '#/components/schemas/SuccessEnvelope'}, {properties: {data: {$ref: '#/components/schemas/AlertStats'}}}]}}}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
   /api/v1/alerts/{id}/acknowledge:
     post:
       tags: [Alerts]
@@ -2839,6 +2852,24 @@ components:
       properties:
         items: {type: array, items: {$ref: '#/components/schemas/Alert'}}
         notifications: {$ref: '#/components/schemas/NotificationStats'}
+    AlertStats:
+      type: object
+      additionalProperties: false
+      required: [daily, totalOpened, totalResolved, currentOpen]
+      properties:
+        daily: {type: array, items: {$ref: '#/components/schemas/DailyAlertStat'}}
+        totalOpened: {type: integer, format: int64, minimum: 0}
+        totalResolved: {type: integer, format: int64, minimum: 0}
+        currentOpen: {type: integer, format: int64, minimum: 0}
+        mttrSeconds: {type: integer, format: int64, minimum: 0, description: 平均修复时间（秒），窗口内无已恢复告警时缺省}
+    DailyAlertStat:
+      type: object
+      additionalProperties: false
+      required: [date, opened, resolved]
+      properties:
+        date: {type: string, description: 服务器本地时区自然日（YYYY-MM-DD）}
+        opened: {type: integer, format: int64, minimum: 0}
+        resolved: {type: integer, format: int64, minimum: 0}
     NotificationStats:
       type: object
       additionalProperties: false

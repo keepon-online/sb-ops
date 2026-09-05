@@ -1286,6 +1286,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/alerts/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Aggregated alert trend over recent days (opened/resolved per local day, MTTR) */
+        get: operations["listAlertStats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/alerts/{id}/acknowledge": {
         parameters: {
             query?: never;
@@ -2425,6 +2442,28 @@ export interface components {
         AlertPage: {
             items: components["schemas"]["Alert"][];
             notifications: components["schemas"]["NotificationStats"];
+        };
+        AlertStats: {
+            daily: components["schemas"]["DailyAlertStat"][];
+            /** Format: int64 */
+            totalOpened: number;
+            /** Format: int64 */
+            totalResolved: number;
+            /** Format: int64 */
+            currentOpen: number;
+            /**
+             * Format: int64
+             * @description 平均修复时间（秒），窗口内无已恢复告警时缺省
+             */
+            mttrSeconds?: number;
+        };
+        DailyAlertStat: {
+            /** @description 服务器本地时区自然日（YYYY-MM-DD） */
+            date: string;
+            /** Format: int64 */
+            opened: number;
+            /** Format: int64 */
+            resolved: number;
         };
         NotificationStats: {
             /** Format: int64 */
@@ -5357,6 +5396,33 @@ export interface operations {
                     "application/json": components["schemas"]["AlertPage"];
                 };
             };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    listAlertStats: {
+        parameters: {
+            query?: {
+                days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Alert trend stats */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessEnvelope"] & {
+                        data?: components["schemas"]["AlertStats"];
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
         };

@@ -202,6 +202,7 @@ func RegisterRoutes(router *gin.Engine, dependencies Dependencies) {
 	if h.Alerts != nil {
 		alertsRead := authenticated.Group("/alerts")
 		alertsRead.GET("", h.listAlerts)
+		alertsRead.GET("/stats", h.alertStats)
 		alertsWrite := authenticated.Group("/alerts")
 		alertsWrite.POST("/:id/acknowledge", h.acknowledgeAlert)
 	}

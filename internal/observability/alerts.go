@@ -315,6 +315,75 @@ func (s *Service) List(ctx context.Context, status, severity, alertType string) 
 	return values, rows.Err()
 }
 
+// DailyAlertStat 是按日聚合的告警计数，date 为服务器本地时区的自然日。
+type DailyAlertStat struct {
+	Date     string `json:"date"`
+	Opened   int    `json:"opened"`
+	Resolved int    `json:"resolved"`
+}
+
+// AlertStats 是告警趋势统计：opened 按告警首次打开的自然日分桶（fingerprint
+// upsert 不改 first_seen_at，闪断重开不重复计数），resolved 按恢复日分桶；
+// mttrSeconds 只统计窗口内恢复的告警，无样本时缺省。
+type AlertStats struct {
+	Daily         []DailyAlertStat `json:"daily"`
+	TotalOpened   int              `json:"totalOpened"`
+	TotalResolved int              `json:"totalResolved"`
+	CurrentOpen   int              `json:"currentOpen"`
+	MttrSeconds   *int64           `json:"mttrSeconds,omitempty"`
+}
+
+func (s *Service) Stats(ctx context.Context, days int) (AlertStats, error) {
+	// s.now() 恒为 UTC，分桶统一换算到本地时区（单机部署下即面板用户时区）。
+	now := time.Unix(s.now().Unix(), 0)
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	start := today.AddDate(0, 0, -(days - 1))
+	stats := AlertStats{Daily: make([]DailyAlertStat, 0, days)}
+	buckets := make(map[string]*DailyAlertStat, days)
+	for day := start; !day.After(today); day = day.AddDate(0, 0, 1) {
+		stats.Daily = append(stats.Daily, DailyAlertStat{Date: day.Format("2006-01-02")})
+		buckets[stats.Daily[len(stats.Daily)-1].Date] = &stats.Daily[len(stats.Daily)-1]
+	}
+	startUnix := start.Unix()
+	rows, err := s.db.QueryContext(ctx, `SELECT first_seen_at,resolved_at FROM operational_alerts WHERE first_seen_at>=? OR (resolved_at IS NOT NULL AND resolved_at>=?)`, startUnix, startUnix)
+	if err != nil {
+		return AlertStats{}, err
+	}
+	defer rows.Close()
+	var resolvedSum, resolvedSamples int64
+	for rows.Next() {
+		var first, resolved sql.NullInt64
+		if err := rows.Scan(&first, &resolved); err != nil {
+			return AlertStats{}, err
+		}
+		if first.Valid && first.Int64 >= startUnix {
+			if bucket, ok := buckets[time.Unix(first.Int64, 0).Format("2006-01-02")]; ok {
+				bucket.Opened++
+			}
+			stats.TotalOpened++
+		}
+		if resolved.Valid && resolved.Int64 >= startUnix {
+			if bucket, ok := buckets[time.Unix(resolved.Int64, 0).Format("2006-01-02")]; ok {
+				bucket.Resolved++
+			}
+			stats.TotalResolved++
+			resolvedSum += resolved.Int64 - first.Int64
+			resolvedSamples++
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return AlertStats{}, err
+	}
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(1) FROM operational_alerts WHERE status='open'`).Scan(&stats.CurrentOpen); err != nil {
+		return AlertStats{}, err
+	}
+	if resolvedSamples > 0 {
+		mttr := resolvedSum / resolvedSamples
+		stats.MttrSeconds = &mttr
+	}
+	return stats, nil
+}
+
 func (s *Service) Acknowledge(ctx context.Context, id, actorID string) (Alert, error) {
 	now := s.now()
 	tx, err := s.db.BeginTx(ctx, nil)
