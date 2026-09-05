@@ -799,10 +799,10 @@ export function SingBoxPage() {
 
                 {/* 摘要信息卡片 */}
                 <Card size="small" title="当前运行时指纹与摘要" style={{ marginBottom: 16 }}>
-                  <Descriptions size="small" column={{ xs: 1, sm: 2 }}>
+                  <Descriptions size="small" column={1}>
                     <Descriptions.Item label="配置摘要">
                       {runtime.data?.configDigest ? (
-                        <Typography.Text code copyable={{ text: runtime.data.configDigest }} style={{ fontSize: 12 }}>
+                        <Typography.Text code copyable={{ text: runtime.data.configDigest }} style={{ fontSize: 12, wordBreak: 'break-all' }}>
                           {runtime.data.configDigest}
                         </Typography.Text>
                       ) : (
