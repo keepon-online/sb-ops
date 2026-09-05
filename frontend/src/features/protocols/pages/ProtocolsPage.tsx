@@ -33,7 +33,9 @@ import {
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Page } from '../../../components/Page';
+import { CertificateExpiryTag } from '../../../components/CertificateExpiryTag';
 import { ApiCode, ApiError } from '../../../services/http';
 import {
   certificatesApi,
@@ -95,7 +97,9 @@ const portHopRuleLabels: Record<string, string> = {
 export function ProtocolsPage() {
   const { message, notification } = AntApp.useApp();
   const screens = Grid.useBreakpoint();
-  const [tab, setTab] = useState('protocols');
+  // 支持 /protocols?tab=certificates 深链（总览证书预警卡等入口跳转用）。
+  const [searchParams] = useSearchParams();
+  const [tab, setTab] = useState(searchParams.get('tab') === 'certificates' ? 'certificates' : 'protocols');
   const [protocolDrawer, setProtocolDrawer] = useState(false);
   const [certificateDrawer, setCertificateDrawer] = useState(false);
   const [acmeDrawer, setAcmeDrawer] = useState(false);
@@ -366,7 +370,7 @@ export function ProtocolsPage() {
     { title: '来源', dataIndex: 'source', width: 90, render: (value: string) => <Tag color={value === 'acme' ? 'success' : value === 'self_signed' ? 'processing' : 'default'}>{certificateSourceLabels[value] || value}</Tag> },
     { title: '域名', dataIndex: 'domain', width: 150, render: (value?: string) => value || '-' },
     { title: '指纹', dataIndex: 'fingerprint', ellipsis: true, render: (value: string) => <Typography.Text code copyable>{value}</Typography.Text> },
-    { title: '到期时间', dataIndex: 'notAfter', width: 170, render: (value: string) => new Date(value).toLocaleString() },
+    { title: '到期时间', dataIndex: 'notAfter', width: 210, render: (value: string) => <CertificateExpiryTag notAfter={value} /> },
     {
       title: '操作', width: 110,
       render: (_, value) => <Space size={2}>
