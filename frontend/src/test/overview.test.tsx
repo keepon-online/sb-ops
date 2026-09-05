@@ -23,6 +23,26 @@ vi.mock('../services/controlPlane', () => ({
   }
 }));
 
+vi.mock('../services/protocols', () => ({
+  protocolsApi: {
+    probeResults: vi.fn(() => Promise.resolve({
+      items: [
+        { protocolId: 'p1', protocolName: 'VLESS Reality', status: 'ok', latencyMs: 32, checkedAt: '2026-09-05T10:00:00Z' },
+        { protocolId: 'p2', protocolName: 'VMess', status: 'failed', error: '连接超时', checkedAt: '2026-09-05T10:00:00Z' }
+      ]
+    })),
+    runProbe: vi.fn(() => Promise.resolve({ checkedAt: '2026-09-05T10:05:00Z', items: [] }))
+  },
+  certificatesApi: {
+    list: vi.fn(() => Promise.resolve({
+      items: [
+        { id: 'c1', name: '站点证书', source: 'acme', domain: 'example.com', fingerprint: 'aa', notBefore: '2026-06-01T00:00:00Z', notAfter: new Date(Date.now() + 10 * 86400000).toISOString() },
+        { id: 'c2', name: '长期证书', source: 'acme', domain: 'far.example', fingerprint: 'bb', notBefore: '2026-01-01T00:00:00Z', notAfter: new Date(Date.now() + 200 * 86400000).toISOString() }
+      ]
+    }))
+  }
+}));
+
 function renderOverview() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -43,6 +63,20 @@ function renderOverview() {
 
 describe('overview navigation', () => {
   afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+
+  it('renders probe health rows and certificate warning card', async () => {
+    renderOverview();
+    // 拨测卡片：一行通、一行失败带原因。
+    expect(await screen.findByText('VLESS Reality')).toBeInTheDocument();
+    expect(screen.getByText('32 ms')).toBeInTheDocument();
+    expect(screen.getByText('VMess')).toBeInTheDocument();
+    expect(screen.getByText('连接超时')).toBeInTheDocument();
+    // 证书预警卡片：只列 30 天内到期的证书，远期证书不出现。
+    expect(await screen.findByText('证书预警')).toBeInTheDocument();
+    expect(screen.getByText('站点证书')).toBeInTheDocument();
+    expect(screen.queryByText('长期证书')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '证书管理' })).toBeInTheDocument();
+  });
 
   it('routes the runtime reason shortcut in-app without opening a browser window', async () => {
     const open = vi.spyOn(window, 'open');

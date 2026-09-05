@@ -7,17 +7,22 @@ import {
   LinkOutlined,
   MobileOutlined,
   ReloadOutlined,
+  SafetyCertificateOutlined,
   SettingOutlined,
-  TeamOutlined
+  TeamOutlined,
+  ThunderboltOutlined
 } from '@ant-design/icons';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { Alert, Button, Col, Descriptions, Progress, Result, Row, Space, Statistic, Tag, Typography } from 'antd';
 import dayjs from 'dayjs';
 import { useNavigate } from 'react-router-dom';
+import { CERTIFICATE_WARNING_DAYS, CertificateExpiryTag, certificateDaysLeft } from '../../../components/CertificateExpiryTag';
 import { InteractiveChart } from '../../../components/InteractiveChart';
 import { Page } from '../../../components/Page';
 import { controlPlaneApi, type ManagementOverview } from '../../../services/controlPlane';
 import { ApiError } from '../../../services/http';
+import { certificatesApi, protocolsApi } from '../../../services/protocols';
+import { queryClient } from '../../../services/queryClient';
 import { trafficApi } from '../../../services/traffic';
 import { configStatusLabels, kernelStatusLabels, runtimeStatusLabels } from '../../../util/labels';
 import { useAppTheme } from '../../../context/ThemeContext';
@@ -56,6 +61,14 @@ export function OverviewPage() {
     retry: false,
     refetchInterval: 60000
   });
+  // 方案 1：拨测与证书在前端独立拉取（与协议页共享 queryKey 缓存），保持
+  // overview 聚合端点不膨胀；拨测 5 分钟一轮，60s 轮询足够新鲜。
+  const probeResults = useQuery({ queryKey: ['resources', 'protocols-probe'], queryFn: protocolsApi.probeResults, retry: false, refetchInterval: 60000 });
+  const certificates = useQuery({ queryKey: ['resources', 'certificates'], queryFn: certificatesApi.list, retry: false });
+  const runProbe = useMutation({
+    mutationFn: () => protocolsApi.runProbe(),
+    onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ['resources', 'protocols-probe'] }); }
+  });
 
   if (overview.isError) return <Result status={overview.error instanceof ApiError && overview.error.status === 403 ? '403' : 'error'} title={overview.error.message} extra={<Button type="primary" icon={<ReloadOutlined />} onClick={() => void overview.refetch()}>重试</Button>} />;
   const value = overview.data;
@@ -65,6 +78,10 @@ export function OverviewPage() {
   const autoCount = value?.devices?.auto ?? 0;
 
   const trafficPoints = traffic24hSeries.data?.items || [];
+  const probeItems = probeResults.data?.items || [];
+  const expiringCertificates = (certificates.data?.items || [])
+    .filter((certificate) => certificateDaysLeft(certificate.notAfter) <= CERTIFICATE_WARNING_DAYS)
+    .sort((a, b) => certificateDaysLeft(a.notAfter) - certificateDaysLeft(b.notAfter));
   const sparklineLabels = trafficPoints.map((p) => dayjs(p.bucket).format('HH:mm'));
   const sparklineSeries = [
     { name: '下行', color: downColor, values: trafficPoints.map((p) => p.downBytes) },
@@ -118,6 +135,39 @@ export function OverviewPage() {
             { key: 'applied', label: '最后成功同步', children: value?.lastAppliedAt ? new Date(value.lastAppliedAt).toLocaleString() : '暂无' },
             { key: 'digest', label: '当前配置摘要', children: value?.configDigest ? <Typography.Text code style={{ fontSize: 12 }}>{value.configDigest}</Typography.Text> : '暂无' }
           ]} />
+        </section>
+
+        <section className="overview-card">
+          <div className="overview-card-title">
+            <Typography.Title level={4} style={{ margin: 0 }}>协议链路健康</Typography.Title>
+            <Space>
+              <Button size="small" icon={<ApiOutlined />} onClick={() => navigate('/protocols')}>协议管理</Button>
+              <Button size="small" icon={<ThunderboltOutlined />} loading={runProbe.isPending} onClick={() => runProbe.mutate()}>立即拨测</Button>
+            </Space>
+          </div>
+          {probeItems.length > 0 ? (
+            <Space direction="vertical" style={{ width: '100%' }} size={6}>
+              {probeItems.map((item) => (
+                <div className="page-toolbar" key={item.protocolId} style={{ marginBottom: 0 }}>
+                  <Space size={6}>
+                    <Tag color={item.status === 'ok' ? 'success' : item.status === 'failed' ? 'error' : 'default'}>
+                      {item.status === 'ok' ? '通' : item.status === 'failed' ? '失败' : '跳过'}
+                    </Tag>
+                    <Typography.Text>{item.protocolName}</Typography.Text>
+                  </Space>
+                  {item.status === 'ok' && item.latencyMs != null ? (
+                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>{item.latencyMs} ms</Typography.Text>
+                  ) : item.error ? (
+                    <Typography.Text type="secondary" ellipsis style={{ maxWidth: 220, fontSize: 12 }} title={item.error}>{item.error}</Typography.Text>
+                  ) : (
+                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>未拨测</Typography.Text>
+                  )}
+                </div>
+              ))}
+            </Space>
+          ) : (
+            <Typography.Paragraph type="secondary" style={{ margin: 0 }}>暂无拨测结果（后台每 5 分钟一轮，或点击「立即拨测」）。</Typography.Paragraph>
+          )}
         </section>
 
         <section className="overview-card">
@@ -192,7 +242,7 @@ export function OverviewPage() {
             <div style={{ marginTop: 14 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
                 <Typography.Text strong style={{ fontSize: 12 }}>24 小时流量走势</Typography.Text>
-                <Typography.Text type="secondary" style={{ fontSize: 11 }}>绿线下行 · 蓝线上行</Typography.Text>
+                <Typography.Text type="secondary" style={{ fontSize: 11 }}>上行 (↑) · 下行 (↓)</Typography.Text>
               </div>
               <InteractiveChart
                 height={140}
@@ -211,6 +261,29 @@ export function OverviewPage() {
             </Typography.Paragraph>
           ) : null}
         </section>
+
+        {expiringCertificates.length > 0 ? (
+          <section className="overview-card">
+            <div className="overview-card-title">
+              <Typography.Title level={4} style={{ margin: 0 }}><SafetyCertificateOutlined /> 证书预警</Typography.Title>
+              <Button size="small" onClick={() => navigate('/protocols?tab=certificates')}>证书管理</Button>
+            </div>
+            <Space direction="vertical" style={{ width: '100%' }} size={6}>
+              {expiringCertificates.map((certificate) => (
+                <div className="page-toolbar" key={certificate.id} style={{ marginBottom: 0 }}>
+                  <Space size={6}>
+                    <Typography.Text>{certificate.name}</Typography.Text>
+                    {certificate.domain ? <Typography.Text type="secondary" style={{ fontSize: 12 }}>{certificate.domain}</Typography.Text> : null}
+                  </Space>
+                  <CertificateExpiryTag notAfter={certificate.notAfter} showDate={false} />
+                </div>
+              ))}
+            </Space>
+            <Typography.Paragraph type="secondary" style={{ marginTop: 8, marginBottom: 0, fontSize: 12 }}>
+              {CERTIFICATE_WARNING_DAYS} 天内到期或已过期，续期判断以后台配置为准。
+            </Typography.Paragraph>
+          </section>
+        ) : null}
 
         <section className="overview-card">
           <div className="overview-card-title">
