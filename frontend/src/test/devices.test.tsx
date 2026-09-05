@@ -1,9 +1,9 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { App as AntApp, ConfigProvider } from 'antd';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { DevicesDrawer } from '../features/users/components/DevicesDrawer';
-import type { ResourceUser } from '../services/users';
+import { DevicesDrawer, maskDeviceName, maskHost, maskIp, maskSubscriptionUrl } from '../features/users/components/DevicesDrawer';
+import { usersApi, type ResourceUser } from '../services/users';
 
 vi.mock('../services/users', () => ({
   usersApi: {
@@ -20,7 +20,7 @@ vi.mock('../services/users', () => ({
     deleteDevice: vi.fn(() => Promise.resolve()),
     rotateDevice: vi.fn(() => Promise.resolve({ device: {}, credential: { deviceId: 'd1', token: 't9', uuid: 'u9', password: 'p9' } }))
   },
-  subscriptionUrl: (token: string, format: string) => `http://localhost/subscribe/${token}/${format}`
+  subscriptionUrl: (token: string, format: string, baseUrl?: string) => `${baseUrl || 'http://localhost'}/subscribe/${token}/${format}`
 }));
 
 const user: ResourceUser = {
@@ -50,7 +50,7 @@ describe('devices drawer', () => {
     expect(await screen.findByText('alice 的设备')).toBeInTheDocument();
     expect((await screen.findAllByText('默认设备')).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('用户订阅链接')).toBeInTheDocument();
-    expect(screen.getByText('http://localhost/subscribe/user-link-token/clash.yaml')).toBeInTheDocument();
+    expect(screen.getByText('http://***/subscribe/****************/clash.yaml')).toBeInTheDocument();
     expect(screen.getByText('设备流量统计')).toBeInTheDocument();
     expect(screen.getByText('用户累计 3.0 KB')).toBeInTheDocument();
     expect(screen.getByText('67%')).toBeInTheDocument();
@@ -70,4 +70,54 @@ describe('devices drawer', () => {
     expect(screen.queryByText('http://localhost/subscribe/token-two/clash.yaml')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /添加设备/ })).not.toBeInTheDocument();
   });
+
+  it('masks IP addresses and subscription URLs correctly with helper functions', () => {
+    expect(maskIp('203.0.113.99')).toBe('203.0.***.***');
+    expect(maskIp('192.168.1.1')).toBe('192.168.***.***');
+    expect(maskDeviceName('Clash Verge · 203.0.113.99', true)).toBe('Clash Verge · 203.0.***.***');
+    expect(maskDeviceName('Clash Verge · 203.0.113.99', false)).toBe('Clash Verge · 203.0.113.99');
+    expect(maskDeviceName('默认设备', true)).toBe('默认设备');
+    expect(maskHost('panel.example.com')).toBe('panel.***.***');
+    expect(maskHost('sub.example.com')).toBe('sub.***.***');
+    expect(maskHost('example.com')).toBe('***.com');
+    expect(maskHost('192.168.1.1')).toBe('192.168.***.***');
+    expect(maskSubscriptionUrl('https://panel.example.com/subscribe/0123456789abcdef0123456789abcdef/clash.yaml', true))
+      .toBe('https://panel.***.***/subscribe/****************/clash.yaml');
+    expect(maskSubscriptionUrl('https://panel.example.com/subscribe/0123456789abcdef0123456789abcdef/clash.yaml', false))
+      .toBe('https://panel.example.com/subscribe/0123456789abcdef0123456789abcdef/clash.yaml');
+  });
+
+  it('masks IP addresses and subscription link by default and toggles between masked and raw', async () => {
+    renderDrawer();
+    expect(await screen.findByText('alice 的设备')).toBeInTheDocument();
+    // Default is masked, toggle button shows "显示 IP"
+    const toggleBtn = screen.getByRole('button', { name: '显示完整 IP' });
+    expect(toggleBtn).toBeInTheDocument();
+    expect(toggleBtn).toHaveTextContent('显示 IP');
+    expect(screen.getByText('http://***/subscribe/****************/clash.yaml')).toBeInTheDocument();
+
+    // Click to reveal full IP and subscription link
+    fireEvent.click(toggleBtn);
+    expect(screen.getByRole('button', { name: '隐藏 IP' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '隐藏 IP' })).toHaveTextContent('隐藏 IP');
+    expect(screen.getByText('http://localhost/subscribe/user-link-token/clash.yaml')).toBeInTheDocument();
+
+    // Click again to hide
+    fireEvent.click(screen.getByRole('button', { name: '隐藏 IP' }));
+    expect(screen.getByRole('button', { name: '显示完整 IP' })).toBeInTheDocument();
+    expect(screen.getByText('http://***/subscribe/****************/clash.yaml')).toBeInTheDocument();
+  });
+
+  it('uses subscriptionBaseUrl when provided by API', async () => {
+    vi.mocked(usersApi.listDevices).mockResolvedValueOnce({
+      subscriptionToken: 'token-custom-base',
+      subscriptionBaseUrl: 'https://sub.example.com',
+      maxDevices: 10,
+      items: []
+    });
+    renderDrawer();
+    expect(await screen.findByText('https://sub.***.***/subscribe/****************/clash.yaml')).toBeInTheDocument();
+  });
 });
+
+
