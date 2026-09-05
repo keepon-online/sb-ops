@@ -26,6 +26,7 @@ import (
 	controlobservability "github.com/keepon-online/sb-ops/internal/observability"
 	controloverview "github.com/keepon-online/sb-ops/internal/overview"
 	controlprobe "github.com/keepon-online/sb-ops/internal/probe"
+	controlreport "github.com/keepon-online/sb-ops/internal/report"
 	argoruntime "github.com/keepon-online/sb-ops/internal/runtime/argo"
 	serviceargo "github.com/keepon-online/sb-ops/internal/service/argo"
 	servicebackup "github.com/keepon-online/sb-ops/internal/service/backup"
@@ -127,7 +128,9 @@ func newOps(db *sql.DB, sessionTTL time.Duration, apply deployment.ApplyConfig, 
 		return err
 	})
 	events := controlevents.NewBus(db)
-	alerts := controlobservability.NewService(db, newAlertNotifier(events, configProvider))
+	// 复合 notifier 同时服务告警 outbox 与每日报告直发（报告不经 outbox）。
+	notifier := newAlertNotifier(events, configProvider)
+	alerts := controlobservability.NewService(db, notifier)
 	alerts.SetExpiryWarning(func() time.Duration { return configProvider().Certificates.ExpiryWarning })
 	// 提供商带宽计量（SolusVM API，账单口径）：轮询 state 同时喂给告警评估
 	// 与总览卡片；未配置 solusvm 段时两侧都不评估（ok=false）。
@@ -211,6 +214,60 @@ func newOps(db *sql.DB, sessionTTL time.Duration, apply deployment.ApplyConfig, 
 	})
 	health := controlobservability.NewHealthState(nil)
 	monitor := controlmonitor.NewService()
+	// 每日运行报告的数据源闭包：全部现取，报告组装在 internal/report（纯逻辑）。
+	reportSources := controlreport.Sources{
+		YesterdayTraffic: func(ctx context.Context) (int64, int64, error) {
+			now := time.Now()
+			todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+			summary, err := traffic.Summary(ctx, controltraffic.Filter{From: todayStart.AddDate(0, 0, -1), To: todayStart, Interval: "hour"})
+			if err != nil {
+				return 0, 0, err
+			}
+			return summary.UpBytes, summary.DownBytes, nil
+		},
+		ActiveUsers: func(ctx context.Context) (int64, error) {
+			now := time.Now()
+			todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+			result, err := traffic.ActiveUsers(ctx, controltraffic.Filter{From: todayStart.AddDate(0, 0, -1), To: todayStart, Interval: "day"})
+			if err != nil {
+				return 0, err
+			}
+			return result.TotalUsers, nil
+		},
+		AlertStats: func(ctx context.Context) (int, int, int, error) {
+			stats, err := alerts.Stats(ctx, 2)
+			if err != nil {
+				return 0, 0, 0, err
+			}
+			now := time.Now()
+			yesterday := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).AddDate(0, 0, -1).Format("2006-01-02")
+			opened, resolved := 0, 0
+			for _, daily := range stats.Daily {
+				if daily.Date == yesterday {
+					opened, resolved = daily.Opened, daily.Resolved
+				}
+			}
+			return stats.CurrentOpen, opened, resolved, nil
+		},
+		LatestBackup: func() (int64, int, error) {
+			values, err := backupService.List()
+			if err != nil || len(values) == 0 {
+				return 0, len(values), err
+			}
+			return values[0].CreatedAt, len(values), nil
+		},
+		BackupScheduleError: func() string {
+			_, lastError, _ := backupSchedule.Snapshot()
+			return lastError
+		},
+		Bandwidth: func() (int64, int64, float64, bool) {
+			sample := solusvmState.Snapshot().Sample
+			if sample == nil {
+				return 0, 0, 0, false
+			}
+			return sample.UsedBytes, sample.TotalBytes, sample.Percent, true
+		},
+	}
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
 	router.Use(httpx.RecoveryMiddleware(), httpx.RequestIDMiddleware(), securityHeaders())
@@ -311,6 +368,13 @@ func newOps(db *sql.DB, sessionTTL time.Duration, apply deployment.ApplyConfig, 
 	go func() {
 		defer value.wg.Done()
 		runBackupScheduleLoop(background, backupService, backupSchedule, logger)
+	}()
+	// 每日运行报告：到点直发复合 notifier（不走 outbox——alert_id 外键要求
+	// 真实告警行），失败自带轻量重试。
+	value.wg.Add(1)
+	go func() {
+		defer value.wg.Done()
+		runReportLoop(background, configProvider, notifier, reportSources, logger)
 	}()
 	return value, nil
 }
@@ -422,6 +486,76 @@ func runUpgradeCheckLoop(ctx context.Context, upgrades *controlupgrade.Service, 
 			logger.Error().Err(err).Msg("面板升级自动检查失败")
 		}
 		timer.Reset(upgradeCheckInterval)
+	}
+}
+
+// 每日报告的节奏与重试：未启用时每小时重查配置（热开启最多延迟 1 小时
+// 拾取，且开启后不会立即补发，只等下一个钟点）；发送失败重试 3 次、间隔
+// 1 分钟，全败只记日志——次日自然补上（报告不是告警，不值得更重的机制）。
+const (
+	reportConfigPollInterval = time.Hour
+	reportSendAttempts       = 3
+	reportSendRetryInterval  = time.Minute
+)
+
+// runReportLoop 到点组装上一自然日报告并直调复合 notifier（不走 outbox——
+// notification_outbox.alert_id 外键要求真实告警行）。Notification.ID 由报告
+// 日派生，事件总线按幂等键去重，面板侧不会重复；NextRun 前瞻保证重启后
+// 已过钟点不重发。armed 标记区分「配置轮询唤醒」与「到点唤醒」：从禁用
+// 切到启用只布防下一个钟点，不立即补发。
+func runReportLoop(ctx context.Context, configProvider func() config.RuntimeConfig, notifier controlobservability.Notifier, sources controlreport.Sources, logger *logging.Logger) {
+	initial := configProvider().Report
+	armed := initial.Enabled
+	var delay time.Duration
+	if armed {
+		delay = time.Until(controlreport.NextRun(time.Now(), initial.Hour))
+	} else {
+		delay = reportConfigPollInterval
+	}
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-timer.C:
+		}
+		reportConfig := configProvider().Report
+		if !reportConfig.Enabled {
+			armed = false
+			timer.Reset(reportConfigPollInterval)
+			continue
+		}
+		if !armed {
+			armed = true
+			timer.Reset(time.Until(controlreport.NextRun(time.Now(), reportConfig.Hour)))
+			continue
+		}
+		sendDailyReport(ctx, notifier, sources, logger)
+		timer.Reset(time.Until(controlreport.NextRun(time.Now(), reportConfig.Hour)))
+	}
+}
+
+func sendDailyReport(ctx context.Context, notifier controlobservability.Notifier, sources controlreport.Sources, logger *logging.Logger) {
+	daily := controlreport.BuildDaily(ctx, time.Now(), sources)
+	payload, err := json.Marshal(map[string]string{"title": daily.Title, "message": daily.Message})
+	if err != nil {
+		logger.Error().Err(err).Msg("每日运行报告组装失败")
+		return
+	}
+	notification := controlobservability.Notification{ID: daily.EventID, EventType: "report.daily", Payload: payload}
+	for attempt := 1; attempt <= reportSendAttempts; attempt++ {
+		if err := notifier.Notify(ctx, notification); err == nil {
+			return
+		} else if attempt == reportSendAttempts {
+			logger.Error().Err(err).Msg("每日运行报告推送失败")
+		} else {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(reportSendRetryInterval):
+			}
+		}
 	}
 }
 

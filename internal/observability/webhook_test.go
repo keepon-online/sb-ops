@@ -47,6 +47,19 @@ func TestWebhookNotifierPostsGenericWebhook(t *testing.T) {
 	}
 }
 
+func TestFormatNotificationTextRendersReportTitle(t *testing.T) {
+	got := formatNotificationText(Notification{
+		EventType: "report.daily",
+		Payload:   json.RawMessage(`{"title":"📊 每日运行报告 2026-09-05","message":"昨日流量：上行 1.2 GB\n活跃用户：4"}`),
+	})
+	if !strings.HasPrefix(got, "📊 每日运行报告 2026-09-05\n") || !strings.Contains(got, "活跃用户：4") {
+		t.Fatalf("report render=%q", got)
+	}
+	if strings.Contains(got, "状态：") {
+		t.Fatalf("report render should not carry alert status trailer: %q", got)
+	}
+}
+
 func TestWebhookNotifierRetriesOnNon2xx(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)

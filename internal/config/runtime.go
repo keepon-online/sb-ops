@@ -16,6 +16,7 @@ type RuntimeConfig struct {
 	Audit         AuditConfig            `mapstructure:"audit"`
 	Deployment    DeploymentConfig       `mapstructure:"deployment"`
 	Notifications NotificationsConfig    `mapstructure:"notifications"`
+	Report        ReportConfig           `mapstructure:"report"`
 	Updates       UpdatesConfig          `mapstructure:"updates"`
 	Acme          AcmeConfig             `mapstructure:"acme"`
 	Probe         ProbeConfig            `mapstructure:"probe"`
@@ -87,6 +88,15 @@ type NotificationsConfig struct {
 	DingTalkWebhookURL string `mapstructure:"dingtalk_webhook_url"`
 	DingTalkSecret     string `mapstructure:"dingtalk_secret"`
 	WeComWebhookURL    string `mapstructure:"wecom_webhook_url"`
+}
+
+// ReportConfig gates the daily operations report push. Disabled by default;
+// when enabled a summary of the previous local day is pushed at Hour through
+// every configured notification channel. The loop reads config live so
+// config.yaml edits take effect without a restart.
+type ReportConfig struct {
+	Enabled bool `mapstructure:"enabled"`
+	Hour    int  `mapstructure:"hour"`
 }
 
 // UpdatesConfig points the panel at the GitHub repository that hosts its own
@@ -176,6 +186,8 @@ func DefaultRuntimeConfig() RuntimeConfig {
 	cfg.Traffic.RetentionDays = 90
 	cfg.Probe.TargetURL = "http://www.gstatic.com/generate_204"
 	cfg.Probe.Interval = 5 * time.Minute
+	cfg.Report.Enabled = false
+	cfg.Report.Hour = 8
 	cfg.Certificates.ExpiryWarning = 30 * 24 * time.Hour
 	cfg.Audit.RetentionDays = 180
 	cfg.Panel.SessionTTL = 24 * time.Hour
@@ -225,6 +237,8 @@ func NormalizeRuntimeConfig(cfg RuntimeConfig) RuntimeConfig {
 	cfg.Notifications.DingTalkWebhookURL = strings.TrimSpace(cfg.Notifications.DingTalkWebhookURL)
 	cfg.Notifications.DingTalkSecret = strings.TrimSpace(cfg.Notifications.DingTalkSecret)
 	cfg.Notifications.WeComWebhookURL = strings.TrimSpace(cfg.Notifications.WeComWebhookURL)
+	// report.hour 无需归一化：viper Unmarshal 只覆盖出现的键，缺省保留
+	// DefaultRuntimeConfig 的 8 点；显式 hour: 0（零点报告）是合法值。
 	cfg.Updates.Repo = strings.TrimSpace(cfg.Updates.Repo)
 	cfg.Updates.Token = strings.TrimSpace(cfg.Updates.Token)
 	cfg.Acme.Email = strings.TrimSpace(cfg.Acme.Email)
@@ -305,6 +319,9 @@ func ValidateRuntimeConfig(cfg RuntimeConfig) error {
 		if err != nil || parsed.Scheme != "https" || parsed.Host == "" {
 			return fmt.Errorf("solusvm.endpoint 必须是包含主机的 HTTPS 地址（API 凭据不得明文走 HTTP）")
 		}
+	}
+	if cfg.Report.Hour < 0 || cfg.Report.Hour > 23 {
+		return fmt.Errorf("report.hour 必须是 0-23 的小时数")
 	}
 	return nil
 }

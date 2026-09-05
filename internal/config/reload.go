@@ -72,5 +72,9 @@ func ClassifyRuntimeConfigChanges(previous, next RuntimeConfig) ReloadSummary {
 		// 轮询循环每轮从 configProvider 现取凭据，改动下一轮即生效。
 		summary.Immediate = append(summary.Immediate, "solusvm")
 	}
+	if previous.Report != next.Report {
+		// 报告循环每轮现取开关与钟点，改动热生效（未启用态最多 1 小时后拾取）。
+		summary.Immediate = append(summary.Immediate, "report")
+	}
 	return summary
 }

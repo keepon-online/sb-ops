@@ -128,6 +128,7 @@ func (n *domesticNotifier) postJSON(ctx context.Context, endpoint string, payloa
 // alertSummary 只提取出站通知安全展示的字段；payload 含订阅/密钥等敏感字段时
 // 不随卡片下发，仅用这四个展示字段。
 type alertSummary struct {
+	title     string // 非空表示报告类消息（title+message 形状），走报告卡片
 	alertType string
 	severity  string
 	message   string
@@ -136,6 +137,7 @@ type alertSummary struct {
 
 func summarize(value Notification) alertSummary {
 	var raw struct {
+		Title    string `json:"title"`
 		Type     string `json:"type"`
 		Severity string `json:"severity"`
 		Message  string `json:"message"`
@@ -144,6 +146,7 @@ func summarize(value Notification) alertSummary {
 	// 解析失败按空载荷处理（此时各卡片 builder 回退纯文本）。
 	_ = json.Unmarshal(value.Payload, &raw)
 	return alertSummary{
+		title:     strings.TrimSpace(raw.Title),
 		alertType: strings.TrimSpace(raw.Type),
 		severity:  strings.ToLower(strings.TrimSpace(raw.Severity)),
 		message:   strings.TrimSpace(raw.Message),
@@ -216,9 +219,25 @@ func markdownBody(s alertSummary) string {
 }
 
 // 三个卡片 builder 在载荷无可展示内容时返回 nil，由调用方回退纯文本。
+// 载荷带 title（每日报告）时走报告形状：标题即卡片头，正文原样多行展示。
 
 func feishuCardPayload(value Notification) map[string]any {
 	s := summarize(value)
+	if s.title != "" {
+		return map[string]any{
+			"msg_type": "interactive",
+			"card": map[string]any{
+				"config": map[string]any{"wide_screen_mode": true},
+				"header": map[string]any{
+					"title":    map[string]any{"tag": "plain_text", "content": s.title},
+					"template": "blue",
+				},
+				"elements": []any{
+					map[string]any{"tag": "div", "text": map[string]any{"tag": "lark_md", "content": s.message}},
+				},
+			},
+		}
+	}
 	if s.severity == "" && s.message == "" {
 		return nil
 	}
@@ -240,6 +259,12 @@ func feishuCardPayload(value Notification) map[string]any {
 
 func dingtalkCardPayload(value Notification) map[string]any {
 	s := summarize(value)
+	if s.title != "" {
+		return map[string]any{
+			"msgtype":  "markdown",
+			"markdown": map[string]any{"title": s.title, "text": s.message},
+		}
+	}
 	if s.severity == "" && s.message == "" {
 		return nil
 	}
@@ -252,6 +277,12 @@ func dingtalkCardPayload(value Notification) map[string]any {
 
 func wecomCardPayload(value Notification) map[string]any {
 	s := summarize(value)
+	if s.title != "" {
+		return map[string]any{
+			"msgtype":  "markdown",
+			"markdown": map[string]any{"content": "**" + s.title + "**\n" + s.message},
+		}
+	}
 	if s.severity == "" && s.message == "" {
 		return nil
 	}

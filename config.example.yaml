@@ -17,6 +17,12 @@
 #   dingtalk_webhook_url: "" # 钉钉机器人；开启加签时填 dingtalk_secret
 #   dingtalk_secret: ""
 #   wecom_webhook_url: "" # 企业微信群机器人
+
+# 可选：每日运行报告（昨日流量/活跃用户/告警/备份/VPS 月流量），
+# 经上面已配置的通知渠道推送；缺省禁用，hour 缺省 8（0-23，本地时区）。
+# report:
+#   enabled: true
+#   hour: 8
 server:
   listen: ":8030"
   # 默认在 data_dir(./data)下建库;如需放仓库根可显式指定。

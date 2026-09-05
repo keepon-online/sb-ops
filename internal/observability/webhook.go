@@ -96,14 +96,19 @@ func (n *WebhookNotifier) do(request *http.Request) error {
 }
 
 // formatNotificationText renders the alert payload as a compact single block
-// suitable for a Telegram message.
+// suitable for a Telegram message. Payloads carrying a title (daily reports)
+// render as title + body directly — no severity icon or status trailer.
 func formatNotificationText(value Notification) string {
 	var summary struct {
+		Title    string `json:"title"`
 		Severity string `json:"severity"`
 		Message  string `json:"message"`
 		Status   string `json:"status"`
 	}
 	_ = json.Unmarshal(value.Payload, &summary)
+	if title := strings.TrimSpace(summary.Title); title != "" {
+		return title + "\n" + strings.TrimSpace(summary.Message)
+	}
 	icon := "🔔"
 	switch summary.Severity {
 	case "critical":

@@ -248,6 +248,63 @@ notifications:
 	}
 }
 
+func TestReportConfig(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	atomicWriteConfig(t, path, []byte(`
+server:
+  listen: "127.0.0.1:8030"
+report:
+  enabled: true
+`))
+	cfg, _, err := LoadRuntimeConfig(path)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	// 未写 hour 时保留默认 8 点；显式 0（零点报告）是合法值。
+	if !cfg.Report.Enabled || cfg.Report.Hour != 8 {
+		t.Fatalf("report defaults unexpected: %+v", cfg.Report)
+	}
+
+	atomicWriteConfig(t, path, []byte(`
+server:
+  listen: "127.0.0.1:8030"
+report:
+  enabled: true
+  hour: 0
+`))
+	cfg, _, err = LoadRuntimeConfig(path)
+	if err != nil {
+		t.Fatalf("load midnight: %v", err)
+	}
+	if !cfg.Report.Enabled || cfg.Report.Hour != 0 {
+		t.Fatalf("midnight report unexpected: %+v", cfg.Report)
+	}
+
+	// 越界钟点拒绝加载（非法值让加载失败而非静默纠正）。
+	atomicWriteConfig(t, path, []byte(`
+server:
+  listen: "127.0.0.1:8030"
+report:
+  enabled: true
+  hour: 24
+`))
+	if _, _, err = LoadRuntimeConfig(path); err == nil || !strings.Contains(err.Error(), "report.hour") {
+		t.Fatalf("hour 24 should fail validation, got err=%v", err)
+	}
+
+	// 缺省段禁用；开关改动归类 Immediate（循环现取热生效）。
+	base := NormalizeRuntimeConfig(DefaultRuntimeConfig())
+	if base.Report.Enabled || base.Report.Hour != 8 {
+		t.Fatalf("default report should be disabled at 8, got %+v", base.Report)
+	}
+	next := base
+	next.Report.Enabled = true
+	summary := ClassifyRuntimeConfigChanges(base, next)
+	if len(summary.Immediate) != 1 || summary.Immediate[0] != "report" {
+		t.Fatalf("report change should classify as immediate, got %+v", summary)
+	}
+}
+
 func TestSolusVMConfigAllOrNothingAndHTTPSOnly(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	write := func(content string) {

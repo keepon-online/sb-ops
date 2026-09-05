@@ -146,6 +146,68 @@ func TestDomesticNotifierFallsBackToTextOnEmptyPayload(t *testing.T) {
 	}
 }
 
+func TestDomesticNotifierRendersDailyReportCards(t *testing.T) {
+	requests := make(chan map[string]any, 3)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var decoded map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&decoded)
+		decoded["path"] = r.URL.Path
+		requests <- decoded
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	notifier := NewDomesticNotifier(func(context.Context) (DomesticConfig, error) {
+		return DomesticConfig{FeishuWebhookURL: server.URL + "/feishu", DingTalkWebhookURL: server.URL + "/ding", WeComWebhookURL: server.URL + "/wecom"}, nil
+	})
+	report := Notification{
+		EventType: "report.daily",
+		Payload:   json.RawMessage(`{"title":"📊 每日运行报告 2026-09-05","message":"昨日流量：上行 1.2 GB · 下行 8.3 GB\n活跃用户：4"}`),
+	}
+	if err := notifier.Notify(context.Background(), report); err != nil {
+		t.Fatalf("Notify: %v", err)
+	}
+	seen := map[string]bool{}
+	for i := 0; i < 3; i++ {
+		payload := <-requests
+		path, _ := payload["path"].(string)
+		seen[path] = true
+		switch path {
+		case "/feishu":
+			card, _ := payload["card"].(map[string]any)
+			header, _ := card["header"].(map[string]any)
+			title, _ := header["title"].(map[string]any)
+			if payload["msg_type"] != "interactive" || header["template"] != "blue" {
+				t.Fatalf("feishu 报告卡片应为蓝色模板: %v", payload)
+			}
+			if !strings.Contains(title["content"].(string), "每日运行报告") {
+				t.Fatalf("feishu 报告标题缺失: %v", title)
+			}
+		case "/ding":
+			if payload["msgtype"] != "markdown" {
+				t.Fatalf("dingtalk 报告应为 markdown: %v", payload)
+			}
+			markdown, _ := payload["markdown"].(map[string]any)
+			if !strings.Contains(markdown["title"].(string), "每日运行报告") || !strings.Contains(markdown["text"].(string), "活跃用户：4") {
+				t.Fatalf("dingtalk 报告内容缺失: %v", markdown)
+			}
+		case "/wecom":
+			if payload["msgtype"] != "markdown" {
+				t.Fatalf("wecom 报告应为 markdown: %v", payload)
+			}
+			markdown, _ := payload["markdown"].(map[string]any)
+			if !strings.Contains(markdown["content"].(string), "每日运行报告") || !strings.Contains(markdown["content"].(string), "昨日流量") {
+				t.Fatalf("wecom 报告内容缺失: %v", markdown)
+			}
+		}
+	}
+	for _, path := range []string{"/feishu", "/ding", "/wecom"} {
+		if !seen[path] {
+			t.Fatalf("channel %s was not called", path)
+		}
+	}
+}
+
 func TestDomesticNotifierContinuesAfterChannelFailure(t *testing.T) {
 	called := make(chan string, 2)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
