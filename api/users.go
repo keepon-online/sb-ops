@@ -177,10 +177,6 @@ func (h *handler) adjustUser(c *gin.Context, action string, call func(context.Co
 	httpx.OK(c, value)
 }
 
-func (h *handler) adjustUserTraffic(c *gin.Context) {
-	h.adjustUser(c, actionUserTrafficAdjust, h.Users.AdjustTraffic)
-}
-
 func (h *handler) adjustUserQuota(c *gin.Context) {
 	h.adjustUser(c, actionUserQuotaAdjust, h.Users.AdjustQuota)
 }

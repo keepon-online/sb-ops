@@ -102,7 +102,6 @@ func RegisterRoutes(router *gin.Engine, dependencies Dependencies) {
 
 		traffic := authenticated.Group("/users")
 		traffic.POST("/:id/traffic/reset", h.resetUserTraffic)
-		traffic.POST("/:id/traffic/adjust", h.adjustUserTraffic)
 		traffic.POST("/:id/quota/adjust", h.adjustUserQuota)
 	}
 

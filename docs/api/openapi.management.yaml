@@ -482,28 +482,6 @@ paths:
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
-  /api/v1/users/{id}/traffic/adjust:
-    post:
-      tags: [Users]
-      operationId: adjustUserTraffic
-      summary: Add to or set used traffic
-      security: [{BearerAuth: []}]
-      parameters: [{$ref: '#/components/parameters/UserId'}]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: {$ref: '#/components/schemas/ResourceTrafficAdjustmentRequest'}
-      responses:
-        '200':
-          description: Traffic adjusted
-          content:
-            application/json:
-              schema: {$ref: '#/components/schemas/ResourceUser'}
-        '400': {$ref: '#/components/responses/BadRequest'}
-        '401': {$ref: '#/components/responses/Unauthorized'}
-        '403': {$ref: '#/components/responses/Forbidden'}
-        '404': {$ref: '#/components/responses/NotFound'}
   /api/v1/protocol-schemas/{type}:
     get:
       tags: [Protocols]

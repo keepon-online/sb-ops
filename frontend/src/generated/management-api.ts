@@ -348,23 +348,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/users/{id}/traffic/adjust": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Add to or set used traffic */
-        post: operations["adjustUserTraffic"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/protocol-schemas/{type}": {
         parameters: {
             query?: never;
@@ -3444,37 +3427,6 @@ export interface operations {
                     "application/json": components["schemas"]["SuccessEnvelope"] & {
                         data?: components["schemas"]["ResourceUser"];
                     };
-                };
-            };
-            400: components["responses"]["BadRequest"];
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-        };
-    };
-    adjustUserTraffic: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Subscription user UUID */
-                id: components["parameters"]["UserId"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ResourceTrafficAdjustmentRequest"];
-            };
-        };
-        responses: {
-            /** @description Traffic adjusted */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ResourceUser"];
                 };
             };
             400: components["responses"]["BadRequest"];

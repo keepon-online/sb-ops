@@ -349,6 +349,9 @@ func (s *Service) AdjustQuota(ctx context.Context, id string, input TrafficInput
 	return s.Get(ctx, id)
 }
 
+// AdjustTraffic 直接增减/覆盖 used_bytes。HTTP 端点已删（与 V2Ray 采集口径
+// 冲突：手动改动的已用量会被下轮真实采集冲掉），保留为测试夹具——单测用它
+// 注水构造配额耗尽等场景。
 func (s *Service) AdjustTraffic(ctx context.Context, id string, input TrafficInput) (User, error) {
 	if err := s.store.AdjustTraffic(ctx, id, input.Mode, input.Bytes, s.now()); err != nil {
 		return User{}, err
