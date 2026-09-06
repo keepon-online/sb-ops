@@ -504,40 +504,135 @@ html.light-theme, html.light-theme body {
 /* Auth / Login Screens */
 .login-shell {
   min-height: 100vh;
-  display: grid;
-  place-items: center;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   position: relative;
   z-index: 1;
-  padding: 16px;
+  padding: 24px 16px;
+  background-color: var(--bg-layout);
+  background-image:
+    radial-gradient(circle at 50% 30%, rgba(var(--primary-color-rgb), 0.12) 0%, transparent 60%),
+    radial-gradient(circle at 85% 85%, rgba(var(--primary-color-rgb), 0.05) 0%, transparent 50%);
+  transition: background-color 0.5s ease;
+}
+
+.login-theme-bar {
+  position: absolute;
+  top: 20px;
+  right: 24px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+}
+
+.login-theme-btn {
+  width: 38px !important;
+  height: 38px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-radius: 50% !important;
+  background: var(--glass-bg) !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--glass-border) !important;
+  box-shadow: var(--card-shadow);
+  color: var(--text-color) !important;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.login-theme-btn:hover {
+  background: var(--component-bg) !important;
+  border-color: var(--primary-color) !important;
+  color: var(--primary-color) !important;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.15);
 }
 
 .login-panel {
-  width: min(440px, 100%);
+  width: min(420px, 100%);
   position: relative;
   z-index: 2;
-  border-radius: 8px !important;
-  padding: 16px 8px;
+  border-radius: 16px !important;
+  box-shadow: 0 16px 40px -12px rgba(0, 0, 0, 0.25), var(--card-shadow) !important;
+  padding: 16px 10px;
+}
+
+.login-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.login-icon-badge {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(var(--primary-color-rgb), 0.12);
+  border: 1px solid rgba(var(--primary-color-rgb), 0.22);
+  color: var(--primary-color);
+  font-size: 26px;
+  margin-bottom: 12px;
+  box-shadow: 0 4px 16px rgba(var(--primary-color-rgb), 0.16);
+  transition: var(--transition-smooth);
 }
 
 .login-logo {
-  font-size: 32px;
+  font-size: 26px;
   font-weight: 800;
-  text-align: center;
-  margin-bottom: 8px;
+  letter-spacing: -0.4px;
+  line-height: 1.2;
+  margin-bottom: 6px;
   background: linear-gradient(135deg, var(--primary-color), var(--primary-accent));
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
+.login-subtitle {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
 .login-form {
-  margin-top: 24px;
+  margin-top: 20px;
 }
 
 .login-form .ant-input-affix-wrapper,
-.login-form .ant-input {
+.login-form input.ant-input {
   border-radius: 8px !important;
-  padding: 8px 12px;
+}
+
+.login-submit-btn {
+  height: 42px !important;
+  font-size: 15px !important;
+  font-weight: 600 !important;
+  border-radius: 8px !important;
+  box-shadow: 0 4px 14px -2px rgba(var(--primary-color-rgb), 0.4) !important;
+  transition: var(--transition-smooth) !important;
+  margin-top: 4px;
+}
+
+.login-submit-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px -2px rgba(var(--primary-color-rgb), 0.5) !important;
+}
+
+.login-footer {
+  margin-top: 24px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-secondary);
+  opacity: 0.75;
 }
 
 /* Form Styles */

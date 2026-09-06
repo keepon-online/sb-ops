@@ -4,8 +4,13 @@
 
 ## [Unreleased]
 
+### 新增
+
+- **登录与初始化页视觉重构**：登录页与管理员初始化页改为「品牌徽标 + 副标题 + 大号带图标输入框」布局，背景按当前主题色径向渐变、卡片圆角与阴影升级，页脚标注「单 VPS 自托管控制台」；右上角新增外观入口，未登录也能切换深浅模式与四套主题色（偏好持久化、与面板内设置共享）。
+
 ### 修复
 
+- **暗色主题刷新闪白消除**：`index.html` 内联预置脚本在应用加载前按 localStorage 预先落 dark/light 类与底色，刷新不再「先白后黑」；顺带把告警铃铛与监控占用色阶的硬编码色收敛到 `var(--color-error)`/`var(--color-warning)`、Modal 迁移 antd `destroyOnHidden` 新 API、渐变文字补 `background-clip` 标准属性。
 - **图表字体拉伸**：`InteractiveChart` 的 SVG 用 `preserveAspectRatio="none"` 配 CSS 固定高度，非等比缩放会把坐标轴文字拉扁/拉高；现容器与 SVG 高度统一跟随 `height` 参数（viewBox 与实际渲染盒一致，缩放恢复等比），SVG 文本继承主题字体并禁选中，空态改 flex 居中占位（不再绝对定位压在图区上）。
 
 ## [0.4.1] - 2026-09-06
