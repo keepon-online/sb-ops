@@ -161,8 +161,7 @@ function bucketSlots<T>(points: T[], bucketOf: (point: T) => string, fromDay: st
 }
 
 export function TrafficPage() {
-  const { themeColor } = useAppTheme();
-  const downColor = themeColor === 'green' ? '#38bdf8' : '#42a56f';
+  const { trafficDownColor, chartAccentColor } = useAppTheme();
   const [searchParams, setSearchParams] = useSearchParams();
   const [dimension, setDimension] = useState<'user' | 'protocol'>(searchParams.get('dimension') === 'protocol' ? 'protocol' : 'user');
   // 时间范围统一用日期选择(含快捷预设);兼容旧链接的 range 小时数参数。
@@ -258,12 +257,12 @@ export function TrafficPage() {
     <div className="stat-grid">
       <div className="stat-card"><div className="stat-icon"><CloudDownloadOutlined /></div><div className="stat-label">所选范围总流量</div><div className="stat-value">{bytes(summary.data?.totalBytes || 0)}</div></div>
       <div className="stat-card"><div className="stat-icon"><ArrowUpOutlined /></div><div className="stat-label">上行</div><div className="stat-value" style={{ color: 'var(--primary-color)' }}>{bytes(summary.data?.upBytes || 0)}</div></div>
-      <div className="stat-card"><div className="stat-icon"><ArrowDownOutlined /></div><div className="stat-label">下行</div><div className="stat-value" style={{ color: downColor }}>{bytes(summary.data?.downBytes || 0)}</div></div>
+      <div className="stat-card"><div className="stat-icon"><ArrowDownOutlined /></div><div className="stat-label">下行</div><div className="stat-value" style={{ color: trafficDownColor }}>{bytes(summary.data?.downBytes || 0)}</div></div>
       <div className="stat-card"><div className="stat-icon"><UserOutlined /></div><div className="stat-label">活跃用户</div><div className="stat-value">{activeUsers.data?.totalUsers || 0}</div></div>
       <div className="stat-card"><div className="stat-icon"><FieldTimeOutlined /></div><div className="stat-label">采样次数</div><div className="stat-value">{summary.data?.samples || 0}</div></div>
     </div>
-    <section className="overview-card"><div className="overview-card-title"><Typography.Title level={4} style={{ margin: 0 }}>趋势</Typography.Title><Typography.Text type="secondary"><LineChartOutlined /> 上行 (↑) · 下行 (↓)</Typography.Text></div><InteractiveChart height={280} ariaLabel="流量趋势，上行与下行，悬停查看数值" emptyText="当前范围暂无流量" labels={trendSlots.map((slot) => slot.label)} formatValue={bytes} series={[{ name: '上行', color: 'var(--primary-color)', values: trendSlots.map((slot) => slot.up) }, { name: '下行', color: downColor, values: trendSlots.map((slot) => slot.down) }]} /></section>
-    <section className="overview-card"><div className="overview-card-title"><Typography.Title level={4} style={{ margin: 0 }}>活跃用户</Typography.Title><Typography.Text type="secondary">每个时段内有流量的独立用户数</Typography.Text></div><InteractiveChart height={140} integerTicks ariaLabel="活跃用户数趋势，橙线为每时段有流量的独立用户数，悬停查看数值" emptyText="当前范围暂无活跃用户" labels={activeSlots.map((slot) => slot.label)} formatValue={(value) => String(Math.round(value))} series={[{ name: '活跃用户', color: '#e8a33d', values: activeSlots.map((slot) => slot.users) }]} /></section>
+    <section className="overview-card"><div className="overview-card-title"><Typography.Title level={4} style={{ margin: 0 }}>趋势</Typography.Title><Typography.Text type="secondary"><LineChartOutlined /> 上行 (↑) · 下行 (↓)</Typography.Text></div><InteractiveChart height={280} ariaLabel="流量趋势，上行与下行，悬停查看数值" emptyText="当前范围暂无流量" labels={trendSlots.map((slot) => slot.label)} formatValue={bytes} series={[{ name: '上行', color: 'var(--primary-color)', values: trendSlots.map((slot) => slot.up) }, { name: '下行', color: trafficDownColor, values: trendSlots.map((slot) => slot.down) }]} /></section>
+    <section className="overview-card"><div className="overview-card-title"><Typography.Title level={4} style={{ margin: 0 }}>活跃用户</Typography.Title><Typography.Text type="secondary">每个时段内有流量的独立用户数</Typography.Text></div><InteractiveChart height={140} integerTicks ariaLabel="活跃用户数趋势，每时段有流量的独立用户数，悬停查看数值" emptyText="当前范围暂无活跃用户" labels={activeSlots.map((slot) => slot.label)} formatValue={(value) => String(Math.round(value))} series={[{ name: '活跃用户', color: chartAccentColor, values: activeSlots.map((slot) => slot.users) }]} /></section>
     <section className="overview-card">
       <div className="overview-card-title"><Typography.Title level={4} style={{ margin: 0 }}>{dimension === 'user' ? '用户排行' : '协议排行'}</Typography.Title><Typography.Text type="secondary">用户统计不含协议归属，协议统计不含用户归属</Typography.Text></div>
       <Table rowKey="id" size="small" pagination={false} loading={rankings.isLoading} dataSource={rankings.data?.items || []} columns={[
@@ -275,7 +274,7 @@ export function TrafficPage() {
           render: (value: number) => {
             const max = Math.max(1, ...(rankings.data?.items || []).map((item) => item.totalBytes));
             return <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 180 }}>
-              <Progress percent={(value / max) * 100} showInfo={false} size="small" strokeColor={dimension === 'user' ? 'var(--primary-color)' : downColor} style={{ flex: 1, margin: 0 }} />
+              <Progress percent={(value / max) * 100} showInfo={false} size="small" strokeColor={dimension === 'user' ? 'var(--primary-color)' : trafficDownColor} style={{ flex: 1, margin: 0 }} />
               <Typography.Text style={{ whiteSpace: 'nowrap' }}>{bytes(value)}</Typography.Text>
             </div>;
           }

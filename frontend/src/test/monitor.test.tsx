@@ -63,7 +63,7 @@ describe('monitor page', () => {
     expect(screen.getByText('EPYC 9654')).toBeInTheDocument();
     expect(screen.getByText('Ubuntu 24.04（linux）')).toBeInTheDocument();
     expect(screen.getByRole('img', { name: 'CPU 与内存使用率趋势，悬停查看数值' })).toBeInTheDocument();
-    expect(screen.getByRole('img', { name: '网络速率趋势，绿线下行，蓝线上行，悬停查看数值' })).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: '网络速率趋势，上行与下行，悬停查看数值' })).toBeInTheDocument();
     expect(screen.getByText('eth0')).toBeInTheDocument();
   });
 

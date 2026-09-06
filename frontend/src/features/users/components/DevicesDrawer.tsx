@@ -173,16 +173,21 @@ export function DevicesDrawer({ user, onClose }: { user: ResourceUser | null; on
       title="订阅凭据"
       width={620}
       open={Boolean(credential)}
+      destroyOnHidden
       footer={<Button type="primary" onClick={() => setCredential(null)}>我已保存</Button>}
       closable={false}
     >
       {credential ? (
-        <Descriptions column={1} size="small" bordered>
-          <Descriptions.Item label="订阅 Token"><Typography.Text code copyable>{credential.token}</Typography.Text></Descriptions.Item>
-          <Descriptions.Item label="UUID"><Typography.Text code copyable>{credential.uuid}</Typography.Text></Descriptions.Item>
-          <Descriptions.Item label="密码"><Typography.Text code copyable>{credential.password}</Typography.Text></Descriptions.Item>
-          <Typography.Text type="secondary">设备凭据已更新。请继续使用上方用户级订阅链接，客户端会按来源自动归入设备。</Typography.Text>
-        </Descriptions>
+        <>
+          <Descriptions column={1} size="small" bordered>
+            <Descriptions.Item label="订阅 Token"><Typography.Text code copyable>{credential.token}</Typography.Text></Descriptions.Item>
+            <Descriptions.Item label="UUID"><Typography.Text code copyable>{credential.uuid}</Typography.Text></Descriptions.Item>
+            <Descriptions.Item label="密码"><Typography.Text code copyable>{credential.password}</Typography.Text></Descriptions.Item>
+          </Descriptions>
+          <Typography.Text type="secondary" style={{ display: 'block', marginTop: 12 }}>
+            设备凭据已更新。请继续使用上方用户级订阅链接，客户端会按来源自动归入设备。
+          </Typography.Text>
+        </>
       ) : null}
     </Modal>
     <Drawer

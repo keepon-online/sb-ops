@@ -72,8 +72,7 @@ export function OverviewPage() {
 
   if (overview.isError) return <Result status={overview.error instanceof ApiError && overview.error.status === 403 ? '403' : 'error'} title={overview.error.message} extra={<Button type="primary" icon={<ReloadOutlined />} onClick={() => void overview.refetch()}>重试</Button>} />;
   const value = overview.data;
-  const { themeColor } = useAppTheme();
-  const downColor = themeColor === 'green' ? '#38bdf8' : '#42a56f';
+  const { trafficDownColor } = useAppTheme();
   const showTasks = Boolean(value?.tasks.some((task) => !task.completed));
   const autoCount = value?.devices?.auto ?? 0;
 
@@ -84,7 +83,7 @@ export function OverviewPage() {
     .sort((a, b) => certificateDaysLeft(a.notAfter) - certificateDaysLeft(b.notAfter));
   const sparklineLabels = trafficPoints.map((p) => dayjs(p.bucket).format('HH:mm'));
   const sparklineSeries = [
-    { name: '下行', color: downColor, values: trafficPoints.map((p) => p.downBytes) },
+    { name: '下行', color: trafficDownColor, values: trafficPoints.map((p) => p.downBytes) },
     { name: '上行', color: 'var(--primary-color)', values: trafficPoints.map((p) => p.upBytes) }
   ];
 

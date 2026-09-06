@@ -7,6 +7,8 @@ export type ThemeColor = 'blue' | 'purple' | 'green' | 'orange';
 interface ThemeContextType {
   themeMode: ThemeMode;
   themeColor: ThemeColor;
+  trafficDownColor: string;
+  chartAccentColor: string;
   setThemeMode: (mode: ThemeMode) => void;
   setThemeColor: (color: ThemeColor) => void;
   toggleThemeMode: () => void;
@@ -69,6 +71,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     setThemeMode(themeMode === 'light' ? 'dark' : 'light');
   };
 
+  const trafficDownColor = themeColor === 'green' ? '#38bdf8' : '#42a56f';
+  // 当主题为 orange 时，使用紫色作为辅助/对比折线色，避免与 CPU 主题橙撞色
+  const chartAccentColor = themeColor === 'orange' ? (themeMode === 'dark' ? '#a78bfa' : '#7c3aed') : '#e8a33d';
+
   // Sync theme configurations with CSS variables
   useEffect(() => {
     const root = document.documentElement;
@@ -82,7 +88,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     root.style.setProperty('--primary-color', primaryHex);
     root.style.setProperty('--primary-color-rgb', primaryRGB);
     root.style.setProperty('--primary-accent', accentHex);
-    root.style.setProperty('--traffic-down', themeColor === 'green' ? '#38bdf8' : '#42a56f');
+    root.style.setProperty('--traffic-down', trafficDownColor);
+    root.style.setProperty('--chart-accent', chartAccentColor);
 
     // Apply light/dark color variables
     if (isDark) {
@@ -118,15 +125,17 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       root.style.setProperty('--glass-bg', 'rgba(255, 255, 255, 0.75)');
       root.style.setProperty('--glass-border', 'rgba(0, 0, 0, 0.06)');
     }
-  }, [themeMode, themeColor]);
+  }, [themeMode, themeColor, trafficDownColor, chartAccentColor]);
 
   const value = useMemo(() => ({
     themeMode,
     themeColor,
+    trafficDownColor,
+    chartAccentColor,
     setThemeMode,
     setThemeColor,
     toggleThemeMode
-  }), [themeMode, themeColor]);
+  }), [themeMode, themeColor, trafficDownColor, chartAccentColor]);
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }
@@ -137,6 +146,8 @@ export function useAppTheme() {
     return {
       themeMode: 'dark' as ThemeMode,
       themeColor: 'blue' as ThemeColor,
+      trafficDownColor: '#42a56f',
+      chartAccentColor: '#e8a33d',
       setThemeMode: () => {},
       setThemeColor: () => {},
       toggleThemeMode: () => {}

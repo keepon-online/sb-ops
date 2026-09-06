@@ -24,6 +24,8 @@ const bytes = (value: number) => {
 const rate = (value: number) => `${bytes(value)}/s`;
 
 function duration(seconds: number) {
+  if (seconds <= 0) return '刚刚启动';
+  if (seconds < 60) return '< 1 分钟';
   const days = Math.floor(seconds / 86400);
   const hours = Math.floor((seconds % 86400) / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
@@ -50,8 +52,7 @@ const interfaceColumns = [
 ];
 
 export function MonitorPage() {
-  const { themeColor } = useAppTheme();
-  const downColor = themeColor === 'green' ? '#38bdf8' : '#42a56f';
+  const { trafficDownColor, chartAccentColor } = useAppTheme();
   const monitor = useQuery({ queryKey: ['monitor'], queryFn: monitorApi.status, retry: false, refetchInterval: 5000 });
   if (monitor.isError) return <Result status={monitor.error instanceof ApiError && monitor.error.status === 403 ? '403' : 'error'} title={monitor.error.message} extra={<Button type="primary" icon={<ReloadOutlined />} onClick={() => void monitor.refetch()}>重试</Button>} />;
   const value: MonitorStatus | undefined = monitor.data;
@@ -80,7 +81,7 @@ export function MonitorPage() {
       <div className="gauge-cell" role="img" aria-label={`网络速率，下行 ${rate(value?.network.recvRate || 0)}，上行 ${rate(value?.network.sendRate || 0)}`}>
         <Typography.Text strong>网络速率</Typography.Text>
         <div className="gauge-rate">
-          <Typography.Text style={{ color: downColor, fontSize: 18, fontWeight: 600 }}><ArrowDownOutlined /> {rate(value?.network.recvRate || 0)}</Typography.Text>
+          <Typography.Text style={{ color: trafficDownColor, fontSize: 18, fontWeight: 600 }}><ArrowDownOutlined /> {rate(value?.network.recvRate || 0)}</Typography.Text>
           <Typography.Text style={{ color: 'var(--primary-color)', fontSize: 18, fontWeight: 600 }}><ArrowUpOutlined /> {rate(value?.network.sendRate || 0)}</Typography.Text>
         </div>
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>10 分钟峰值 ↓{rate(peakRecv)} · ↑{rate(peakSend)}</Typography.Text>
@@ -92,15 +93,15 @@ export function MonitorPage() {
       <InteractiveChart height={220} area maxValue={100} ariaLabel="CPU 与内存使用率趋势，悬停查看数值" emptyText="暂无采样数据" labels={labels} formatValue={(v) => `${Math.round(v)}%`}
         series={[
           { name: 'CPU', color: 'var(--primary-color)', values: history.map((point) => point.cpuPercent) },
-          { name: '内存', color: '#e8a33d', values: history.map((point) => point.memoryPercent) }
+          { name: '内存', color: chartAccentColor, values: history.map((point) => point.memoryPercent) }
         ]} />
     </section>
 
     <section className="workspace-section">
       <Space className="section-heading"><Typography.Title level={4}>网络速率趋势</Typography.Title><Typography.Text type="secondary">上行 (↑) · 下行 (↓)</Typography.Text></Space>
-      <InteractiveChart height={220} area ariaLabel="网络速率趋势，绿线下行，蓝线上行，悬停查看数值" emptyText="暂无采样数据" labels={labels} formatValue={rate}
+      <InteractiveChart height={220} area ariaLabel="网络速率趋势，上行与下行，悬停查看数值" emptyText="暂无采样数据" labels={labels} formatValue={rate}
         series={[
-          { name: '下行', color: downColor, values: history.map((point) => point.netRecvRate) },
+          { name: '下行', color: trafficDownColor, values: history.map((point) => point.netRecvRate) },
           { name: '上行', color: 'var(--primary-color)', values: history.map((point) => point.netSendRate) }
         ]} />
     </section>
@@ -126,7 +127,7 @@ export function MonitorPage() {
 
     <section className="workspace-section">
       <Space className="section-heading"><Typography.Title level={4}>网络接口</Typography.Title><Typography.Text type="secondary">不含回环接口</Typography.Text></Space>
-      <Table<MonitorInterface> rowKey="name" size="small" pagination={false} dataSource={value?.network.interfaces || []} columns={interfaceColumns} />
+      <Table<MonitorInterface> rowKey="name" size="small" pagination={false} scroll={{ x: 520 }} dataSource={value?.network.interfaces || []} columns={interfaceColumns} />
     </section>
   </Page>;
 }
@@ -157,6 +158,14 @@ function CoreBars({ perCore }: { perCore: number[] }) {
     const index = Math.floor(((event.clientX - rect.left) / rect.width) * count);
     setHover(Math.min(count - 1, Math.max(0, index)));
   };
+  const handleTouch = (event: React.TouchEvent<SVGRectElement>) => {
+    const touch = event.touches[0];
+    if (!touch) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    if (rect.width === 0) return;
+    const index = Math.floor(((touch.clientX - rect.left) / rect.width) * count);
+    setHover(Math.min(count - 1, Math.max(0, index)));
+  };
   return <div className="core-chart" ref={containerRef} style={{ position: 'relative', marginTop: 8 }} role="img"
     aria-label={`CPU 每核占用柱状图，${count} 核，最忙为核 ${busiest}（${perCore[busiest].toFixed(1)}%）`}>
     <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" style={{ width: '100%', height: 150, display: 'block' }}>
@@ -180,7 +189,7 @@ function CoreBars({ perCore }: { perCore: number[] }) {
           stroke={hover === index ? 'var(--text-color)' : 'none'} strokeWidth="1" vectorEffect="non-scaling-stroke"
           style={{ transition: 'y 0.4s ease, height 0.4s ease' }} />
       ))}
-      <rect x={left} y={top} width={plotWidth} height={plotHeight} fill="transparent" onMouseMove={handleMove} onMouseLeave={() => setHover(null)} />
+      <rect x={left} y={top} width={plotWidth} height={plotHeight} fill="transparent" onMouseMove={handleMove} onMouseLeave={() => setHover(null)} onTouchStart={handleTouch} onTouchMove={handleTouch} onTouchEnd={() => setHover(null)} />
     </svg>
     {hover !== null && (
       <div style={{ position: 'absolute', top: 4, left: `${Math.min(76, Math.max(16, ((barX(hover) + barWidth / 2) / width) * 100))}%`, transform: 'translateX(-50%)', background: 'var(--bg-container)', border: '1px solid var(--border-color)', borderRadius: 6, padding: '6px 10px', pointerEvents: 'none', whiteSpace: 'nowrap', zIndex: 2, boxShadow: 'var(--card-shadow)', display: 'flex', gap: 8, alignItems: 'baseline' }}>
