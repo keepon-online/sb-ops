@@ -15,7 +15,7 @@ export default defineConfig({
     // 500K 是 Vite 针对"应做代码分割的应用代码"的默认值，对叶子依赖的 UI 库
     // 无指导意义。核心目标——让频繁变动的应用代码主 chunk 极小化（已从 ~722K
     // 降至 ~25K）——已经达成，故放宽阈值消除对 vendor 库的误报警告。
-    chunkSizeWarningLimit: 1200,
+    chunkSizeWarningLimit: 1400,
     rollupOptions: {
       output: {
         // 把重量级第三方依赖拆成独立 vendor chunk：

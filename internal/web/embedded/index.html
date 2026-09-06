@@ -7,12 +7,27 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;1,400&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <title>Sing-box Web</title>
-    <script type="module" crossorigin src="/assets/index-B3OaMz0w.js"></script>
+    <script>
+      (function () {
+        try {
+          var mode = localStorage.getItem('sb-theme-mode') || 'dark';
+          var doc = document.documentElement;
+          if (mode === 'dark') {
+            doc.classList.add('dark-theme');
+            doc.style.backgroundColor = '#0b0f19';
+          } else {
+            doc.classList.add('light-theme');
+            doc.style.backgroundColor = '#f8fafc';
+          }
+        } catch (e) {}
+      })();
+    </script>
+    <script type="module" crossorigin src="/assets/index-Cyvzncja.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/vendor-query-BfcofYO2.js">
     <link rel="modulepreload" crossorigin href="/assets/vendor-antd-BKr-Z6bT.js">
     <link rel="modulepreload" crossorigin href="/assets/vendor-react-CFFsejK4.js">
     <link rel="modulepreload" crossorigin href="/assets/vendor-icons-FRoUUwpU.js">
-    <link rel="stylesheet" crossorigin href="/assets/index-Cue-gIzz.css">
+    <link rel="stylesheet" crossorigin href="/assets/index-CEs1zmRl.css">
   </head>
   <body>
     <div id="root"></div>

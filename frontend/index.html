@@ -7,6 +7,21 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;1,400&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <title>Sing-box Web</title>
+    <script>
+      (function () {
+        try {
+          var mode = localStorage.getItem('sb-theme-mode') || 'dark';
+          var doc = document.documentElement;
+          if (mode === 'dark') {
+            doc.classList.add('dark-theme');
+            doc.style.backgroundColor = '#0b0f19';
+          } else {
+            doc.classList.add('light-theme');
+            doc.style.backgroundColor = '#f8fafc';
+          }
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

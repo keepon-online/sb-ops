@@ -43,6 +43,14 @@ body {
   transition: background-color 0.5s ease, color 0.3s ease;
 }
 
+html.dark-theme, html.dark-theme body {
+  background-color: #0b0f19;
+}
+
+html.light-theme, html.light-theme body {
+  background-color: #f8fafc;
+}
+
 /* Custom Scrollbars */
 ::-webkit-scrollbar {
   width: 6px;
@@ -165,6 +173,7 @@ body {
   letter-spacing: -0.3px;
   background: linear-gradient(135deg, var(--primary-color), var(--primary-accent));
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
@@ -517,6 +526,7 @@ body {
   margin-bottom: 8px;
   background: linear-gradient(135deg, var(--primary-color), var(--primary-accent));
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
@@ -652,6 +662,7 @@ body {
   margin-bottom: 4px;
   background: linear-gradient(135deg, var(--primary-color), var(--primary-accent));
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 

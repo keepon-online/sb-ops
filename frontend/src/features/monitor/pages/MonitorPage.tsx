@@ -36,8 +36,8 @@ function duration(seconds: number) {
 
 // 占用色阶：75% 起预警、90% 起告急，与告警页的视觉语义一致。
 function usageColor(value: number): string | undefined {
-  if (value >= 90) return '#cf1322';
-  if (value >= 75) return '#d46b08';
+  if (value >= 90) return 'var(--color-error)';
+  if (value >= 75) return 'var(--color-warning)';
   return undefined;
 }
 

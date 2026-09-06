@@ -49,7 +49,7 @@ export function ChangePasswordModal({ open, onClose }: Props) {
       confirmLoading={mutation.isPending}
       okText="保存"
       cancelText="取消"
-      destroyOnClose
+      destroyOnHidden
     >
       <Form<ChangePasswordValues>
         form={form}

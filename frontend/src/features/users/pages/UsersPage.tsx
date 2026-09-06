@@ -447,7 +447,7 @@ export function UsersPage() {
         </Form>
       </Drawer>
 
-      <Modal title={`调整 ${trafficUser?.name || ''} 的额度`} open={Boolean(trafficUser)} confirmLoading={adjustQuota.isPending || resetTraffic.isPending} onOk={() => trafficForm.submit()} onCancel={() => setTrafficUser(null)} destroyOnClose>
+      <Modal title={`调整 ${trafficUser?.name || ''} 的额度`} open={Boolean(trafficUser)} confirmLoading={adjustQuota.isPending || resetTraffic.isPending} onOk={() => trafficForm.submit()} onCancel={() => setTrafficUser(null)} destroyOnHidden>
         {trafficUser ? (
           <Typography.Paragraph type="secondary" style={{ marginBottom: 16 }}>
             当前额度 <Typography.Text strong>{trafficUser.quotaBytes > 0 ? formatBytes(trafficUser.quotaBytes) : '不限'}</Typography.Text> / 已用 {formatBytes(trafficUser.usedBytes)}
@@ -520,7 +520,7 @@ export function UsersPage() {
         confirmLoading={batchQuota.isPending}
         onOk={() => batchQuotaForm.submit()}
         onCancel={() => setBatchQuotaOpen(false)}
-        destroyOnClose
+        destroyOnHidden
       >
         <Typography.Paragraph type="secondary" style={{ marginBottom: 16 }}>
           对所选用户统一加/减额度；减少后任一用户额度为负都会整批拒绝，不会部分生效。
@@ -554,7 +554,7 @@ export function UsersPage() {
         confirmLoading={batchProtocols.isPending}
         onOk={() => batchProtocolsForm.submit()}
         onCancel={() => setBatchProtocolsOpen(false)}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form<BatchProtocolsFormValues> form={batchProtocolsForm} layout="vertical" initialValues={{ mode: 'add' }} onFinish={(values) => batchProtocols.mutate(values)}>
           <Form.Item noStyle shouldUpdate={(prev, next) => prev.mode !== next.mode}>

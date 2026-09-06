@@ -447,7 +447,7 @@ export function AppLayout() {
                 <Button
                   type="text"
                   shape="circle"
-                  icon={<BellOutlined style={{ fontSize: 16, color: hasCriticalAlert ? '#ff4d4f' : undefined }} />}
+                  icon={<BellOutlined style={{ fontSize: 16, color: hasCriticalAlert ? 'var(--color-error)' : undefined }} />}
                   onClick={() => navigate('/alerts')}
                   aria-label="查看告警"
                 />

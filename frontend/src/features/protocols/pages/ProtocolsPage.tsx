@@ -445,7 +445,7 @@ export function ProtocolsPage() {
         </Form>
       </Drawer>
 
-      <Modal title="复制协议" open={Boolean(cloneSource)} confirmLoading={cloneProtocol.isPending} onOk={() => cloneForm.submit()} onCancel={() => setCloneSource(null)} destroyOnClose>
+      <Modal title="复制协议" open={Boolean(cloneSource)} confirmLoading={cloneProtocol.isPending} onOk={() => cloneForm.submit()} onCancel={() => setCloneSource(null)} destroyOnHidden>
         <Form<CloneFormValues> form={cloneForm} layout="vertical" onFinish={(values) => cloneProtocol.mutate(values)}>
           <Form.Item name="name" label="副本名称" rules={[{ required: true }]}><Input /></Form.Item>
           <Form.Item name="listenPort" label="监听端口" rules={[{ required: true }]}><InputNumber min={1} max={65535} style={{ width: '100%' }} /></Form.Item>
