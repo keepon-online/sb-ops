@@ -371,7 +371,17 @@ export function UsersPage() {
   ];
 
   if (users.isError) {
-    return <Result status={users.error instanceof ApiError && users.error.status === 403 ? '403' : 'error'} title={users.error.message} extra={<Button type="primary" icon={<ReloadOutlined />} onClick={() => void users.refetch()}>重试</Button>} />;
+    return (
+      <Page title="用户订阅">
+        <div className="overview-card" style={{ padding: '48px 24px', textAlign: 'center' }}>
+          <Result
+            status={users.error instanceof ApiError && users.error.status === 403 ? '403' : 'error'}
+            title={users.error.message}
+            extra={<Button type="primary" icon={<ReloadOutlined />} onClick={() => void users.refetch()}>重试</Button>}
+          />
+        </div>
+      </Page>
+    );
   }
 
   return (
@@ -403,7 +413,7 @@ export function UsersPage() {
         columns={columns}
         rowSelection={{ selectedRowKeys: selected, onChange: setSelected }}
         pagination={false}
-        scroll={{ x: screens.md ? 1000 : 360 }}
+        scroll={{ x: screens.md ? 1000 : 460 }}
       />
       <div className="table-pager">
         <Button disabled={cursorHistory.length === 0} onClick={() => { const history = [...cursorHistory]; setCursor(history.pop()); setCursorHistory(history); }}>上一页</Button>
@@ -604,7 +614,7 @@ export function UsersPage() {
         </Form>
       </Modal>
 
-      <Modal title="订阅链接" width={620} open={Boolean(issuedToken)} footer={<Button type="primary" onClick={() => { setIssuedToken(null); setIssuedBaseUrl(undefined); setQrFormat(undefined); }}>我已保存</Button>} closable={false}>
+      <Modal title="订阅链接" width={620} open={Boolean(issuedToken)} destroyOnHidden footer={<Button type="primary" onClick={() => { setIssuedToken(null); setIssuedBaseUrl(undefined); setQrFormat(undefined); }}>我已保存</Button>} closable={false}>
         {issuedToken ? (
           <Descriptions column={1} size="small" bordered>
             <Descriptions.Item label="订阅 Token"><Typography.Text code copyable>{issuedToken}</Typography.Text></Descriptions.Item>

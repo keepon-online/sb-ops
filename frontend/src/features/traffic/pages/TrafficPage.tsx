@@ -265,7 +265,7 @@ export function TrafficPage() {
     <section className="overview-card"><div className="overview-card-title"><Typography.Title level={4} style={{ margin: 0 }}>活跃用户</Typography.Title><Typography.Text type="secondary">每个时段内有流量的独立用户数</Typography.Text></div><InteractiveChart height={140} integerTicks ariaLabel="活跃用户数趋势，每时段有流量的独立用户数，悬停查看数值" emptyText="当前范围暂无活跃用户" labels={activeSlots.map((slot) => slot.label)} formatValue={(value) => String(Math.round(value))} series={[{ name: '活跃用户', color: chartAccentColor, values: activeSlots.map((slot) => slot.users) }]} /></section>
     <section className="overview-card">
       <div className="overview-card-title"><Typography.Title level={4} style={{ margin: 0 }}>{dimension === 'user' ? '用户排行' : '协议排行'}</Typography.Title><Typography.Text type="secondary">用户统计不含协议归属，协议统计不含用户归属</Typography.Text></div>
-      <Table rowKey="id" size="small" pagination={false} loading={rankings.isLoading} dataSource={rankings.data?.items || []} columns={[
+      <Table rowKey="id" size="small" pagination={false} loading={rankings.isLoading} dataSource={rankings.data?.items || []} scroll={{ x: 500 }} columns={[
         { title: '对象', dataIndex: 'name' },
         { title: '上行', dataIndex: 'upBytes', render: bytes },
         { title: '下行', dataIndex: 'downBytes', render: bytes },

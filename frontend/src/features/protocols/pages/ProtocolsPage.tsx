@@ -382,14 +382,26 @@ export function ProtocolsPage() {
     }
   ];
   const loadError = tab === 'protocols' ? protocols.error : certificates.error;
-  if (loadError) return <Result status={loadError instanceof ApiError && loadError.status === 403 ? '403' : 'error'} title={loadError.message} extra={<Button type="primary" icon={<ReloadOutlined />} onClick={() => tab === 'protocols' ? void protocols.refetch() : void certificates.refetch()}>重试</Button>} />;
+  if (loadError) {
+    return (
+      <Page title="接入协议">
+        <div className="overview-card" style={{ padding: '48px 24px', textAlign: 'center' }}>
+          <Result
+            status={loadError instanceof ApiError && loadError.status === 403 ? '403' : 'error'}
+            title={loadError.message}
+            extra={<Button type="primary" icon={<ReloadOutlined />} onClick={() => tab === 'protocols' ? void protocols.refetch() : void certificates.refetch()}>重试</Button>}
+          />
+        </div>
+      </Page>
+    );
+  }
 
   return (
     <Page title="接入协议">
       <Tabs activeKey={tab} onChange={setTab} items={[
         { key: 'protocols', label: '协议', children: <>
           <div className="page-toolbar"><Typography.Text type="secondary">服务器对外提供的连接方式，保存后自动同步到本机 sing-box。</Typography.Text><Space><Button icon={<ThunderboltOutlined />} loading={runProbe.isPending} onClick={() => runProbe.mutate()}>立即拨测</Button><Button type="primary" icon={<PlusOutlined />} onClick={openCreateProtocol}>添加接入协议</Button></Space></div>
-          <Table rowKey="id" loading={protocols.isLoading} dataSource={protocols.data?.items || []} columns={protocolColumns} pagination={false} scroll={{ x: screens.md ? 1230 : 430 }} />
+          <Table rowKey="id" loading={protocols.isLoading} dataSource={protocols.data?.items || []} columns={protocolColumns} pagination={false} scroll={{ x: screens.md ? 1230 : 1000 }} />
         </> },
         { key: 'certificates', label: '证书', children: <>
           <div className="page-toolbar"><Typography.Text type="secondary">{certificates.data?.items.length || 0} 个证书</Typography.Text><Space><Button icon={<SafetyCertificateOutlined />} onClick={() => { acmeForm.resetFields(); setAcmeDrawer(true); }}>申请 ACME 证书</Button><Button type="primary" icon={<SafetyCertificateOutlined />} onClick={openCreateCertificate}>生成自签名证书</Button></Space></div>
@@ -401,7 +413,7 @@ export function ProtocolsPage() {
         <Form<ProtocolFormValues> form={protocolForm} layout="vertical" onFinish={(values) => editingProtocol ? updateProtocol.mutate(values) : createProtocol.mutate(values)}>
           <Form.Item name="name" label="名称" rules={[{ required: true, whitespace: true }]}><Input /></Form.Item>
           <Form.Item name="type" label="连接方式" rules={[{ required: true }]} extra={editingProtocol ? undefined : '推荐从 VLESS Reality 开始；其他选项用于兼容旧客户端或特定网络环境。'}><Select disabled={Boolean(editingProtocol)} options={protocolOptions} onChange={(value: ResourceProtocolType) => applySchema(value)} /></Form.Item>
-          <Space align="start" style={{ width: '100%' }}>
+          <Space align="start" wrap style={{ width: '100%' }}>
             <Form.Item name="listen" label="监听地址"><Input style={{ width: 200 }} /></Form.Item>
             <Form.Item name="listenPort" label="监听端口" rules={[{ required: true }]} extra={!editingProtocol && suggestedPort ? `已推荐可用端口 ${suggestedPort}` : undefined}><InputNumber min={1} max={65535} style={{ width: 180 }} /></Form.Item>
           </Space>

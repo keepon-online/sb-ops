@@ -683,11 +683,15 @@ export function SingBoxPage() {
 
   if (config.isError) {
     return (
-      <Result
-        status={config.error instanceof ApiError && config.error.status === 403 ? '403' : 'error'}
-        title={config.error.message}
-        extra={<Button type="primary" icon={<ReloadOutlined />} onClick={() => void config.refetch()}>重试</Button>}
-      />
+      <Page title="服务配置">
+        <div className="overview-card" style={{ padding: '48px 24px', textAlign: 'center' }}>
+          <Result
+            status={config.error instanceof ApiError && config.error.status === 403 ? '403' : 'error'}
+            title={config.error.message}
+            extra={<Button type="primary" icon={<ReloadOutlined />} onClick={() => void config.refetch()}>重试</Button>}
+          />
+        </div>
+      </Page>
     );
   }
 

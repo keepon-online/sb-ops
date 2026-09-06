@@ -123,7 +123,7 @@ function UpgradeSection() {
 
     <section className="workspace-section">
       <Typography.Title level={4}>版本信息</Typography.Title>
-      <Descriptions bordered size="small" column={2} items={[
+      <Descriptions bordered size="small" column={{ xs: 1, sm: 2 }} items={[
         { key: 'current', label: '当前版本', children: <Typography.Text strong copyable={value?.currentVersion !== 'dev'}>{value?.currentVersion || '—'}</Typography.Text> },
         { key: 'repo', label: '升级源', children: value?.repo ? <Typography.Text copyable>{value.repo}</Typography.Text> : '—' },
         {
@@ -247,7 +247,7 @@ function BackupSection() {
         action={<Button size="small" icon={<ReloadOutlined />} onClick={() => void backups.refetch()}>重试</Button>} />
     )}
     <Table rowKey="name" size="small" pagination={false} loading={backups.isLoading}
-      dataSource={backups.data?.items || []} columns={columns} locale={{ emptyText: '暂无备份' }} />
+      dataSource={backups.data?.items || []} columns={columns} locale={{ emptyText: '暂无备份' }} scroll={{ x: 540 }} />
     <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginTop: 12, marginBottom: 0 }}>
       每日 04:00 自动备份一次（除手动外，面板持续运行时每日固定留一份）；自动保留最近 5 份，超出裁剪最旧；恢复时停机将备份文件替换 data 目录下的 singbox-web.db（并删除同名 -wal/-shm 文件）后重启面板。
     </Typography.Paragraph>

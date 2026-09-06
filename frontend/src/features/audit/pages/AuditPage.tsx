@@ -69,12 +69,12 @@ function AuditDetailDrawer({ entry, onClose }: { entry: ManagementAuditEntry | n
                 <div style={{ padding: '6px 12px', background: 'rgba(var(--primary-color-rgb), 0.08)', fontWeight: 600, fontSize: 13, borderBottom: '1px solid var(--border-color)' }}>
                   {field}
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', fontSize: 12 }}>
-                  <div style={{ padding: '8px 12px', background: 'rgba(239, 68, 68, 0.08)', borderRight: '1px solid var(--border-color)', wordBreak: 'break-all' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', fontSize: 12 }}>
+                  <div style={{ padding: '8px 12px', background: 'color-mix(in srgb, var(--color-error) 8%, transparent)', borderRight: '1px solid var(--border-color)', borderBottom: '1px solid var(--border-color)', wordBreak: 'break-all' }}>
                     <div style={{ color: 'var(--color-error)', fontWeight: 600, marginBottom: 4 }}>- 改前旧值</div>
                     <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontFamily: "'JetBrains Mono', monospace" }}>{formatDiffValue(diff.old)}</pre>
                   </div>
-                  <div style={{ padding: '8px 12px', background: 'rgba(34, 197, 94, 0.08)', wordBreak: 'break-all' }}>
+                  <div style={{ padding: '8px 12px', background: 'color-mix(in srgb, var(--color-success) 8%, transparent)', borderBottom: '1px solid var(--border-color)', wordBreak: 'break-all' }}>
                     <div style={{ color: 'var(--color-success)', fontWeight: 600, marginBottom: 4 }}>+ 改后新值</div>
                     <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontFamily: "'JetBrains Mono', monospace" }}>{formatDiffValue(diff.new)}</pre>
                   </div>
@@ -132,7 +132,19 @@ export function AuditPage() {
     }
   ];
 
-  if (audit.isError) return <Result status={audit.error instanceof ApiError && audit.error.status === 403 ? '403' : 'error'} title={audit.error.message} extra={<Button type="primary" icon={<ReloadOutlined />} onClick={() => void audit.refetch()}>重试</Button>} />;
+  if (audit.isError) {
+    return (
+      <Page title="审计日志">
+        <div className="overview-card" style={{ padding: '48px 24px', textAlign: 'center' }}>
+          <Result
+            status={audit.error instanceof ApiError && audit.error.status === 403 ? '403' : 'error'}
+            title={audit.error.message}
+            extra={<Button type="primary" icon={<ReloadOutlined />} onClick={() => void audit.refetch()}>重试</Button>}
+          />
+        </div>
+      </Page>
+    );
+  }
 
   return (
     <Page title="审计日志">

@@ -54,7 +54,19 @@ const interfaceColumns = [
 export function MonitorPage() {
   const { trafficDownColor, chartAccentColor } = useAppTheme();
   const monitor = useQuery({ queryKey: ['monitor'], queryFn: monitorApi.status, retry: false, refetchInterval: 5000 });
-  if (monitor.isError) return <Result status={monitor.error instanceof ApiError && monitor.error.status === 403 ? '403' : 'error'} title={monitor.error.message} extra={<Button type="primary" icon={<ReloadOutlined />} onClick={() => void monitor.refetch()}>重试</Button>} />;
+  if (monitor.isError) {
+    return (
+      <Page title="主机监控">
+        <div className="overview-card" style={{ padding: '48px 24px', textAlign: 'center' }}>
+          <Result
+            status={monitor.error instanceof ApiError && monitor.error.status === 403 ? '403' : 'error'}
+            title={monitor.error.message}
+            extra={<Button type="primary" icon={<ReloadOutlined />} onClick={() => void monitor.refetch()}>重试</Button>}
+          />
+        </div>
+      </Page>
+    );
+  }
   const value: MonitorStatus | undefined = monitor.data;
   if (monitor.isLoading) return <Page title="主机监控"><Spin size="large" style={{ display: 'block', margin: '80px auto' }} /></Page>;
   if (value && !value.ready) return <Page title="主机监控"><Alert type="info" showIcon message="正在等待首次采样" description="服务器指标采样随面板启动，几秒后自动刷新。" /></Page>;

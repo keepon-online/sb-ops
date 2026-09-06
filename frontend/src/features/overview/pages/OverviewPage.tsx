@@ -70,7 +70,19 @@ export function OverviewPage() {
     onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ['resources', 'protocols-probe'] }); }
   });
 
-  if (overview.isError) return <Result status={overview.error instanceof ApiError && overview.error.status === 403 ? '403' : 'error'} title={overview.error.message} extra={<Button type="primary" icon={<ReloadOutlined />} onClick={() => void overview.refetch()}>重试</Button>} />;
+  if (overview.isError) {
+    return (
+      <Page title="控制总览">
+        <div className="overview-card" style={{ padding: '48px 24px', textAlign: 'center' }}>
+          <Result
+            status={overview.error instanceof ApiError && overview.error.status === 403 ? '403' : 'error'}
+            title={overview.error.message}
+            extra={<Button type="primary" icon={<ReloadOutlined />} onClick={() => void overview.refetch()}>重试</Button>}
+          />
+        </div>
+      </Page>
+    );
+  }
   const value = overview.data;
   const { trafficDownColor } = useAppTheme();
   const showTasks = Boolean(value?.tasks.some((task) => !task.completed));
