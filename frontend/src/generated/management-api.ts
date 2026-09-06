@@ -2896,6 +2896,15 @@ export interface operations {
                     "application/json": components["schemas"]["SetupStatusResponse"];
                 };
             };
+            /** @description Request failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManagementErrorResponse"];
+                };
+            };
             /** @description Setup status unavailable */
             500: {
                 headers: {
