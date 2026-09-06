@@ -34,9 +34,15 @@ export function InteractiveChart({ series, labels, formatValue, height, ariaLabe
     const index = Math.round(((svgX - left) / (width - left - right)) * (count - 1));
     setHover(Math.min(count - 1, Math.max(0, index)));
   };
-  if (count === 0) return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={emptyText} />;
-  return <div className="traffic-chart" ref={containerRef} style={{ position: 'relative' }} role="img" aria-label={ariaLabel}>
-    <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" style={{ width: '100%', display: 'block' }}>
+  if (count === 0) {
+    return (
+      <div className="traffic-chart" style={{ position: 'relative', width: '100%', height, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={emptyText} />
+      </div>
+    );
+  }
+  return <div className="traffic-chart" ref={containerRef} style={{ position: 'relative', width: '100%', height }} role="img" aria-label={ariaLabel}>
+    <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" style={{ width: '100%', height, display: 'block' }}>
       {tickValues.map((value) => <g key={value}>
         <line x1={left} y1={y(value)} x2={width - right} y2={y(value)} stroke="var(--border-color)" strokeWidth={value === 0 ? 1.5 : 0.5} />
         <text x={left - 6} y={y(value) + 4} textAnchor="end" fontSize="11" fill="var(--text-color)">{formatValue(value)}</text>

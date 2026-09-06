@@ -481,16 +481,15 @@ body {
 }
 .workspace-section { width: 100%; padding: 18px 0; border-top: 1px solid var(--border-color); }
 .section-heading { display: flex; width: 100%; justify-content: space-between; margin-bottom: 12px; }
-.traffic-chart { position: relative; width: 100%; height: 280px; min-height: 280px; }
-.traffic-chart svg { width: 100%; height: 260px; }
-.traffic-chart .ant-empty { position: absolute; inset: 70px 0 auto; }
+.traffic-chart { position: relative; width: 100%; }
+.traffic-chart svg { width: 100%; display: block; }
+.traffic-chart text { font-family: inherit; user-select: none; }
 .core-chart { position: relative; width: 100%; }
+.core-chart text { font-family: inherit; user-select: none; }
 
 @media (max-width: 600px) {
   .traffic-filters .ant-input { width: 100%; }
   .traffic-filters .ant-space, .traffic-filters .ant-space-item { width: 100%; }
-  .traffic-chart { height: 240px; min-height: 240px; }
-  .traffic-chart svg { height: 220px; }
 }
 
 /* Auth / Login Screens */

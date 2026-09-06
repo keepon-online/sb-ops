@@ -2,6 +2,12 @@
 
 本文件记录 sb-ops 的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/)。
 
+## [Unreleased]
+
+### 修复
+
+- **图表字体拉伸**：`InteractiveChart` 的 SVG 用 `preserveAspectRatio="none"` 配 CSS 固定高度，非等比缩放会把坐标轴文字拉扁/拉高；现容器与 SVG 高度统一跟随 `height` 参数（viewBox 与实际渲染盒一致，缩放恢复等比），SVG 文本继承主题字体并禁选中，空态改 flex 居中占位（不再绝对定位压在图区上）。
+
 ## [0.4.1] - 2026-09-06
 
 ### 变更
