@@ -412,7 +412,6 @@ html.light-theme, html.light-theme body {
 }
 
 .traffic-filters .ant-input { width: 180px; }
-.metric-band { padding: 12px 0 20px; }
 .gauge-band { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; padding: 8px 0 24px; }
 .gauge-cell {
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
@@ -637,57 +636,6 @@ html.light-theme, html.light-theme body {
   opacity: 0.75;
 }
 
-/* Form Styles */
-.side-form {
-  width: min(440px, calc(100vw - 48px));
-  flex-shrink: 0;
-}
-
-.action-grid {
-  width: 100%;
-}
-
-.toolbar {
-  margin-bottom: 16px;
-}
-
-/* Terminal Logs and Editor Boxes */
-.code-area textarea,
-.code-area {
-  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
-  border-radius: 8px !important;
-  border: 1px solid var(--border-color) !important;
-  background: var(--bg-container) !important;
-  color: var(--text-color) !important;
-  transition: var(--transition-smooth) !important;
-}
-
-.dark-theme .code-area textarea,
-.dark-theme .code-area {
-  background: #0d121f !important;
-  border-color: #1e293b !important;
-}
-
-.log-box {
-  min-height: 220px;
-  max-height: 420px;
-  overflow: auto;
-  margin: 0;
-  padding: 16px;
-  background: #090d16 !important;
-  color: #a5b4fc !important;
-  border-radius: 8px;
-  font-family: 'JetBrains Mono', ui-monospace, monospace;
-  font-size: 13px;
-  line-height: 1.6;
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  box-shadow: inset 0 2px 8px rgba(0,0,0,0.8);
-}
-
-.log-box::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.15);
-}
-
 /* Animations and Pulsing Status Dot */
 .pulse-dot {
   display: inline-block;
@@ -747,38 +695,6 @@ html.light-theme, html.light-theme body {
   }
 }
 
-/* Custom styling for metrics on Dashboard */
-.metric-card {
-  padding: 4px;
-}
-
-.metric-value {
-  font-size: 28px;
-  font-weight: 800;
-  line-height: 1.2;
-  margin-bottom: 4px;
-  background: linear-gradient(135deg, var(--primary-color), var(--primary-accent));
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-
-.theme-button-indicator {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  display: inline-block;
-}
-
-.tag-interactive {
-  cursor: pointer;
-  transition: var(--transition-smooth);
-}
-.tag-interactive:hover {
-  transform: translateY(-1px);
-  filter: brightness(1.1);
-}
-
 /* Page Layout Width Fix */
 .page {
   display: flex !important;
@@ -804,17 +720,6 @@ html.light-theme, html.light-theme body {
 
 .table-pager {
   justify-content: flex-end;
-}
-
-/* Hover effect for Dashboard Cockpit Action cards */
-.action-arrow {
-  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s !important;
-}
-
-.glass-card:hover .action-arrow {
-  transform: translateX(4px);
-  opacity: 1 !important;
-  color: var(--primary-color) !important;
 }
 
 /* Tab active style improvements */
@@ -874,23 +779,6 @@ html.light-theme, html.light-theme body {
     opacity: 1;
     transform: translateY(0);
   }
-}
-
-.animate-fade-in-up {
-  opacity: 0; /* start transparent, anim handles showing */
-  animation: fadeInUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
-/* Staggered delay helpers */
-.delay-1 { animation-delay: 50ms; }
-.delay-2 { animation-delay: 100ms; }
-.delay-3 { animation-delay: 150ms; }
-.delay-4 { animation-delay: 200ms; }
-.delay-5 { animation-delay: 250ms; }
-.delay-6 { animation-delay: 300ms; }
-
-.section-block {
-  margin-top: 24px;
 }
 
 @media (max-width: 991px) {

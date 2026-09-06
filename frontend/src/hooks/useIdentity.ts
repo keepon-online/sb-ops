@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { identityApi } from '../services/identity';
 import { getToken } from '../services/http';
 
-export const identityQueryKey = ['identity', 'me'] as const;
+const identityQueryKey = ['identity', 'me'] as const;
 
 export function useIdentity() {
   return useQuery({

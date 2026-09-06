@@ -14,7 +14,6 @@ export type SingBoxCheckResult = components['schemas']['SingBoxCheckResult'];
 export type SingBoxConnectionsResult = components['schemas']['SingBoxConnectionsResult'];
 export type SingBoxConnection = components['schemas']['SingBoxConnection'];
 export type ArgoTunnel = components['schemas']['ArgoTunnel'];
-export type WarpOutboundSettings = components['schemas']['WarpOutboundSettings'];
 export type WarpRegistrationResult = components['schemas']['WarpRegistrationResult'];
 
 const singBoxPath = (suffix = '') => `/api/v1/singbox${suffix}`;

@@ -27,14 +27,14 @@ try {
     await page.getByLabel('密码').fill(password);
     await page.getByRole('button', { name: '登录' }).click();
     await page.waitForURL('**/overview');
-    await page.goto(`${baseURL}/accounts`, { waitUntil: 'domcontentloaded' });
-    await page.getByRole('heading', { name: '账号与权限' }).waitFor();
+    await page.goto(`${baseURL}/users`, { waitUntil: 'domcontentloaded' });
+    await page.getByRole('heading', { name: '用户订阅' }).waitFor();
     if (viewport.width < 992) {
       await page.getByRole('button', { name: '打开导航' }).click();
-      const accountMenuItem = page.getByRole('menuitem', { name: '账号权限' });
-      await accountMenuItem.waitFor();
-      await accountMenuItem.click();
-      await accountMenuItem.waitFor({ state: 'hidden' });
+      const userMenuItem = page.getByRole('menuitem', { name: '用户订阅' });
+      await userMenuItem.waitFor();
+      await userMenuItem.click();
+      await userMenuItem.waitFor({ state: 'hidden' });
     }
 
     const layout = await page.evaluate(() => ({
@@ -55,7 +55,7 @@ try {
     }
     if (consoleErrors.length > 0) throw new Error(`${viewport.width}px console errors: ${consoleErrors.join(' | ')}`);
 
-    await page.screenshot({ path: `/tmp/sb-accounts-${viewport.width}x${viewport.height}.png`, fullPage: true });
+    await page.screenshot({ path: `/tmp/sb-users-${viewport.width}x${viewport.height}.png`, fullPage: true });
     await context.close();
   }
 } finally {

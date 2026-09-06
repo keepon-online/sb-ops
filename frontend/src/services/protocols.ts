@@ -6,11 +6,8 @@ export type ResourceProtocolType = components['schemas']['ResourceProtocolType']
 export type ResourceProtocolSchema = components['schemas']['ResourceProtocolSchema'];
 export type ResourceProtocolWrite = components['schemas']['ResourceCreateProtocolRequest'];
 export type ResourceCertificate = components['schemas']['ResourceCertificate'];
-export type ResourceCertificateWrite = components['schemas']['ResourceCreateCertificateRequest'];
 export type ProtocolRuntimeStatus = components['schemas']['ProtocolRuntimeStatusResult'];
-export type ProtocolRuntimeItem = components['schemas']['ProtocolRuntimeStatusItem'];
 export type ProbeResult = components['schemas']['ProbeResult'];
-export type ProbeResultItem = components['schemas']['ProbeResultItem'];
 
 const resourcePath = (resource: string, id: string, suffix = '') => `/api/v1/${resource}/${encodeURIComponent(id)}${suffix}`;
 
@@ -38,7 +35,5 @@ export const certificatesApi = {
     managementRequest<ResourceCertificate>(resourcePath('certificates', id, '/renew'), { method: 'POST', body: '{}' }),
   regenerateSelfSigned: (id: string, input: components['schemas']['ResourceRegenerateSelfSignedCertificateRequest']) =>
     managementRequest<ResourceCertificate>(resourcePath('certificates', id, '/regenerate'), { method: 'POST', body: JSON.stringify(input) }),
-  create: (input: ResourceCertificateWrite) => managementRequest<ResourceCertificate>('/api/v1/certificates', { method: 'POST', body: JSON.stringify(input) }),
-  update: (id: string, input: components['schemas']['ResourceUpdateCertificateRequest']) => managementRequest<ResourceCertificate>(resourcePath('certificates', id), { method: 'PATCH', body: JSON.stringify(input) }),
   remove: (id: string) => managementRequest<void>(resourcePath('certificates', id), { method: 'DELETE' })
 };

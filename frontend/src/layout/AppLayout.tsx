@@ -101,11 +101,7 @@ export function AppLayout() {
   useEffect(() => {
     contentRef.current?.scrollTo?.({ top: 0 });
   }, [location.pathname]);
-  const selected = location.pathname.startsWith('/policies/')
-    ? '/policies'
-    : location.pathname === '/'
-      ? '/overview'
-      : location.pathname;
+  const selected = location.pathname === '/' ? '/overview' : location.pathname;
 
   // 路由跳转至系统运维子项时，确保所属分组处于展开状态
   const prevSelectedRef = useRef(selected);

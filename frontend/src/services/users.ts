@@ -68,9 +68,6 @@ export const usersApi = {
   resetTraffic: (id: string) => managementRequest<ResourceUser>(userPath(id, '/traffic/reset'), {
     method: 'POST', body: '{}'
   }),
-  adjustTraffic: (id: string, input: components['schemas']['ResourceTrafficAdjustmentRequest']) => managementRequest<ResourceUser>(userPath(id, '/traffic/adjust'), {
-    method: 'POST', body: JSON.stringify(input)
-  }),
   adjustQuota: (id: string, input: components['schemas']['ResourceTrafficAdjustmentRequest']) => managementRequest<ResourceUser>(userPath(id, '/quota/adjust'), {
     method: 'POST', body: JSON.stringify(input)
   })
