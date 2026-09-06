@@ -75,6 +75,9 @@ func (h *handler) restartArgoTunnel(c *gin.Context) {
 	for _, value := range values {
 		if value.ID == c.Param("id") {
 			h.ArgoManager.RestartTunnel(value.ID)
+			// 重启只作用于隧道进程、不改资源数据：照 backup 先例直记审计，
+			// 不走 h.mutate（那会触发一次多余的内核重编译）。
+			h.audit(c, actionArgoTunnelRestart, resourceArgoTunnel, value.ID, ResultSuccess)
 			c.Status(http.StatusNoContent)
 			return
 		}
