@@ -1,8 +1,14 @@
-import { LockOutlined, MoonOutlined, SunOutlined, UserAddOutlined, UserOutlined } from '@ant-design/icons';
+import {
+  DisconnectOutlined,
+  LockOutlined,
+  ReloadOutlined,
+  UserAddOutlined,
+  UserOutlined
+} from '@ant-design/icons';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { App as AntApp, Button, Card, Form, Input, Popover, Result, Space, Spin, Typography } from 'antd';
+import { App as AntApp, Button, Card, Form, Input, Spin, Typography } from 'antd';
 import { Navigate, useNavigate } from 'react-router-dom';
-import { useAppTheme, themeColors, type ThemeColor } from '../../../context/ThemeContext';
+import { ThemeSwitcher } from '../../../components/ThemeSwitcher';
 import { identityApi } from '../../../services/identity';
 
 type SetupValues = {
@@ -14,7 +20,6 @@ type SetupValues = {
 export function SetupPage() {
   const navigate = useNavigate();
   const { message } = AntApp.useApp();
-  const { themeMode, themeColor, setThemeColor, toggleThemeMode } = useAppTheme();
   const status = useQuery({ queryKey: ['setup', 'status'], queryFn: identityApi.setupStatus, retry: false });
   const initialize = useMutation({
     mutationFn: (values: SetupValues) => identityApi.initializeAdmin(values.username, values.password),
@@ -26,62 +31,63 @@ export function SetupPage() {
   });
 
   if (status.isLoading) return <div className="centered"><Spin /></div>;
-  if (status.isError) return <Result status="error" title="无法读取初始化状态" extra={<Button onClick={() => void status.refetch()}>重试</Button>} />;
+
+  if (status.isError) {
+    return (
+      <div className="login-shell">
+        <div className="login-theme-bar">
+          <ThemeSwitcher />
+        </div>
+
+        <Card className="glass-card login-panel" variant="borderless" style={{ textAlign: 'center' }}>
+          <div className="login-header">
+            <div
+              className="login-icon-badge"
+              style={{
+                color: 'var(--color-error)',
+                background: 'rgba(239, 68, 68, 0.12)',
+                borderColor: 'rgba(239, 68, 68, 0.25)',
+                boxShadow: '0 4px 16px rgba(239, 68, 68, 0.18)'
+              }}
+            >
+              <DisconnectOutlined />
+            </div>
+            <div className="login-logo" style={{ fontSize: 22, marginBottom: 8 }}>
+              无法读取初始化状态
+            </div>
+            <Typography.Text type="secondary" className="login-subtitle" style={{ lineHeight: 1.6, padding: '0 8px' }}>
+              控制服务暂时未能连接，请检查本地网络或确认面板后台服务是否正常运行。
+            </Typography.Text>
+          </div>
+
+          <Button
+            type="primary"
+            size="large"
+            icon={<ReloadOutlined />}
+            loading={status.isFetching}
+            onClick={() => void status.refetch()}
+            block
+            className="login-submit-btn"
+          >
+            重试连接
+          </Button>
+        </Card>
+
+        <div className="login-footer">
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            Sing-box Ops · 单 VPS 自托管控制面板
+          </Typography.Text>
+        </div>
+      </div>
+    );
+  }
+
   if (status.data?.initialized) return <Navigate to="/login" replace />;
 
   return (
     <div className="login-shell">
       <div className="login-theme-bar">
-        <Popover
-          placement="bottomRight"
-          trigger="hover"
-          arrow={{ pointAtCenter: true }}
-          content={
-            <div style={{ padding: '4px 2px', width: 168 }}>
-              <div style={{ marginBottom: 10 }}>
-                <Typography.Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>
-                  主题色彩
-                </Typography.Text>
-                <Space size={8}>
-                  {(['blue', 'purple', 'green', 'orange'] as ThemeColor[]).map((color) => (
-                    <button
-                      key={color}
-                      className="theme-swatch"
-                      style={{
-                        backgroundColor: themeColors[color][themeMode],
-                        borderColor: themeColor === color ? 'var(--text-color)' : 'transparent',
-                        width: 22,
-                        height: 22
-                      }}
-                      aria-label={`切换为${color}主题`}
-                      title={color}
-                      onClick={() => setThemeColor(color)}
-                    />
-                  ))}
-                </Space>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 8, borderTop: '1px solid var(--border-color)' }}>
-                <Typography.Text type="secondary" style={{ fontSize: 12 }}>模式外观</Typography.Text>
-                <Button
-                  size="small"
-                  icon={themeMode === 'light' ? <MoonOutlined /> : <SunOutlined />}
-                  onClick={toggleThemeMode}
-                >
-                  {themeMode === 'light' ? '深色' : '浅色'}
-                </Button>
-              </div>
-            </div>
-          }
-        >
-          <Button
-            type="text"
-            shape="circle"
-            className="login-theme-btn"
-            icon={themeMode === 'light' ? <MoonOutlined style={{ fontSize: 16 }} /> : <SunOutlined style={{ fontSize: 16 }} />}
-            onClick={toggleThemeMode}
-            aria-label="外观与主题"
-          />
-        </Popover>
+        <ThemeSwitcher />
       </div>
 
       <Card className="glass-card login-panel" variant="borderless">

@@ -2,15 +2,13 @@ import {
   CloudServerOutlined,
   DisconnectOutlined,
   LogoutOutlined,
-  MoonOutlined,
   ReloadOutlined,
-  SunOutlined,
   SyncOutlined
 } from '@ant-design/icons';
-import { Button, Card, Popover, Space, Spin, Tag, Typography } from 'antd';
-import { type ReactNode, useEffect, useState } from 'react';
+import { App as AntApp, Button, Card, Space, Spin, Tag, Typography } from 'antd';
+import { type ReactNode, useCallback, useEffect, useState } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
-import { type ThemeColor, themeColors, useAppTheme } from '../context/ThemeContext';
+import { ThemeSwitcher } from './ThemeSwitcher';
 import { useIdentity } from '../hooks/useIdentity';
 import { clearSessionAndRedirect, getToken } from '../services/http';
 
@@ -18,6 +16,10 @@ export function AuthGuard({ children }: { children: ReactNode }) {
   const location = useLocation();
   const token = getToken();
   const { data, isLoading, isError, refetch } = useIdentity();
+
+  const handleRefetch = useCallback(() => {
+    void refetch();
+  }, [refetch]);
 
   if (!token) {
     return <Navigate to="/login" replace state={{ returnTo: location.pathname }} />;
@@ -32,7 +34,7 @@ export function AuthGuard({ children }: { children: ReactNode }) {
   }
 
   if (isError || !data) {
-    return <ConnectionBarrier onRefetch={() => void refetch()} />;
+    return <ConnectionBarrier onRefetch={handleRefetch} />;
   }
 
   return <>{children}</>;
@@ -41,21 +43,30 @@ export function AuthGuard({ children }: { children: ReactNode }) {
 function ConnectionBarrier({ onRefetch }: { onRefetch: () => void }) {
   const [isOnline, setIsOnline] = useState(() => (typeof navigator !== 'undefined' ? navigator.onLine : true));
   const [retrying, setRetrying] = useState(false);
-  const { themeMode, themeColor, setThemeColor, toggleThemeMode } = useAppTheme();
+  const [countdown, setCountdown] = useState(5);
+  const { message } = AntApp.useApp();
 
-  const handleRetry = async () => {
+  const handleRetry = useCallback(async () => {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      setIsOnline(false);
+      message.warning('检测到本地网络处于离线状态，请先检查 Wi-Fi 或蜂窝网络');
+      return;
+    }
+    setIsOnline(true);
     setRetrying(true);
     try {
       await onRefetch();
+      setCountdown(5);
     } finally {
       setRetrying(false);
     }
-  };
+  }, [message, onRefetch]);
 
   // 网络状态监听：一旦恢复联网，自动重新拉取验证
   useEffect(() => {
     const handleOnline = () => {
       setIsOnline(true);
+      message.info('网络已连接，正在重新接入控制台…');
       void handleRetry();
     };
     const handleOffline = () => {
@@ -67,70 +78,27 @@ function ConnectionBarrier({ onRefetch }: { onRefetch: () => void }) {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, []);
+  }, [handleRetry, message]);
 
-  // 本地在线时，每隔 5 秒自动尝试探测一次重连（应对 VPS 重启/服务瞬时下线自愈）
+  // 本地在线时，每隔 5 秒自动尝试探测一次重连（应对 VPS 重启/服务瞬时下线自愈），带倒计时感知
   useEffect(() => {
     if (!isOnline) return;
     const timer = window.setInterval(() => {
-      onRefetch();
-    }, 5000);
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          onRefetch();
+          return 5;
+        }
+        return prev - 1;
+      });
+    }, 1000);
     return () => window.clearInterval(timer);
   }, [isOnline, onRefetch]);
 
   return (
     <div className="login-shell">
       <div className="login-theme-bar">
-        <Popover
-          placement="bottomRight"
-          trigger="hover"
-          arrow={{ pointAtCenter: true }}
-          content={
-            <div style={{ padding: '4px 2px', width: 168 }}>
-              <div style={{ marginBottom: 10 }}>
-                <Typography.Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>
-                  主题色彩
-                </Typography.Text>
-                <Space size={8}>
-                  {(['blue', 'purple', 'green', 'orange'] as ThemeColor[]).map((color) => (
-                    <button
-                      key={color}
-                      className="theme-swatch"
-                      style={{
-                        backgroundColor: themeColors[color][themeMode],
-                        borderColor: themeColor === color ? 'var(--text-color)' : 'transparent',
-                        width: 22,
-                        height: 22
-                      }}
-                      aria-label={`切换为${color}主题`}
-                      title={color}
-                      onClick={() => setThemeColor(color)}
-                    />
-                  ))}
-                </Space>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 8, borderTop: '1px solid var(--border-color)' }}>
-                <Typography.Text type="secondary" style={{ fontSize: 12 }}>模式外观</Typography.Text>
-                <Button
-                  size="small"
-                  icon={themeMode === 'light' ? <MoonOutlined /> : <SunOutlined />}
-                  onClick={toggleThemeMode}
-                >
-                  {themeMode === 'light' ? '深色' : '浅色'}
-                </Button>
-              </div>
-            </div>
-          }
-        >
-          <Button
-            type="text"
-            shape="circle"
-            className="login-theme-btn"
-            icon={themeMode === 'light' ? <MoonOutlined style={{ fontSize: 16 }} /> : <SunOutlined style={{ fontSize: 16 }} />}
-            onClick={toggleThemeMode}
-            aria-label="外观与主题"
-          />
-        </Popover>
+        <ThemeSwitcher />
       </div>
 
       <Card className="glass-card login-panel" variant="borderless" style={{ textAlign: 'center' }}>
@@ -162,7 +130,7 @@ function ConnectionBarrier({ onRefetch }: { onRefetch: () => void }) {
             icon={isOnline ? <SyncOutlined spin /> : <DisconnectOutlined />}
             style={{ padding: '4px 14px', borderRadius: 12, fontSize: 12 }}
           >
-            {isOnline ? '正在等待服务恢复，将在后台自动探测重连…' : '设备处于离线状态，网络恢复后将自动重试'}
+            {isOnline ? `正在等待服务恢复，将在 ${countdown} 秒后自动重试…` : '设备处于离线状态，网络恢复后将自动重试'}
           </Tag>
         </div>
 
