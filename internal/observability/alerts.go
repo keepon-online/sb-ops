@@ -126,7 +126,7 @@ func (s *Service) Evaluate(ctx context.Context, aggregationErr error, trafficSta
 	}
 	if path := databasePath(ctx, s.db); path != "" {
 		if info, statErr := os.Stat(path); statErr == nil && info.Size() >= s.maxDBSize {
-			values = append(values, candidate{"database_capacity", "warning", "database", "primary", "database volume exceeds threshold; shorten traffic retention or purge history"})
+			values = append(values, candidate{"database_capacity", "warning", "database", "primary", "database volume exceeds threshold; shorten traffic retention"})
 		}
 	}
 	if aggregationErr != nil {

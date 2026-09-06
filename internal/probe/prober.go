@@ -39,10 +39,9 @@ const (
 	ProbeInterval     = 5 * time.Minute
 	ProbeInitialDelay = 30 * time.Second
 
-	perProbeTimeout   = 10 * time.Second
-	probeCycleTimeout = 60 * time.Second
-	probeConcurrency  = 4
-	errorLimit        = 300
+	perProbeTimeout  = 10 * time.Second
+	probeConcurrency = 4
+	errorLimit       = 300
 )
 
 // ErrKernelNotReady 表示本轮因内核未运行/配置未应用而跳过——内核故障已有

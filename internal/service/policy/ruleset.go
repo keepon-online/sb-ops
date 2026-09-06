@@ -106,7 +106,6 @@ func (c compiledRuleSet) match(host string) bool {
 
 type remoteRuleSetMatcher struct {
 	client *http.Client
-	ttl    time.Duration
 
 	mu    sync.RWMutex
 	cache map[string]compiledRuleSet
@@ -118,7 +117,6 @@ type remoteRuleSetMatcher struct {
 func NewRuleSetMatcher() RuleSetMatcher {
 	return &remoteRuleSetMatcher{
 		client: &http.Client{Timeout: ruleSetDownloadTimeout},
-		ttl:    ruleSetCacheTTL,
 		cache:  make(map[string]compiledRuleSet),
 	}
 }
