@@ -83,7 +83,7 @@ export function LoginPage() {
         </Popover>
       </div>
 
-      <Card className="glass-card login-panel" bordered={false}>
+      <Card className="glass-card login-panel" variant="borderless">
         <div className="login-header">
           <div className="login-icon-badge">
             <CloudServerOutlined />

@@ -47,4 +47,19 @@ describe('auth guard', () => {
     );
     expect(screen.getByText('private')).toBeInTheDocument();
   });
+
+  it('renders connection barrier when identity check fails', () => {
+    state.query.isError = true;
+    state.query.data = undefined;
+    render(
+      <MemoryRouter initialEntries={['/overview']}>
+        <Routes>
+          <Route path="/overview" element={<AuthGuard><div>private</div></AuthGuard>} />
+        </Routes>
+      </MemoryRouter>
+    );
+    expect(screen.getByText('无法连接到控制面板服务器')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /立即重试/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /退出并返回登录/ })).toBeInTheDocument();
+  });
 });
