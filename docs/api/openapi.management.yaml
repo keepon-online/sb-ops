@@ -74,7 +74,7 @@ paths:
         - name: format
           in: path
           required: true
-          schema: {type: string, examples: [sbox.json, clash.yaml, clmi.yaml, jhsub.txt]}
+          schema: {type: string, examples: [clash.yaml]}
       responses:
         '200':
           description: Immutable artifact from the current successful runtime synchronization
