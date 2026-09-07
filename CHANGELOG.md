@@ -2,6 +2,12 @@
 
 本文件记录 sb-ops 的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/)。
 
+## [Unreleased]
+
+### 修复
+
+- **Argo 隧道编辑/停用被空 token 卡死**：编辑表单的 token 字段不回显密文、初始化为空，但提交载荷把空字符串原样带上，后端判为「清空 token」拒绝——不改密钥的任何编辑（含停用）都会失败。现空值从 PATCH 载荷中剔除，不重贴 token 也能编辑/停用。
+
 ## [0.5.1] - 2026-09-07
 
 ### 修复

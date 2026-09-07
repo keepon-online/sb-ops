@@ -285,7 +285,12 @@ export function SingBoxPage() {
     onError: reportError
   });
   const updateArgo = useMutation({
-    mutationFn: (values: ArgoValues) => singBoxApi.updateArgo(editingArgo!.id, { ...values, ...(values.token ? { token: values.token } : {}), revision: editingArgo!.revision }),
+    // 编辑表单的 token 字段初始化为空（后端不回显密文），空值必须从载荷中剔除：
+    // 后端把空 token 视为「清空」，不改密钥的编辑/停用会被拒绝。
+    mutationFn: (values: ArgoValues) => {
+      const { token, ...rest } = values;
+      return singBoxApi.updateArgo(editingArgo!.id, { ...rest, ...(token ? { token } : {}), revision: editingArgo!.revision });
+    },
     onSuccess: () => { void refreshArgos(); closeArgo(); message.success('Argo 隧道已更新'); },
     onError: reportError
   });
