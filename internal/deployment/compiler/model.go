@@ -323,6 +323,24 @@ func numberSetting(value serviceprotocol.Protocol, key string, fallback int) int
 	}
 }
 
+func boolSetting(value serviceprotocol.Protocol, key string, fallback bool) bool {
+	if raw, ok := value.Settings[key]; ok && raw != nil {
+		switch v := raw.(type) {
+		case bool:
+			return v
+		case string:
+			lower := strings.ToLower(strings.TrimSpace(v))
+			if lower == "true" || lower == "1" {
+				return true
+			}
+			if lower == "false" || lower == "0" {
+				return false
+			}
+		}
+	}
+	return fallback
+}
+
 func transport(kind serviceprotocol.Type) string {
 	if kind == serviceprotocol.TypeHysteria2 || kind == serviceprotocol.TypeTUIC {
 		return "udp"

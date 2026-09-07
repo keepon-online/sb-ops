@@ -94,6 +94,14 @@ const portHopRuleLabels: Record<string, string> = {
   unknown: '无法检查端口跳跃规则（iptables 不可用）。'
 };
 
+const REALITY_SNI_PRESETS = [
+  'www.apple.com',
+  'gateway.icloud.com',
+  'download.microsoft.com',
+  'addons.mozilla.org',
+  'www.lovelive-anime.jp'
+];
+
 export function ProtocolsPage() {
   const { message, notification } = AntApp.useApp();
   const screens = Grid.useBreakpoint();
@@ -418,8 +426,34 @@ export function ProtocolsPage() {
             <Form.Item name="listenPort" label="监听端口" rules={[{ required: true }]} extra={!editingProtocol && suggestedPort ? `已推荐可用端口 ${suggestedPort}` : undefined}><InputNumber min={1} max={65535} style={{ width: 180 }} /></Form.Item>
           </Space>
           <Form.Item name="enabled" label="启用协议" valuePropName="checked"><Switch /></Form.Item>
-          {schema.data?.fields.filter((field) => visibleProtocolField(field.name, settings, editingProtocol !== null, schema.data?.type)).map((field) => (
-            <Form.Item key={field.name} name={['settings', field.name]} label={field.label} rules={field.required ? [{ required: true }] : undefined} extra={field.hint || undefined}>
+          {schema.data?.fields?.filter((field) => visibleProtocolField(field.name, settings, editingProtocol !== null, schema.data?.type)).map((field) => (
+            <Form.Item
+              key={field.name}
+              name={['settings', field.name]}
+              label={field.label}
+              rules={field.required ? [{ required: true }] : undefined}
+              valuePropName={field.kind === 'boolean' ? 'checked' : undefined}
+              extra={
+                <div>
+                  {field.hint ? <div>{field.hint}</div> : null}
+                  {field.name === 'serverName' && settings?.tlsMode === 'reality' ? (
+                    <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>推荐伪装站：</Typography.Text>
+                      {REALITY_SNI_PRESETS.map((domain) => (
+                        <Tag
+                          key={domain}
+                          style={{ cursor: 'pointer', marginInlineEnd: 0 }}
+                          color={settings?.serverName === domain ? 'processing' : 'default'}
+                          onClick={() => protocolForm.setFieldValue(['settings', 'serverName'], domain)}
+                        >
+                          {domain}
+                        </Tag>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              }
+            >
               {field.kind === 'select' ? <Select options={field.options?.map((value) => ({ value, label: value }))} />
                 : field.kind === 'number' ? <InputNumber style={{ width: '100%' }} />
                   : field.kind === 'boolean' ? <Switch />

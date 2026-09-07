@@ -322,10 +322,28 @@ func vlessInbound(protocol serviceprotocol.Protocol, devices []serviceuser.Artif
 		"type": "vless", "tag": protocol.InboundTag(), "listen": protocol.Listen, "listen_port": protocol.ListenPort,
 		"users": entries, "tls": tls,
 	}
+	applyTCPListenOptions(value, protocol)
 	if transport := vlessTransport(protocol); transport != nil {
 		value["transport"] = transport
 	}
 	return value
+}
+
+func applyTCPListenOptions(inbound map[string]any, protocol serviceprotocol.Protocol) {
+	if boolSetting(protocol, "tcpFastOpen", true) {
+		inbound["tcp_fast_open"] = true
+	}
+	keepAlive := setting(protocol, "tcpKeepAlive")
+	if keepAlive == "" {
+		keepAlive = "15s"
+	}
+	inbound["tcp_keep_alive"] = keepAlive
+
+	keepAliveInterval := setting(protocol, "tcpKeepAliveInterval")
+	if keepAliveInterval == "" {
+		keepAliveInterval = "15s"
+	}
+	inbound["tcp_keep_alive_interval"] = keepAliveInterval
 }
 
 func vlessTransport(protocol serviceprotocol.Protocol) map[string]any {
@@ -369,6 +387,7 @@ func vmessInbound(protocol serviceprotocol.Protocol, devices []serviceuser.Artif
 			"early_data_header_name": setting(protocol, "wsEarlyDataHeaderName"),
 		},
 	}
+	applyTCPListenOptions(value, protocol)
 	if setting(protocol, "tlsMode") == "certificate" {
 		value["tls"] = map[string]any{
 			"enabled":          true,
@@ -388,7 +407,8 @@ func hysteriaInbound(protocol serviceprotocol.Protocol, devices []serviceuser.Ar
 	return map[string]any{
 		"type": "hysteria2", "tag": protocol.InboundTag(), "listen": protocol.Listen, "listen_port": protocol.ListenPort,
 		"up_mbps": numberSetting(protocol, "upMbps", 100), "down_mbps": numberSetting(protocol, "downMbps", 100), "users": entries,
-		"tls": map[string]any{"enabled": true, "server_name": setting(protocol, "serverName"), "alpn": []string{"h3"}, "certificate_path": certificatePath, "key_path": keyPath},
+		"ignore_client_bandwidth": boolSetting(protocol, "ignoreClientBandwidth", true),
+		"tls":                     map[string]any{"enabled": true, "server_name": setting(protocol, "serverName"), "alpn": []string{"h3"}, "certificate_path": certificatePath, "key_path": keyPath},
 	}
 }
 
@@ -409,11 +429,13 @@ func anyTLSInbound(protocol serviceprotocol.Protocol, devices []serviceuser.Arti
 	for _, device := range devices {
 		entries = append(entries, map[string]any{"name": device.DeviceID, "password": device.Password})
 	}
-	return map[string]any{
+	inbound := map[string]any{
 		"type": "anytls", "tag": protocol.InboundTag(), "listen": protocol.Listen, "listen_port": protocol.ListenPort,
 		"users": entries,
 		"tls":   map[string]any{"enabled": true, "server_name": setting(protocol, "serverName"), "certificate_path": certificatePath, "key_path": keyPath},
 	}
+	applyTCPListenOptions(inbound, protocol)
+	return inbound
 }
 
 func shadowsocksInbound(protocol serviceprotocol.Protocol, devices []serviceuser.ArtifactDevice) map[string]any {
@@ -422,6 +444,7 @@ func shadowsocksInbound(protocol serviceprotocol.Protocol, devices []serviceuser
 		"type": "shadowsocks", "tag": protocol.InboundTag(), "listen": protocol.Listen, "listen_port": protocol.ListenPort,
 		"network": "tcp", "method": method, "password": setting(protocol, "password"),
 	}
+	applyTCPListenOptions(inbound, protocol)
 	if !strings.HasPrefix(method, "2022-") {
 		return inbound
 	}
@@ -439,10 +462,12 @@ func trojanInbound(protocol serviceprotocol.Protocol, devices []serviceuser.Arti
 		entries = append(entries, map[string]any{"name": device.DeviceID, "password": device.Password})
 	}
 	tls := tlsOrReality(protocol, paths)
-	return map[string]any{
+	inbound := map[string]any{
 		"type": "trojan", "tag": protocol.InboundTag(), "listen": protocol.Listen, "listen_port": protocol.ListenPort,
 		"users": entries, "tls": tls,
 	}
+	applyTCPListenOptions(inbound, protocol)
+	return inbound
 }
 
 // boundDevices returns the enabled devices of available users assigned to the

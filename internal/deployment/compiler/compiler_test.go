@@ -181,19 +181,22 @@ func TestCompileClashSubscriptionIncludesCommonRules(t *testing.T) {
 		}
 	}
 	groups := subscription["proxy-groups"].([]any)
-	if len(groups) != 18 {
-		t.Fatalf("proxy groups = %#v, want 18 groups", groups)
+	if len(groups) != 19 {
+		t.Fatalf("proxy groups = %#v, want 19 groups", groups)
 	}
 	byName := map[string]map[string]any{}
 	for _, value := range groups {
 		group := value.(map[string]any)
 		byName[group["name"].(string)] = group
 	}
-	if group := byName[clashProxyGroup]; group["type"] != "select" || !reflect.DeepEqual(group["proxies"], []any{"DIRECT", "REJECT", clashAutoGroup, "SS"}) {
+	if group := byName[clashProxyGroup]; group["type"] != "select" || !reflect.DeepEqual(group["proxies"], []any{"DIRECT", "REJECT", clashAutoGroup, clashFallbackGroup, "SS"}) {
 		t.Fatalf("node selector = %#v", group)
 	}
-	if group := byName[clashAutoGroup]; group["type"] != "url-test" || !reflect.DeepEqual(group["proxies"], []any{"SS"}) || group["url"] != "https://www.gstatic.com/generate_204" || group["interval"] != 300 || group["tolerance"] != 50 {
+	if group := byName[clashAutoGroup]; group["type"] != "url-test" || !reflect.DeepEqual(group["proxies"], []any{"SS"}) || group["url"] != "https://www.gstatic.com/generate_204" || group["interval"] != 180 || group["tolerance"] != 50 || group["lazy"] != true {
 		t.Fatalf("automatic selector = %#v", group)
+	}
+	if group := byName[clashFallbackGroup]; group["type"] != "fallback" || !reflect.DeepEqual(group["proxies"], []any{"SS"}) || group["url"] != "https://www.gstatic.com/generate_204" || group["interval"] != 180 || group["timeout"] != 3000 || group["lazy"] != true {
+		t.Fatalf("fallback selector = %#v", group)
 	}
 	for _, name := range []string{clashAdsGroup, clashAIGroup, clashBilibiliGroup, clashYouTubeGroup, clashGoogleGroup, clashPrivateGroup, clashChinaGroup, clashTelegramGroup, clashGitHubGroup, clashMicrosoftGroup, clashAppleGroup, clashSocialGroup, clashStreamingGroup, clashEducationGroup, clashServiceGroup, clashFinalGroup} {
 		group := byName[name]
@@ -698,5 +701,82 @@ func TestInputValidateRejectsDanglingRuleSetDetour(t *testing.T) {
 	input.RuleSets[0].DownloadDetour = "direct"
 	if err := input.Validate(); err != nil {
 		t.Fatalf("builtin detour should validate: %v", err)
+	}
+}
+
+func TestCompileRendersTCPListenOptionsAndHysteriaOptions(t *testing.T) {
+	result, err := Compile(Input{
+		PublicAddress: "1.1.1.1",
+		TLSCertPath:   "/tls/cert.pem",
+		TLSKeyPath:    "/tls/key.pem",
+		Protocols: []serviceprotocol.Protocol{
+			{
+				ID: "vless", Name: "VLESS", Type: serviceprotocol.TypeVLESS, Enabled: true, ListenPort: 10001,
+				Settings: map[string]any{"transport": "tcp", "tlsMode": "reality", "serverName": "apple.com", "realityPrivateKey": "private", "realityPublicKey": "public", "shortId": "01234567"},
+			},
+			{
+				ID: "hy2", Name: "Hysteria2", Type: serviceprotocol.TypeHysteria2, Enabled: true, ListenPort: 10002,
+				Settings: map[string]any{"serverName": "apple.com", "upMbps": 100, "downMbps": 100, "password": "pw", "ignoreClientBandwidth": true},
+			},
+		},
+		Users:         []serviceuser.ArtifactUser{{ID: "u1", Name: "user1", Enabled: true}},
+		Devices:       []serviceuser.ArtifactDevice{testDevice("u1", "pw")},
+		UserProtocols: map[string]map[string]bool{"u1": {"vless": true, "hy2": true}},
+	})
+	if err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+	var server map[string]any
+	if err := json.Unmarshal(result.ServerConfig, &server); err != nil {
+		t.Fatalf("unmarshal server config: %v", err)
+	}
+	inbounds := server["inbounds"].([]any)
+	byTag := map[string]map[string]any{}
+	for _, raw := range inbounds {
+		inbound := raw.(map[string]any)
+		byTag[inbound["tag"].(string)] = inbound
+	}
+	vless := byTag["vless-vless"]
+	if vless == nil || vless["tcp_fast_open"] != true || vless["tcp_keep_alive"] != "15s" || vless["tcp_keep_alive_interval"] != "15s" {
+		t.Fatalf("vless tcp listen options = %#v", vless)
+	}
+	hy2 := byTag["hysteria2-hysteria2"]
+	if hy2 == nil || hy2["ignore_client_bandwidth"] != true {
+		t.Fatalf("hy2 ignore_client_bandwidth = %#v", hy2)
+	}
+}
+
+func TestCompileHysteria2PortHoppingSubscription(t *testing.T) {
+	result, err := Compile(Input{
+		PublicAddress: "1.1.1.1",
+		TLSCertPath:   "/tls/cert.pem",
+		TLSKeyPath:    "/tls/key.pem",
+		Protocols: []serviceprotocol.Protocol{
+			{
+				ID: "hy2", Name: "Hysteria2", Type: serviceprotocol.TypeHysteria2, Enabled: true, ListenPort: 10002,
+				Settings: map[string]any{
+					"serverName": "apple.com", "upMbps": 200, "downMbps": 500, "password": "pw",
+					"portHopFrom": 20000, "portHopTo": 30000, "hopInterval": 25,
+				},
+			},
+		},
+		Users:         []serviceuser.ArtifactUser{{ID: "u1", Name: "user1", Enabled: true}},
+		Devices:       []serviceuser.ArtifactDevice{testDevice("u1", "pw")},
+		UserProtocols: map[string]map[string]bool{"u1": {"hy2": true}},
+	})
+	if err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+	var subscription map[string]any
+	if err := yaml.Unmarshal(subscriptionFor(result, "u1"), &subscription); err != nil {
+		t.Fatalf("unmarshal subscription: %v", err)
+	}
+	proxies := subscription["proxies"].([]any)
+	if len(proxies) != 1 {
+		t.Fatalf("proxies len = %d, want 1", len(proxies))
+	}
+	hy2Node := proxies[0].(map[string]any)
+	if hy2Node["ports"] != "20000-30000" || hy2Node["hop-interval"] != 25 {
+		t.Fatalf("hy2Node port hopping = %#v, want ports: 20000-30000, hop-interval: 25", hy2Node)
 	}
 }

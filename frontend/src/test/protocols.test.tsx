@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { App as AntApp, ConfigProvider } from 'antd';
-import { render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { ProtocolsPage } from '../features/protocols/pages/ProtocolsPage';
@@ -34,7 +34,16 @@ vi.mock('../services/protocols', () => ({
       ]
     }),
     runProbe: vi.fn(() => Promise.resolve({ checkedAt: '2026-09-03T02:05:00Z', items: [] })),
-    schema: () => Promise.resolve({ type: 'vless', fields: [], defaults: {}, certificateRequired: false } as unknown as ResourceProtocolSchema),
+    schema: vi.fn((type: string) => Promise.resolve({
+      type: type || 'vless',
+      fields: [
+        { name: 'tlsMode', label: 'TLS 模式', kind: 'select', options: ['reality', 'certificate', 'none'], required: true },
+        { name: 'serverName', label: '目标域名 (SNI)', kind: 'string', required: true, hint: 'Reality 偷跑目标域名' },
+        { name: 'tcpFastOpen', label: 'TCP Fast Open', kind: 'boolean', required: false, hint: '开启 TFO' }
+      ],
+      defaults: { tlsMode: 'reality', serverName: 'www.apple.com', tcpFastOpen: true },
+      certificateRequired: false
+    } as unknown as ResourceProtocolSchema)),
     suggestPort: () => Promise.resolve({ listenPort: 8444 })
   }
 }));
@@ -61,7 +70,10 @@ function findRow(name: string) {
 }
 
 describe('protocols page', () => {
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+  });
 
   it('renders per-protocol runtime status and active connections', async () => {
     renderProtocols();
@@ -91,5 +103,29 @@ describe('protocols page', () => {
     label.closest('button')!.click();
     const { protocolsApi } = await import('../services/protocols');
     await vi.waitFor(() => expect(protocolsApi.runProbe).toHaveBeenCalled());
+  });
+
+  it('renders Reality SNI presets and boolean switches in protocol drawer', async () => {
+    const { container } = renderProtocols();
+    const addBtn = await within(container).findByText('添加接入协议');
+    fireEvent.click(addBtn);
+
+    // 等待抽屉打开并加载 Schema 字段
+    expect(await screen.findByText('推荐伪装站：')).toBeInTheDocument();
+    expect(screen.getByText('gateway.icloud.com')).toBeInTheDocument();
+    expect(screen.getByText('download.microsoft.com')).toBeInTheDocument();
+
+    // 验证布尔开关渲染（tcpFastOpen 默认 true）
+    expect(screen.getByText('TCP Fast Open')).toBeInTheDocument();
+    const switchEl = screen.getByRole('switch', { name: 'TCP Fast Open' });
+    expect(switchEl).toHaveAttribute('aria-checked', 'true');
+
+    // 目标域名输入框初始为默认值 www.apple.com
+    const input = screen.getByLabelText('目标域名 (SNI)') as HTMLInputElement;
+    expect(input.value).toBe('www.apple.com');
+
+    // 点击预设 Tag 'gateway.icloud.com'，验证输入框值自动更新
+    fireEvent.click(screen.getByText('gateway.icloud.com'));
+    expect(input.value).toBe('gateway.icloud.com');
   });
 });

@@ -65,13 +65,29 @@ func clashSubscription(input Input, protocols []serviceprotocol.Protocol, user s
 				},
 			})
 		case serviceprotocol.TypeHysteria2:
-			proxies = append(proxies, map[string]any{
+			proxy := map[string]any{
 				"name": name, "type": "hysteria2", "server": input.PublicAddress, "port": protocol.ListenPort,
 				"password": device.Password, "sni": setting(protocol, "serverName"), "alpn": []string{"h3"},
 				"skip-cert-verify": skipCertVerify(setting(protocol, "serverName")),
 				"up":               fmt.Sprintf("%d Mbps", numberSetting(protocol, "upMbps", 100)),
 				"down":             fmt.Sprintf("%d Mbps", numberSetting(protocol, "downMbps", 100)),
-			})
+			}
+			hopFrom := numberSetting(protocol, "portHopFrom", 0)
+			hopTo := numberSetting(protocol, "portHopTo", 0)
+			if hopFrom > 0 && hopTo > 0 {
+				if hopFrom > hopTo {
+					hopFrom, hopTo = hopTo, hopFrom
+				}
+				if hopFrom != hopTo {
+					proxy["ports"] = fmt.Sprintf("%d-%d", hopFrom, hopTo)
+					hopInterval := numberSetting(protocol, "hopInterval", 30)
+					if hopInterval <= 0 {
+						hopInterval = 30
+					}
+					proxy["hop-interval"] = hopInterval
+				}
+			}
+			proxies = append(proxies, proxy)
 		case serviceprotocol.TypeTUIC:
 			proxies = append(proxies, map[string]any{
 				"name": name, "type": "tuic", "server": input.PublicAddress, "port": protocol.ListenPort,
@@ -181,6 +197,7 @@ func argoProxyNodes(input Input, protocols []serviceprotocol.Protocol, user serv
 const (
 	clashProxyGroup     = "🚀 节点选择"
 	clashAutoGroup      = "♻️ 自动选择"
+	clashFallbackGroup  = "🛡️ 故障转移"
 	clashAdsGroup       = "🛑 广告拦截"
 	clashAIGroup        = "🤖 AI 服务"
 	clashBilibiliGroup  = "📺 哔哩哔哩"
@@ -217,26 +234,27 @@ func clashDNS() map[string]any {
 }
 
 func clashProxyGroups(names []string) []any {
-	selectorTargets := append([]string{"DIRECT", "REJECT", clashAutoGroup}, names...)
+	selectorTargets := append([]string{"DIRECT", "REJECT", clashAutoGroup, clashFallbackGroup}, names...)
 	autoTargets := append([]string(nil), names...)
 	if len(autoTargets) == 0 {
 		autoTargets = []string{"DIRECT"}
 	}
-	categoryTargets := append([]string{clashProxyGroup, "DIRECT", "REJECT", clashAutoGroup}, names...)
+	categoryTargets := append([]string{clashProxyGroup, "DIRECT", "REJECT", clashAutoGroup, clashFallbackGroup}, names...)
 	groups := []any{
 		map[string]any{"name": clashProxyGroup, "type": "select", "proxies": selectorTargets},
-		map[string]any{"name": clashAutoGroup, "type": "url-test", "proxies": autoTargets, "url": "https://www.gstatic.com/generate_204", "interval": 300, "tolerance": 50},
-		map[string]any{"name": clashAdsGroup, "type": "select", "proxies": append([]string{"REJECT", "DIRECT", clashProxyGroup, clashAutoGroup}, names...)},
+		map[string]any{"name": clashAutoGroup, "type": "url-test", "proxies": autoTargets, "url": "https://www.gstatic.com/generate_204", "interval": 180, "tolerance": 50, "lazy": true},
+		map[string]any{"name": clashFallbackGroup, "type": "fallback", "proxies": autoTargets, "url": "https://www.gstatic.com/generate_204", "interval": 180, "timeout": 3000, "lazy": true},
+		map[string]any{"name": clashAdsGroup, "type": "select", "proxies": append([]string{"REJECT", "DIRECT", clashProxyGroup, clashAutoGroup, clashFallbackGroup}, names...)},
 		map[string]any{"name": clashAIGroup, "type": "select", "proxies": categoryTargets},
-		map[string]any{"name": clashBilibiliGroup, "type": "select", "proxies": append([]string{"DIRECT", clashProxyGroup, clashAutoGroup}, names...)},
+		map[string]any{"name": clashBilibiliGroup, "type": "select", "proxies": append([]string{"DIRECT", clashProxyGroup, clashAutoGroup, clashFallbackGroup}, names...)},
 		map[string]any{"name": clashYouTubeGroup, "type": "select", "proxies": categoryTargets},
 		map[string]any{"name": clashGoogleGroup, "type": "select", "proxies": categoryTargets},
 		map[string]any{"name": clashPrivateGroup, "type": "select", "proxies": []string{"DIRECT", clashProxyGroup}},
 		map[string]any{"name": clashChinaGroup, "type": "select", "proxies": []string{"DIRECT", clashProxyGroup}},
 		map[string]any{"name": clashTelegramGroup, "type": "select", "proxies": categoryTargets},
 		map[string]any{"name": clashGitHubGroup, "type": "select", "proxies": categoryTargets},
-		map[string]any{"name": clashMicrosoftGroup, "type": "select", "proxies": append([]string{"DIRECT", clashProxyGroup, clashAutoGroup}, names...)},
-		map[string]any{"name": clashAppleGroup, "type": "select", "proxies": append([]string{"DIRECT", clashProxyGroup, clashAutoGroup}, names...)},
+		map[string]any{"name": clashMicrosoftGroup, "type": "select", "proxies": append([]string{"DIRECT", clashProxyGroup, clashAutoGroup, clashFallbackGroup}, names...)},
+		map[string]any{"name": clashAppleGroup, "type": "select", "proxies": append([]string{"DIRECT", clashProxyGroup, clashAutoGroup, clashFallbackGroup}, names...)},
 		map[string]any{"name": clashSocialGroup, "type": "select", "proxies": categoryTargets},
 		map[string]any{"name": clashStreamingGroup, "type": "select", "proxies": categoryTargets},
 		map[string]any{"name": clashEducationGroup, "type": "select", "proxies": categoryTargets},
