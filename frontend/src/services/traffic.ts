@@ -4,14 +4,16 @@ import { managementRequest } from './http';
 export type TrafficSummary = components['schemas']['TrafficSummary'];
 export type TrafficActiveUsers = components['schemas']['TrafficActiveUsersResponse'];
 export type TrafficProtocolShare = components['schemas']['TrafficProtocolShare'];
+export type TrafficRanking = components['schemas']['TrafficRanking'];
 
 export type TrafficQuery = {
   from: string;
   to: string;
   interval?: 'hour' | 'day';
-  dimension?: 'user' | 'protocol';
+  dimension?: 'user' | 'protocol' | 'device';
   userId?: string;
   protocolId?: string;
+  deviceId?: string;
   limit?: number;
 };
 

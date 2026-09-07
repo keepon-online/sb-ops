@@ -22,7 +22,14 @@ func trafficFilter(c *gin.Context) (controltraffic.Filter, bool) {
 		httpx.Error(c, http.StatusBadRequest, httpx.CodeValidationFailed, "to 必须为 RFC3339 时间", nil)
 		return controltraffic.Filter{}, false
 	}
-	return controltraffic.Filter{From: from, To: to, Interval: c.Query("interval"), UserID: c.Query("userId"), ProtocolID: c.Query("protocolId")}, true
+	return controltraffic.Filter{
+		From:       from,
+		To:         to,
+		Interval:   c.Query("interval"),
+		UserID:     c.Query("userId"),
+		ProtocolID: c.Query("protocolId"),
+		DeviceID:   c.Query("deviceId"),
+	}, true
 }
 
 func (h *handler) trafficSeries(c *gin.Context) {

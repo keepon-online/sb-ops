@@ -1242,7 +1242,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Rank users or protocols by traffic */
+        /** Rank users, protocols, or devices by traffic */
         get: operations["getTrafficRankings"];
         put?: never;
         post?: never;
@@ -5359,6 +5359,7 @@ export interface operations {
                 interval?: "hour" | "day";
                 userId?: string;
                 protocolId?: string;
+                deviceId?: string;
             };
             header?: never;
             path?: never;
@@ -5390,6 +5391,7 @@ export interface operations {
                 interval?: "hour" | "day";
                 userId?: string;
                 protocolId?: string;
+                deviceId?: string;
             };
             header?: never;
             path?: never;
@@ -5418,10 +5420,11 @@ export interface operations {
             query: {
                 from: string;
                 to: string;
-                dimension: "user" | "protocol";
+                dimension: "user" | "protocol" | "device";
                 limit?: number;
                 userId?: string;
                 protocolId?: string;
+                deviceId?: string;
             };
             header?: never;
             path?: never;
@@ -5453,6 +5456,7 @@ export interface operations {
                 interval?: "hour" | "day";
                 userId?: string;
                 protocolId?: string;
+                deviceId?: string;
             };
             header?: never;
             path?: never;
@@ -5484,6 +5488,7 @@ export interface operations {
                 interval?: "hour" | "day";
                 userId?: string;
                 protocolId?: string;
+                deviceId?: string;
             };
             header?: never;
             path?: never;

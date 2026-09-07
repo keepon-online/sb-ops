@@ -66,4 +66,40 @@ describe('interactive chart axis', () => {
     expect(xLabels).toEqual(['L0', 'L11', 'L22', 'L33', 'L40']);
     vi.unstubAllGlobals();
   });
+
+  it('renders area mode with gradient-filled polygon', () => {
+    const { container } = render(
+      <InteractiveChart
+        height={220}
+        chartType="area"
+        ariaLabel="面积图测试"
+        labels={['10:00', '11:00']}
+        formatValue={(v) => `${v} B`}
+        series={[{ name: '上行', color: '#4f8ef7', values: [100, 200] }]}
+      />
+    );
+    const polygon = container.querySelector('polygon');
+    expect(polygon).toBeInTheDocument();
+    expect(polygon?.getAttribute('fill')).toMatch(/^url\(#chart-grad-/);
+  });
+
+  it('renders stacked mode with cumulative max and layered polygons', () => {
+    const { container } = render(
+      <InteractiveChart
+        height={220}
+        chartType="stacked"
+        ariaLabel="堆叠面积图测试"
+        labels={['10:00', '11:00']}
+        formatValue={(v) => `${v} B`}
+        series={[
+          { name: '上行', color: '#4f8ef7', values: [100, 200] },
+          { name: '下行', color: '#42a56f', values: [300, 400] }
+        ]}
+      />
+    );
+    // At 11:00, sum is 200 + 400 = 600 B, which becomes the yMax
+    expect(screen.getByText('600 B')).toBeInTheDocument();
+    const polygons = container.querySelectorAll('polygon');
+    expect(polygons.length).toBe(2);
+  });
 });

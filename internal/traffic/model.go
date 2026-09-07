@@ -26,9 +26,9 @@ type IngestResult struct {
 }
 
 type Filter struct {
-	From, To           time.Time
-	UserID, ProtocolID string
-	Interval           string
+	From, To                     time.Time
+	UserID, ProtocolID, DeviceID string
+	Interval                     string
 }
 
 type Point struct {

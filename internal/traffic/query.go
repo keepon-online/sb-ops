@@ -52,11 +52,17 @@ func normalizeFilter(filter Filter) (Filter, error) {
 func queryWhere(filter Filter) (string, []any) {
 	where := ` WHERE bucket_start>=? AND bucket_start<?`
 	args := []any{common.UnixTime(filter.From), common.UnixTime(filter.To)}
-	for column, value := range map[string]string{"user_id": filter.UserID, "protocol_id": filter.ProtocolID} {
-		if value != "" {
-			where += ` AND ` + column + `=?`
-			args = append(args, value)
-		}
+	if filter.UserID != "" {
+		where += ` AND user_id=?`
+		args = append(args, filter.UserID)
+	}
+	if filter.ProtocolID != "" {
+		where += ` AND protocol_id=?`
+		args = append(args, filter.ProtocolID)
+	}
+	if filter.DeviceID != "" {
+		where += ` AND device_id=?`
+		args = append(args, filter.DeviceID)
 	}
 	return where, args
 }
@@ -127,11 +133,23 @@ func (s *Service) Rankings(ctx context.Context, filter Filter, dimension string,
 	column, nameExpr := "", ""
 	switch dimension {
 	case "user":
+		filter.ProtocolID = ""
+		filter.DeviceID = ""
 		column, nameExpr = "user_id", `COALESCE((SELECT name FROM users WHERE id=traffic_hourly.user_id),'unassigned')`
 	case "protocol":
+		filter.UserID = ""
+		filter.DeviceID = ""
 		column, nameExpr = "protocol_id", `COALESCE((SELECT name FROM protocols WHERE id=traffic_hourly.protocol_id),'unassigned')`
+	case "device":
+		filter.ProtocolID = ""
+		column = "device_id"
+		if filter.UserID != "" {
+			nameExpr = `COALESCE((SELECT name FROM devices WHERE id=traffic_hourly.device_id), traffic_hourly.device_id)`
+		} else {
+			nameExpr = `COALESCE((SELECT d.name || ' (' || u.name || ')' FROM devices d JOIN users u ON d.user_id=u.id WHERE d.id=traffic_hourly.device_id), (SELECT name FROM devices WHERE id=traffic_hourly.device_id), traffic_hourly.device_id)`
+		}
 	default:
-		return nil, fmt.Errorf("%w: 维度必须是 user 或 protocol", ErrInvalidRequest)
+		return nil, fmt.Errorf("%w: 维度必须是 user、protocol 或 device", ErrInvalidRequest)
 	}
 	if limit < 1 || limit > 100 {
 		limit = 10

@@ -145,3 +145,73 @@ func TestProtocolSharesDropsUserFilter(t *testing.T) {
 		t.Fatalf("shares = %#v, want proto-1 with 20 bytes despite user filter", values)
 	}
 }
+
+func TestRankingsDeviceDimension(t *testing.T) {
+	db := newInsightsDatabase(t)
+	if _, err := db.Exec(`CREATE TABLE users (id TEXT PRIMARY KEY, name TEXT);
+CREATE TABLE devices (id TEXT PRIMARY KEY, user_id TEXT, name TEXT);
+INSERT INTO users(id, name) VALUES ('user-1', 'Alice'), ('user-2', 'Bob');
+INSERT INTO devices(id, user_id, name) VALUES ('dev-1', 'user-1', 'iPhone 15'), ('dev-2', 'user-1', 'MacBook Pro'), ('dev-3', 'user-2', 'Windows PC');
+`); err != nil {
+		t.Fatalf("seed users and devices: %v", err)
+	}
+
+	hour := time.Date(2026, 8, 14, 10, 0, 0, 0, time.UTC)
+	// Seed hourly traffic with user_id and device_id
+	for _, s := range []struct {
+		uid, did string
+		up, down int64
+	}{
+		{"user-1", "dev-1", 100, 200}, // dev-1: 300
+		{"user-1", "dev-2", 400, 500}, // dev-2: 900
+		{"user-2", "dev-3", 50, 50},   // dev-3: 100
+	} {
+		if _, err := db.Exec(`INSERT INTO traffic_hourly(bucket_start,node_id,user_id,protocol_id,device_id,up_bytes,down_bytes,sample_count,updated_at) VALUES(?,'local',?,'',?,?,?,1,?)`,
+			common.UnixTime(hour), s.uid, s.did, s.up, s.down, common.UnixTime(hour)); err != nil {
+			t.Fatalf("seed hourly: %v", err)
+		}
+	}
+
+	svc := NewService(db)
+	filter := Filter{From: hour, To: hour.Add(time.Hour), Interval: "hour"}
+
+	// 1. All devices ranking
+	ranks, err := svc.Rankings(context.Background(), filter, "device", 10)
+	if err != nil {
+		t.Fatalf("Rankings(device): %v", err)
+	}
+	if len(ranks) != 3 {
+		t.Fatalf("len(ranks) = %d, want 3", len(ranks))
+	}
+	if ranks[0].ID != "dev-2" || ranks[0].TotalBytes != 900 || ranks[0].Name != "MacBook Pro (Alice)" {
+		t.Fatalf("top rank = %#v, want dev-2 / MacBook Pro (Alice) / 900 bytes", ranks[0])
+	}
+	if ranks[1].ID != "dev-1" || ranks[1].TotalBytes != 300 || ranks[1].Name != "iPhone 15 (Alice)" {
+		t.Fatalf("second rank = %#v, want dev-1 / iPhone 15 (Alice) / 300 bytes", ranks[1])
+	}
+
+	// 2. Filter by user-1: should only return dev-2 and dev-1
+	userFilter := filter
+	userFilter.UserID = "user-1"
+	userRanks, err := svc.Rankings(context.Background(), userFilter, "device", 10)
+	if err != nil {
+		t.Fatalf("Rankings(device with userId): %v", err)
+	}
+	if len(userRanks) != 2 {
+		t.Fatalf("len(userRanks) = %d, want 2", len(userRanks))
+	}
+	if userRanks[0].ID != "dev-2" || userRanks[0].Name != "MacBook Pro" {
+		t.Fatalf("user rank 0 = %#v, want dev-2 / MacBook Pro", userRanks[0])
+	}
+
+	// 3. Series filtered by device-1
+	devFilter := filter
+	devFilter.DeviceID = "dev-1"
+	series, err := svc.Series(context.Background(), devFilter)
+	if err != nil {
+		t.Fatalf("Series(deviceId): %v", err)
+	}
+	if len(series) != 1 || series[0].TotalBytes != 300 {
+		t.Fatalf("series = %#v, want 1 point with 300 bytes", series)
+	}
+}
