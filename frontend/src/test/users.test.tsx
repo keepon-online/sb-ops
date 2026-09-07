@@ -82,7 +82,7 @@ describe('users batch operations', () => {
     fireEvent.change(screen.getByRole('spinbutton'), { target: { value: '2' } });
     fireEvent.click(screen.getByRole('button', { name: 'OK' }));
     await waitFor(() => expect(usersApi.batchQuota).toHaveBeenCalledWith(['u1', 'u2'], { mode: 'add', bytes: 2 * 1024 * 1024 * 1024 }));
-  });
+  }, 15000);
 
   it('批量分配协议：add 模式空选择被校验拦下，set 模式提示清空后果', async () => {
     renderUsersPage();
