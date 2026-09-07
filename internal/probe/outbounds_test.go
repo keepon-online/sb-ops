@@ -111,9 +111,9 @@ func TestVMessMirrorsServerTLS(t *testing.T) {
 }
 
 func TestUDPProtocolsMirrorTLS(t *testing.T) {
-	hy2 := outboundFor(t, serviceprotocol.TypeHysteria2, map[string]any{"serverName": "203.0.113.10", "password": "x"})
-	if hy2["password"] != "device-password" {
-		t.Fatalf("hysteria2 password 应为设备凭据: %v", hy2["password"])
+	hy2 := outboundFor(t, serviceprotocol.TypeHysteria2, map[string]any{"serverName": "203.0.113.10", "password": "x", "upMbps": 200, "downMbps": 300})
+	if hy2["password"] != "device-password" || hy2["up_mbps"] != 200 || hy2["down_mbps"] != 300 {
+		t.Fatalf("hysteria2 outbound options error: %v", hy2)
 	}
 	tls := hy2["tls"].(map[string]any)
 	if tls["insecure"] != true || tls["alpn"].([]string)[0] != "h3" {

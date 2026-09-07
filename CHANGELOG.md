@@ -2,6 +2,12 @@
 
 本文件记录 sb-ops 的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/)。
 
+## [Unreleased]
+
+### 修复
+
+- **Hysteria2 拨测 HTTP 502 与 BBR 策略**：sing-box 服务端设 `ignore_client_bandwidth` 时，握手上报速率（Rx=0）的 BBR 客户端会被内核以「禁止 BBR」拒绝——探针 hy2 客户端此前未上报带宽故被断连、对上层返回 502。修复两侧：拨测客户端按协议设置上报 `up_mbps/down_mbps`（镜像订阅/服务端）；`ignore_client_bandwidth` 默认回退为关闭（仅显式开启才下发），避免默认对全部 hy2 开严格模式，文案更正为「禁用客户端 BBR」。
+
 ## [0.5.0] - 2026-09-07
 
 ### 新增

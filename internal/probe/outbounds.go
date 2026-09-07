@@ -48,6 +48,8 @@ func clientOutbound(protocol serviceprotocol.Protocol, device serviceuser.Artifa
 	case serviceprotocol.TypeHysteria2:
 		value["type"] = "hysteria2"
 		value["password"] = device.Password
+		value["up_mbps"] = numberSetting(protocol, "upMbps", 100)
+		value["down_mbps"] = numberSetting(protocol, "downMbps", 100)
 		value["tls"] = certificateTLS(protocol)
 		value["tls"].(map[string]any)["alpn"] = []string{"h3"}
 	case serviceprotocol.TypeTUIC:

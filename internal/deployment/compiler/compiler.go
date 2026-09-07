@@ -404,12 +404,15 @@ func hysteriaInbound(protocol serviceprotocol.Protocol, devices []serviceuser.Ar
 	for _, device := range devices {
 		entries = append(entries, map[string]any{"name": device.DeviceID, "password": device.Password})
 	}
-	return map[string]any{
+	inbound := map[string]any{
 		"type": "hysteria2", "tag": protocol.InboundTag(), "listen": protocol.Listen, "listen_port": protocol.ListenPort,
 		"up_mbps": numberSetting(protocol, "upMbps", 100), "down_mbps": numberSetting(protocol, "downMbps", 100), "users": entries,
-		"ignore_client_bandwidth": boolSetting(protocol, "ignoreClientBandwidth", true),
-		"tls":                     map[string]any{"enabled": true, "server_name": setting(protocol, "serverName"), "alpn": []string{"h3"}, "certificate_path": certificatePath, "key_path": keyPath},
+		"tls": map[string]any{"enabled": true, "server_name": setting(protocol, "serverName"), "alpn": []string{"h3"}, "certificate_path": certificatePath, "key_path": keyPath},
 	}
+	if boolSetting(protocol, "ignoreClientBandwidth", false) {
+		inbound["ignore_client_bandwidth"] = true
+	}
+	return inbound
 }
 
 func tuicInbound(protocol serviceprotocol.Protocol, devices []serviceuser.ArtifactDevice, certificatePath, keyPath string) map[string]any {
