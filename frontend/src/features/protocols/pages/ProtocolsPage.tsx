@@ -460,20 +460,46 @@ export function ProtocolsPage() {
                     : field.kind === 'password' ? <Input.Password placeholder={editingProtocol ? '留空则保持原值' : '留空由服务端生成'} /> : <Input />}
             </Form.Item>
           ))}
-          {(certificateRequired || editingProtocol?.certificateId) ? <Form.Item name="certificateId" label="TLS 证书" rules={certificateRequired ? [{ required: true, message: '请选择或生成 TLS 证书' }] : undefined}>
-            <Space.Compact style={{ width: '100%' }}>
-              <Select allowClear style={{ width: '100%' }} options={certificateOptions} placeholder="暂无可用证书" />
-              {!editingProtocol ? <Tooltip title="生成自签名证书"><Button icon={<SafetyCertificateOutlined />} loading={createSelfSignedCertificate.isPending} onClick={() => {
-                const serverName = String(protocolForm.getFieldValue(['settings', 'serverName']) || '').trim();
-                if (!serverName) {
-                  protocolForm.setFields([{ name: ['settings', 'serverName'], errors: ['请先填写服务器名称'] }]);
-                  return;
-                }
-                createSelfSignedCertificate.mutate({ name: `${serverName}-self-signed`, serverName });
-              }} /></Tooltip> : null}
-            </Space.Compact>
-            {certificateRequired && certificateOptions.length === 0 ? <div className="ant-form-item-extra" style={{ marginTop: 4 }}>还没有可用证书，可点击右侧按钮生成自签名证书，或在「证书」页签申请 ACME 受信任证书。</div> : null}
-          </Form.Item> : null}
+          {(certificateRequired || editingProtocol?.certificateId) ? (
+            <Form.Item
+              label="TLS 证书"
+              required={certificateRequired}
+              extra={certificateRequired && certificateOptions.length === 0 ? (
+                <div style={{ marginTop: 4 }}>还没有可用证书，可点击右侧按钮生成自签名证书，或在「证书」页签申请 ACME 受信任证书。</div>
+              ) : undefined}
+            >
+              <Space.Compact style={{ width: '100%' }}>
+                <Form.Item
+                  name="certificateId"
+                  noStyle
+                  rules={certificateRequired ? [{ required: true, message: '请选择或生成 TLS 证书' }] : undefined}
+                >
+                  <Select
+                    allowClear
+                    style={{ width: '100%' }}
+                    options={certificateOptions}
+                    placeholder={certificateOptions.length === 0 ? '暂无可用证书' : '请选择 TLS 证书'}
+                  />
+                </Form.Item>
+                {!editingProtocol ? (
+                  <Tooltip title="生成自签名证书">
+                    <Button
+                      icon={<SafetyCertificateOutlined />}
+                      loading={createSelfSignedCertificate.isPending}
+                      onClick={() => {
+                        const serverName = String(protocolForm.getFieldValue(['settings', 'serverName']) || '').trim();
+                        if (!serverName) {
+                          protocolForm.setFields([{ name: ['settings', 'serverName'], errors: ['请先填写服务器名称'] }]);
+                          return;
+                        }
+                        createSelfSignedCertificate.mutate({ name: `${serverName}-self-signed`, serverName });
+                      }}
+                    />
+                  </Tooltip>
+                ) : null}
+              </Space.Compact>
+            </Form.Item>
+          ) : null}
         </Form>
       </Drawer>
 

@@ -8,13 +8,18 @@ import type { ResourceCertificate, ResourceProtocol, ResourceProtocolSchema } fr
 
 vi.mock('../services/protocols', () => ({
   certificatesApi: {
-    list: () => Promise.resolve({ items: [] as ResourceCertificate[] })
+    list: () => Promise.resolve({
+      items: [
+        { id: 'cert-1', name: 'my-cert.example.com', source: 'acme' }
+      ] as ResourceCertificate[]
+    })
   },
   protocolsApi: {
     list: () => Promise.resolve({
       items: [
         { id: 'proto-a', name: 'alpha', type: 'vless', enabled: true, listen: '::', listenPort: 8443, settings: {}, certificateId: null, revision: 1, createdAt: '2026-08-01T00:00:00Z', updatedAt: '2026-08-01T00:00:00Z' },
-        { id: 'proto-b', name: 'beta', type: 'trojan', enabled: true, listen: '::', listenPort: 443, settings: {}, certificateId: null, revision: 1, createdAt: '2026-08-01T00:00:00Z', updatedAt: '2026-08-01T00:00:00Z' }
+        { id: 'proto-b', name: 'beta', type: 'trojan', enabled: true, listen: '::', listenPort: 443, settings: {}, certificateId: null, revision: 1, createdAt: '2026-08-01T00:00:00Z', updatedAt: '2026-08-01T00:00:00Z' },
+        { id: 'proto-c', name: 'gamma', type: 'hysteria2', enabled: true, listen: '::', listenPort: 9443, settings: {}, certificateId: 'cert-1', revision: 1, createdAt: '2026-08-01T00:00:00Z', updatedAt: '2026-08-01T00:00:00Z' }
       ] as ResourceProtocol[]
     }),
     runtimeStatus: () => Promise.resolve({
@@ -127,5 +132,16 @@ describe('protocols page', () => {
     // 点击预设 Tag 'gateway.icloud.com'，验证输入框值自动更新
     fireEvent.click(screen.getByText('gateway.icloud.com'));
     expect(input.value).toBe('gateway.icloud.com');
+  });
+
+  it('displays selected certificate when editing protocol with certificate', async () => {
+    renderProtocols();
+    expect(await screen.findByText('gamma')).toBeInTheDocument();
+    const gammaRow = findRow('gamma');
+    const editBtn = within(gammaRow).getByRole('button', { name: 'edit' });
+    fireEvent.click(editBtn);
+
+    expect(await screen.findByText('编辑协议')).toBeInTheDocument();
+    expect(await screen.findByText('my-cert.example.com')).toBeInTheDocument();
   });
 });
