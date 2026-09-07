@@ -1,11 +1,15 @@
 package compiler
 
 import (
+	"bytes"
 	"fmt"
 	"net"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	servicepolicy "github.com/keepon-online/sb-ops/internal/service/policy"
 	serviceprotocol "github.com/keepon-online/sb-ops/internal/service/protocol"
@@ -144,7 +148,7 @@ func clashSubscription(input Input, protocols []serviceprotocol.Protocol, user s
 	if err != nil {
 		return nil, err
 	}
-	return raw, nil
+	return unescapeYAMLUnicode(raw), nil
 }
 
 // argoProxyNodes renders one extra vmess node per running Argo tunnel: the
@@ -527,4 +531,57 @@ func shadowsocksSubscriptionPassword(protocol serviceprotocol.Protocol, device s
 	// 客户端密码必须是 "服务端密钥:用户密钥" 的冒号组合，只给用户密钥
 	// 会始终认证失败（invalid request）。
 	return setting(protocol, "password") + ":" + serviceprotocol.ShadowsocksUserPassword(method, device.Password)
+}
+
+// unescapeYAMLUnicode converts standard YAML 32-bit Unicode escape sequences (\UXXXXXXXX)
+// back into literal UTF-8 characters within double-quoted strings.
+// gopkg.in/yaml.v3 automatically escapes characters outside BMP (> 0xFFFF, such as emojis)
+// into \UXXXXXXXX format inside double-quoted scalars; this restores them so that generated
+// YAML files remain human-readable with literal emojis in plain text editors.
+func unescapeYAMLUnicode(raw []byte) []byte {
+	if !bytes.Contains(raw, []byte(`\U`)) {
+		return raw
+	}
+	out := make([]byte, 0, len(raw))
+	inDoubleQuotes := false
+	for i := 0; i < len(raw); {
+		c := raw[i]
+		if c == '"' {
+			slashes := 0
+			for j := i - 1; j >= 0 && raw[j] == '\\'; j-- {
+				slashes++
+			}
+			if slashes%2 == 0 {
+				inDoubleQuotes = !inDoubleQuotes
+			}
+			out = append(out, c)
+			i++
+			continue
+		}
+
+		if inDoubleQuotes && c == '\\' && i+9 < len(raw) && raw[i+1] == 'U' {
+			slashes := 0
+			for j := i - 1; j >= 0 && raw[j] == '\\'; j-- {
+				slashes++
+			}
+			if slashes%2 == 0 {
+				hexStr := string(raw[i+2 : i+10])
+				val, err := strconv.ParseUint(hexStr, 16, 32)
+				if err == nil {
+					r := rune(val)
+					if utf8.ValidRune(r) && !unicode.IsControl(r) {
+						var buf [4]byte
+						n := utf8.EncodeRune(buf[:], r)
+						out = append(out, buf[:n]...)
+						i += 10
+						continue
+					}
+				}
+			}
+		}
+
+		out = append(out, c)
+		i++
+	}
+	return out
 }

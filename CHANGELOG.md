@@ -10,6 +10,7 @@
 - **节点稳定性一批（服务端内核参数 + 客户端订阅自愈）**：TCP 系入站（VLESS/VMess/AnyTLS/Shadowsocks/Trojan）统一注入 `tcp_fast_open`（默认开启，降低首次建连延迟）与 `tcp_keep_alive`/`tcp_keep_alive_interval`（默认 15s，快速剔除失效半开连接，字段已对照 sing-box v1.13.19 校验合法）；Hysteria2 默认开启 `ignore_client_bandwidth`（由服务端 BBR 自主估算带宽，防止客户端误报限速拖累吞吐）。协议「高级」分组暴露 TCP Fast Open / TCP 保活开关。
 - **订阅端口跳跃下发**：Hysteria2 配置端口跳跃后，订阅节点带 `ports` 端口段与 `hop-interval`（默认 30s，区间自动排序），客户端按段跳跃抗单端口封禁。
 - **订阅故障转移组**：新增「🛡️ 故障转移」fallback 组（3s 超时、180s 探测、lazy），节点失活自动切换次优节点；「自动选择」探测间隔 300s → 180s 并开启 lazy，两组加入所有可选中。
+- **订阅 Emoji 字面量化**：gopkg.in/yaml.v3 会把双引号字符串中 BMP 外字符（策略组名的 Emoji）转义成 `\U0001F680` 形态，生成的 clash.yaml 在文本编辑器里不可读；编译产物统一后处理还原为字面 UTF-8（仅双引号内、正确处理转义反斜杠与非法码点），YAML 语义不变。
 
 ## [0.4.2] - 2026-09-07
 

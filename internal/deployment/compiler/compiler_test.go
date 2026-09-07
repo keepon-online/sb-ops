@@ -147,9 +147,17 @@ func TestCompileClashSubscriptionIncludesCommonRules(t *testing.T) {
 		t.Fatalf("compile: %v", err)
 	}
 
+	rawSub := subscriptionFor(result, "user")
 	var subscription map[string]any
-	if err := yaml.Unmarshal(subscriptionFor(result, "user"), &subscription); err != nil {
+	if err := yaml.Unmarshal(rawSub, &subscription); err != nil {
 		t.Fatalf("parse subscription: %v", err)
+	}
+	rawYAML := string(rawSub)
+	if strings.Contains(rawYAML, `\U0001F680`) || strings.Contains(rawYAML, `\U0001F6E1`) {
+		t.Fatalf("subscription contains escaped unicode: %s", rawYAML)
+	}
+	if !strings.Contains(rawYAML, "🚀 节点选择") || !strings.Contains(rawYAML, "🛡️ 故障转移") {
+		t.Fatalf("subscription missing literal emoji: %s", rawYAML)
 	}
 	if subscription["port"] != 7890 || subscription["socks-port"] != 7891 {
 		t.Fatalf("ports = %#v, want HTTP 7890 and SOCKS 7891", subscription)
@@ -778,5 +786,47 @@ func TestCompileHysteria2PortHoppingSubscription(t *testing.T) {
 	hy2Node := proxies[0].(map[string]any)
 	if hy2Node["ports"] != "20000-30000" || hy2Node["hop-interval"] != 25 {
 		t.Fatalf("hy2Node port hopping = %#v, want ports: 20000-30000, hop-interval: 25", hy2Node)
+	}
+}
+
+func TestUnescapeYAMLUnicode(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			name: "no escape sequence",
+			in:   "name: 节点选择\ntype: select\n",
+			want: "name: 节点选择\ntype: select\n",
+		},
+		{
+			name: "rocket emoji",
+			in:   "name: \"\\U0001F680 节点选择\"\n",
+			want: "name: \"🚀 节点选择\"\n",
+		},
+		{
+			name: "shield emoji with variation selector",
+			in:   "name: \"\\U0001F6E1️ 故障转移\"\n",
+			want: "name: \"🛡️ 故障转移\"\n",
+		},
+		{
+			name: "escaped backslash before U",
+			in:   "name: \"\\\\U0001F680\"\n",
+			want: "name: \"\\\\U0001F680\"\n",
+		},
+		{
+			name: "outside double quotes ignored",
+			in:   "literal: \\U0001F680\n",
+			want: "literal: \\U0001F680\n",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := string(unescapeYAMLUnicode([]byte(tc.in)))
+			if got != tc.want {
+				t.Errorf("unescapeYAMLUnicode(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
 	}
 }
