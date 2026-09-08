@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { App as AntApp, ConfigProvider } from 'antd';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import dayjs from 'dayjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { UsersPage } from '../features/users/pages/UsersPage';
@@ -149,7 +150,7 @@ describe('users batch operations', () => {
       expect(screen.getByText('819 GB')).toBeInTheDocument();
       expect(screen.getByText('1000 GB')).toBeInTheDocument();
       expect(screen.getByText('81.9%')).toBeInTheDocument();
-      expect(screen.getByText(/2027-08-22 07:59:59/)).toBeInTheDocument();
+      expect(screen.getByText(new RegExp(dayjs('2027-08-21T23:59:59Z').format('YYYY-MM-DD HH:mm:ss')))).toBeInTheDocument();
     } finally {
       window.matchMedia = origMatchMedia;
     }
