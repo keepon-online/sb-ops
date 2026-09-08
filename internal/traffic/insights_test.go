@@ -133,6 +133,71 @@ func TestAggregateRecentIncludesInProgressDay(t *testing.T) {
 	}
 }
 
+// 日界必须锚定业务时区自然日：UTC+8 下「一天」是本地 00:00~24:00，而不是
+// epoch 整除出的北京 08:00~次日 08:00。
+func TestAggregateRecentAnchorsDailyToLocalMidnight(t *testing.T) {
+	db := newInsightsDatabase(t)
+	cst := time.FixedZone("UTC+8", 8*3600)
+	seedInsight(t, db, time.Date(2026, 8, 13, 15, 0, 0, 0, time.UTC), "user-a", "", 5, 0)   // 北京 8-13 23:00
+	seedInsight(t, db, time.Date(2026, 8, 13, 17, 0, 0, 0, time.UTC), "user-a", "", 100, 0) // 北京 8-14 01:00
+	seedInsight(t, db, time.Date(2026, 8, 14, 3, 0, 0, 0, time.UTC), "user-a", "", 20, 0)   // 北京 8-14 11:00
+	service := NewService(db)
+	service.now = func() time.Time { return time.Date(2026, 8, 14, 12, 0, 0, 0, cst) }
+	if err := service.AggregateRecent(context.Background()); err != nil {
+		t.Fatalf("AggregateRecent: %v", err)
+	}
+	got := map[string]int64{}
+	rows, err := db.Query(`SELECT bucket_start,up_bytes FROM traffic_daily`)
+	if err != nil {
+		t.Fatalf("query daily: %v", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var bucket, up int64
+		if err := rows.Scan(&bucket, &up); err != nil {
+			t.Fatalf("scan: %v", err)
+		}
+		got[time.Unix(bucket, 0).In(cst).Format("2006-01-02")] = up
+	}
+	if got["2026-08-13"] != 5 || got["2026-08-14"] != 120 {
+		t.Fatalf("daily = %#v, want local 8-13=5 and 8-14=120 (01:00 + 11:00)", got)
+	}
+}
+
+// 存量 UTC 边界桶在启动全量重建后应改写为本地边界，且不与旧桶并存双计。
+func TestRebuildDailyRewritesLegacyUTCBuckets(t *testing.T) {
+	db := newInsightsDatabase(t)
+	cst := time.FixedZone("UTC+8", 8*3600)
+	// 北京 8-14 01:00 的一笔流量，旧版本会聚合进 UTC 8-14 00:00 桶。
+	seedInsight(t, db, time.Date(2026, 8, 13, 17, 0, 0, 0, time.UTC), "user-a", "", 100, 0)
+	if _, err := db.Exec(`INSERT INTO traffic_daily(bucket_start,node_id,user_id,protocol_id,device_id,up_bytes,down_bytes,sample_count,updated_at) VALUES(?,'local','user-a','','',100,0,1,?)`,
+		common.UnixTime(time.Date(2026, 8, 14, 0, 0, 0, 0, time.UTC)), common.UnixTime(time.Date(2026, 8, 14, 0, 0, 0, 0, time.UTC))); err != nil {
+		t.Fatalf("seed legacy daily: %v", err)
+	}
+	service := NewService(db)
+	service.now = func() time.Time { return time.Date(2026, 8, 14, 12, 0, 0, 0, cst) }
+	if err := service.RebuildDaily(context.Background()); err != nil {
+		t.Fatalf("RebuildDaily: %v", err)
+	}
+	rows, err := db.Query(`SELECT bucket_start,up_bytes FROM traffic_daily`)
+	if err != nil {
+		t.Fatalf("query daily: %v", err)
+	}
+	defer rows.Close()
+	values := [][2]int64{}
+	for rows.Next() {
+		var bucket, up int64
+		if err := rows.Scan(&bucket, &up); err != nil {
+			t.Fatalf("scan: %v", err)
+		}
+		values = append(values, [2]int64{bucket, up})
+	}
+	wantBucket := time.Date(2026, 8, 13, 16, 0, 0, 0, time.UTC).Unix() // 北京 8-14 00:00
+	if len(values) != 1 || values[0][0] != wantBucket || values[0][1] != 100 {
+		t.Fatalf("daily = %#v, want single local-midnight bucket %d with 100 bytes", values, wantBucket)
+	}
+}
+
 func TestProtocolSharesDropsUserFilter(t *testing.T) {
 	db := newInsightsDatabase(t)
 	hour := time.Date(2026, 8, 14, 10, 0, 0, 0, time.UTC)

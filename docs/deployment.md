@@ -30,6 +30,14 @@
 - 一个域名，A 记录指向 VPS 公网 IP（推荐托管在 Cloudflare：面板 ACME 的 DNS-01 签发与 certbot DNS-01 都依赖它）；
 - 如选择源码构建：Go 1.25+、Node.js 22+（仅在构建机需要，VPS 只需二进制）。
 
+**服务器时区即业务时区**：流量日粒度统计的日界、每日报告的「上一自然日」、定时备份与各类本地时间展示，都锚定服务器系统时区。部署时请设为管理员所在时区（建议无夏令时的固定偏移时区）：
+
+```bash
+timedatectl set-timezone Asia/Shanghai   # 例：北京时间；改后需重启 sb-ops 生效
+```
+
+时区设置错误不会丢数据——`traffic_daily` 只是 `traffic_hourly` 的日聚合视图，sb-ops 每次启动会按当前时区全量重建日桶。
+
 ## 一、安装
 
 ### 方式一：Release 二进制（推荐）

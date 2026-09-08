@@ -652,6 +652,11 @@ func securityHeaders() gin.HandlerFunc {
 func (a *OpsApp) runOperationsBackground(ctx context.Context) {
 	a.Health.MarkBackgroundRunning(true)
 	defer a.Health.MarkBackgroundRunning(false)
+	// 流量日桶按服务器本地时区切天，启动时全量重建一次：日界偏移变化（时区
+	// 调整、版本升级）后存量桶原地修正；个人规模毫秒级，失败不影响其余任务。
+	if err := a.Traffic.RebuildDaily(ctx); err != nil {
+		a.logger.Error().Err(err).Msg("流量日桶全量重建失败")
+	}
 	a.runOperationalChecks(ctx)
 	a.dispatchNotifications(ctx)
 	a.runHousekeeping(ctx)

@@ -213,7 +213,7 @@ func (s *Service) Evaluate(ctx context.Context, aggregationErr error, trafficSta
 		if domain != "" {
 			label += "（" + domain + "）"
 		}
-		values = append(values, candidate{"certificate_expiring", "warning", "certificate", id, fmt.Sprintf("证书%s将于 %s 到期，剩余%s", label, time.Unix(notAfter, 0).UTC().Format("2006-01-02 15:04:05"), formatDuration(remaining))})
+		values = append(values, candidate{"certificate_expiring", "warning", "certificate", id, fmt.Sprintf("证书%s将于 %s 到期，剩余%s", label, time.Unix(notAfter, 0).Local().Format("2006-01-02 15:04:05"), formatDuration(remaining))})
 	}
 	if err := certRows.Err(); err != nil {
 		certRows.Close()

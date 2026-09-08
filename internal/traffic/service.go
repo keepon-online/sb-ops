@@ -31,7 +31,9 @@ type Service struct {
 }
 
 func NewService(db *sql.DB) *Service {
-	return &Service{db: db, now: func() time.Time { return time.Now().UTC() }}
+	// now 返回本地时区时刻：Unix 绝对值才是消费方所用，时区语义仅供
+	// traffic_daily 的日界对齐（服务器时区即业务时区，见 aggregateDaily）。
+	return &Service{db: db, now: time.Now}
 }
 
 // RecordCollection records that a collection cycle completed successfully. It
