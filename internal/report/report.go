@@ -88,7 +88,7 @@ func backupLine(sources Sources) string {
 	if count == 0 {
 		return "备份：暂无快照"
 	}
-	line := fmt.Sprintf("备份：最近一份 %s（共 %d 份）", time.Unix(createdAt, 0).Format("2006-01-02 15:04"), count)
+	line := fmt.Sprintf("备份：最近一份 %s（共 %d 份）", time.Unix(createdAt, 0).Local().Format("2006-01-02 15:04:05"), count)
 	if scheduleErr := sources.BackupScheduleError(); scheduleErr != "" {
 		return line + " · 定时备份最近失败：" + scheduleErr
 	}

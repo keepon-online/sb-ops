@@ -192,7 +192,7 @@ func newOps(db *sql.DB, sessionTTL time.Duration, apply deployment.ApplyConfig, 
 			if newest, stale := backupService.StaleSnapshot(); stale {
 				return controlobservability.BackupStatus{
 					LastSuccess: newest,
-					LastError:   fmt.Sprintf("最新备份快照 %s（UTC）已超过 %d 小时未更新", newest.Format("2006-01-02 15:04"), int(servicebackup.SnapshotStaleAfter.Hours())),
+					LastError:   fmt.Sprintf("最新备份快照 %s（UTC）已超过 %d 小时未更新", newest.Format("2006-01-02 15:04:05"), int(servicebackup.SnapshotStaleAfter.Hours())),
 				}, true
 			}
 			return controlobservability.BackupStatus{}, false
