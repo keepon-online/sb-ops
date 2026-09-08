@@ -18,7 +18,7 @@ describe('certificate expiry tag', () => {
     render(<CertificateExpiryTag notAfter={dayjs().add(60, 'day').toISOString()} />);
     expect(screen.getByText('剩余 60 天')).toBeInTheDocument();
     expect(tagClassOf('剩余 60 天')).toContain('ant-tag-success');
-    expect(screen.getByText(dayjs().add(60, 'day').format('YYYY-MM-DD HH:mm'))).toBeInTheDocument();
+    expect(screen.getByText(dayjs().add(60, 'day').format('YYYY-MM-DD HH:mm:ss'))).toBeInTheDocument();
   });
 
   it('30 天内渲染 warning', () => {
@@ -36,7 +36,7 @@ describe('certificate expiry tag', () => {
   it('showDate=false 只渲染 Tag', () => {
     render(<CertificateExpiryTag notAfter={dayjs().add(45, 'day').toISOString()} showDate={false} />);
     expect(screen.getByText('剩余 45 天')).toBeInTheDocument();
-    expect(screen.queryByText(dayjs().add(45, 'day').format('YYYY-MM-DD HH:mm'))).not.toBeInTheDocument();
+    expect(screen.queryByText(dayjs().add(45, 'day').format('YYYY-MM-DD HH:mm:ss'))).not.toBeInTheDocument();
   });
 
   it('certificateDaysLeft 按自然日取整（当天 23:59 仍算剩余 0 天）', () => {

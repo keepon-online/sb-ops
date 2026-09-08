@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Page } from '../../../components/Page';
 import { ApiError } from '../../../services/http';
 import { backupDownload, systemApi, type BackupFile, type UpgradeStatus } from '../../../services/system';
+import { formatDateTime } from '../../../util/time';
 
 // 升级流水线的对外阶段 → 展示步骤；checking 瞬时完成不进 Steps。
 const activeStepIndex: Partial<Record<UpgradeStatus['phase'], number>> = {
@@ -132,7 +133,7 @@ function UpgradeSection() {
             ? <Space>{latest.version}{latest.upgradable ? <Tag color="processing">可升级</Tag> : <Tag color="success">已最新</Tag>}</Space>
             : <Typography.Text type="secondary">尚未检查</Typography.Text>
         },
-        { key: 'published', label: '发布时间', children: latest?.publishedAt ? new Date(latest.publishedAt * 1000).toLocaleString() : '—' }
+        { key: 'published', label: '发布时间', children: latest?.publishedAt ? <span style={{ fontFamily: "'JetBrains Mono', ui-monospace, monospace" }}>{formatDateTime(latest.publishedAt * 1000)}</span> : '—' }
       ]} />
       {latest?.notes && (
         <Typography.Paragraph type="secondary" style={{ whiteSpace: 'pre-wrap', marginTop: 12 }} ellipsis={{ rows: 6, expandable: true, symbol: '展开完整说明' }}>
@@ -221,7 +222,14 @@ function BackupSection() {
   const columns: ColumnsType<BackupFile> = [
     { title: '文件名', dataIndex: 'name', ellipsis: true, render: (value: string) => <Typography.Text code style={{ fontSize: 12 }}>{value}</Typography.Text> },
     { title: '大小', dataIndex: 'sizeBytes', width: 100, render: (value: number) => formatBytes(value) },
-    { title: '创建时间', dataIndex: 'createdAt', width: 180, render: (value: number) => new Date(value * 1000).toLocaleString() },
+    {
+      title: '创建时间', dataIndex: 'createdAt', width: 190,
+      render: (value: number) => (
+        <span style={{ fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 13, whiteSpace: 'nowrap' }}>
+          {formatDateTime(value * 1000)}
+        </span>
+      )
+    },
     {
       title: '操作', width: 110, render: (_, row) => (
         <Space size={2}>

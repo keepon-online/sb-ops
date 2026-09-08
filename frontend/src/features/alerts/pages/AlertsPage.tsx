@@ -7,6 +7,7 @@ import { Page } from '../../../components/Page';
 import { alertsApi } from '../../../services/alerts';
 import { queryClient } from '../../../services/queryClient';
 import { alertTypeLabel, auditResourceLabel } from '../../../util/labels';
+import { formatDateTime } from '../../../util/time';
 
 function formatRepairDuration(seconds?: number): string {
   if (seconds === undefined) return '—';
@@ -49,6 +50,6 @@ export function AlertsPage() {
         ]}
       />
     </section>
-    <Table rowKey="id" size="small" scroll={{ x: 1100 }} loading={alerts.isLoading} dataSource={alerts.data?.items || []} columns={[{ title: '级别', dataIndex: 'severity', width: 90, render: (value) => <Tag color={value === 'critical' ? 'error' : 'warning'}>{value === 'critical' ? '严重' : '警告'}</Tag> }, { title: '类型', dataIndex: 'type', width: 180, render: (value: string) => alertTypeLabel(value) }, { title: '消息', dataIndex: 'message', width: 360 }, { title: '资源', width: 260, render: (_, row) => `${auditResourceLabel(row.resourceType)}:${row.resourceId}` }, { title: '最近出现', dataIndex: 'lastSeenAt', width: 180, render: (value) => new Date(value).toLocaleString() }, { title: '操作', width: 80, render: (_, row) => status === 'open' && !row.acknowledgedAt ? <Button type="text" icon={<CheckOutlined />} title="确认" loading={acknowledge.isPending} onClick={() => acknowledge.mutate(row.id)} /> : null }]} />
+    <Table rowKey="id" size="small" scroll={{ x: 1100 }} loading={alerts.isLoading} dataSource={alerts.data?.items || []} columns={[{ title: '级别', dataIndex: 'severity', width: 90, render: (value) => <Tag color={value === 'critical' ? 'error' : 'warning'}>{value === 'critical' ? '严重' : '警告'}</Tag> }, { title: '类型', dataIndex: 'type', width: 180, render: (value: string) => alertTypeLabel(value) }, { title: '消息', dataIndex: 'message', width: 360 }, { title: '资源', width: 260, render: (_, row) => `${auditResourceLabel(row.resourceType)}:${row.resourceId}` }, { title: '最近出现', dataIndex: 'lastSeenAt', width: 190, render: (value) => <span style={{ fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 13, whiteSpace: 'nowrap' }}>{formatDateTime(value)}</span> }, { title: '操作', width: 80, render: (_, row) => status === 'open' && !row.acknowledgedAt ? <Button type="text" icon={<CheckOutlined />} title="确认" loading={acknowledge.isPending} onClick={() => acknowledge.mutate(row.id)} /> : null }]} />
   </Page>;
 }

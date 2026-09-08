@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { ApiError } from '../../../services/http';
 import { queryClient } from '../../../services/queryClient';
 import { subscriptionUrl, usersApi, type IssuedCredential, type ResourceDevice, type ResourceUser } from '../../../services/users';
+import { formatDateTime } from '../../../util/time';
 
 const subscriptionFormats = ['clash.yaml'];
 
@@ -270,8 +271,8 @@ export function DevicesDrawer({ user, onClose }: { user: ResourceUser | null; on
                   </Tooltip>
                 ) : null}
                 <Typography.Text type="secondary">已用 {formatBytes(device.usedBytes)}</Typography.Text>
-                {device.lastSeenAt ? <Typography.Text type="secondary" style={{ fontSize: 12 }}>最近活跃 {new Date(device.lastSeenAt).toLocaleString()}</Typography.Text> : <Typography.Text type="secondary" style={{ fontSize: 12 }}>尚未识别</Typography.Text>}
-                <Typography.Text type="secondary" style={{ fontSize: 12 }}>轮换于 {new Date(device.rotatedAt).toLocaleString()}</Typography.Text>
+                {device.lastSeenAt ? <Typography.Text type="secondary" style={{ fontSize: 12 }}>最近活跃 <span style={{ fontFamily: "'JetBrains Mono', ui-monospace, monospace" }}>{formatDateTime(device.lastSeenAt)}</span></Typography.Text> : <Typography.Text type="secondary" style={{ fontSize: 12 }}>尚未识别</Typography.Text>}
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>轮换于 <span style={{ fontFamily: "'JetBrains Mono', ui-monospace, monospace" }}>{formatDateTime(device.rotatedAt)}</span></Typography.Text>
               </Space>
               <Space size={2}>
                 <Tooltip title={device.enabled ? '停用设备' : '启用设备'}>

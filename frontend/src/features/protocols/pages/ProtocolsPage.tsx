@@ -36,6 +36,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Page } from '../../../components/Page';
 import { CertificateExpiryTag } from '../../../components/CertificateExpiryTag';
+import { formatDateTime } from '../../../util/time';
 import { ApiCode, ApiError } from '../../../services/http';
 import {
   certificatesApi,
@@ -339,7 +340,7 @@ export function ProtocolsPage() {
           ? '还没有拨测记录：周期拨测由服务器 config.yaml 的 probe.interval 控制，可点击右侧按钮立即拨测。'
           : item.status === 'failed'
             ? `端到端拨测失败：${item.error}`
-            : item.status === 'skipped' ? `跳过原因：${item.error}` : `全链路实测延迟 ${item.latencyMs ?? '-'}ms（${new Date(item.checkedAt).toLocaleTimeString()}）`;
+            : item.status === 'skipped' ? `跳过原因：${item.error}` : `全链路实测延迟 ${item.latencyMs ?? '-'}ms（${formatDateTime(item.checkedAt)}）`;
         const tag = item ? (
           <Tag color={probeStatusColors[item.status]}>{probeStatusLabels[item.status] || item.status}</Tag>
         ) : (
@@ -378,7 +379,7 @@ export function ProtocolsPage() {
     { title: '来源', dataIndex: 'source', width: 90, render: (value: string) => <Tag color={value === 'acme' ? 'success' : value === 'self_signed' ? 'processing' : 'default'}>{certificateSourceLabels[value] || value}</Tag> },
     { title: '域名', dataIndex: 'domain', width: 150, render: (value?: string) => value || '-' },
     { title: '指纹', dataIndex: 'fingerprint', ellipsis: true, render: (value: string) => <Typography.Text code copyable>{value}</Typography.Text> },
-    { title: '到期时间', dataIndex: 'notAfter', width: 210, render: (value: string) => <CertificateExpiryTag notAfter={value} /> },
+    { title: '到期时间', dataIndex: 'notAfter', width: 230, render: (value: string) => <CertificateExpiryTag notAfter={value} /> },
     {
       title: '操作', width: 110,
       render: (_, value) => <Space size={2}>

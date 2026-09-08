@@ -13,6 +13,7 @@ import {
   auditResourceTypeValues,
   resultLabels
 } from '../../../util/labels';
+import { formatDateTime } from '../../../util/time';
 
 const resourceOptions = auditResourceTypeValues.map((value) => ({ value, label: auditResourceLabel(value) }));
 const actionOptions = auditActionValues.map((value) => ({ value, label: auditActionLabel(value) }));
@@ -38,7 +39,9 @@ function AuditDetailDrawer({ entry, onClose }: { entry: ManagementAuditEntry | n
   return (
     <Drawer title="审计详情与变更对账" width={520} open={Boolean(entry)} onClose={onClose} destroyOnClose>
       <Descriptions column={1} size="small" bordered style={{ marginBottom: 20 }}>
-        <Descriptions.Item label="记录时间">{new Date(entry.createdAt).toLocaleString()}</Descriptions.Item>
+        <Descriptions.Item label="记录时间">
+          <span style={{ fontFamily: "'JetBrains Mono', ui-monospace, monospace" }}>{formatDateTime(entry.createdAt)}</span>
+        </Descriptions.Item>
         <Descriptions.Item label="操作动作">{auditActionLabel(entry.action)} ({entry.action})</Descriptions.Item>
         <Descriptions.Item label="影响资源">{auditResourceLabel(entry.resourceType)} ({entry.resourceId || '无'})</Descriptions.Item>
         <Descriptions.Item label="操作主体">{entry.actorId || '系统'}</Descriptions.Item>
@@ -112,7 +115,14 @@ export function AuditPage() {
   });
 
   const columns: ColumnsType<ManagementAuditEntry> = [
-    { title: '时间', dataIndex: 'createdAt', width: 180, render: (value: string) => new Date(value).toLocaleString() },
+    {
+      title: '时间', dataIndex: 'createdAt', width: 190,
+      render: (value: string) => (
+        <span style={{ fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 13, whiteSpace: 'nowrap' }}>
+          {formatDateTime(value)}
+        </span>
+      )
+    },
     { title: '动作', dataIndex: 'action', width: 180, render: (value: string) => auditActionLabel(value) },
     { title: '资源', width: 200, render: (_, value) => `${auditResourceLabel(value.resourceType)}:${value.resourceId}` },
     { title: '结果', dataIndex: 'result', width: 90, render: (value: string) => <Tag color={value === 'success' ? 'success' : value === 'denied' ? 'warning' : 'error'}>{resultLabels[value] || value}</Tag> },

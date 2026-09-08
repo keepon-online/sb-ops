@@ -26,6 +26,7 @@ import { queryClient } from '../../../services/queryClient';
 import { trafficApi } from '../../../services/traffic';
 import { configStatusLabels, kernelStatusLabels, runtimeStatusLabels } from '../../../util/labels';
 import { useAppTheme } from '../../../context/ThemeContext';
+import { formatDateTime } from '../../../util/time';
 
 const platformLabels: Record<string, string> = {
   windows: 'Windows', macos: 'macOS', linux: 'Linux', android: 'Android', ios: 'iOS', unknown: '未知'
@@ -120,7 +121,7 @@ export function OverviewPage() {
         style={{ marginBottom: 16 }}
         type="error"
         showIcon
-        message={`最近同步失败 ${new Date(value.lastFailedAt).toLocaleString()}`}
+        message={`最近同步失败 ${formatDateTime(value.lastFailedAt)}`}
         description={`${value.failureReason || '未知错误'}。资源已保存，但 sing-box 仍使用上一份成功配置。`}
       />
     ) : null}
@@ -143,7 +144,7 @@ export function OverviewPage() {
             { key: 'runtime', label: '运行状态', children: <Tag color={statusColor(value?.runtimeStatus)}>{value ? runtimeStatusLabels[value.runtimeStatus] : '正在检查'}</Tag> },
             { key: 'config', label: '配置状态', children: value ? configStatusLabels[value.configStatus] : '正在检查' },
             { key: 'kernel', label: '内核健康检查', children: <Tag color={value?.kernelStatus === 'running' ? 'success' : value?.kernelStatus === 'unhealthy' ? 'error' : 'default'}>{value ? kernelStatusLabels[value.kernelStatus] : '正在检查'}</Tag> },
-            { key: 'applied', label: '最后成功同步', children: value?.lastAppliedAt ? new Date(value.lastAppliedAt).toLocaleString() : '暂无' },
+            { key: 'applied', label: '最后成功同步', children: value?.lastAppliedAt ? <span style={{ fontFamily: "'JetBrains Mono', ui-monospace, monospace" }}>{formatDateTime(value.lastAppliedAt)}</span> : '暂无' },
             { key: 'digest', label: '当前配置摘要', children: value?.configDigest ? <Typography.Text code style={{ fontSize: 12 }}>{value.configDigest}</Typography.Text> : '暂无' }
           ]} />
         </section>
@@ -223,7 +224,7 @@ export function OverviewPage() {
               <Statistic title="已用" value={formatBytes(value.bandwidth.usedBytes)} />
               <Statistic title="月度配额" value={formatBytes(value.bandwidth.totalBytes)} />
               <Statistic title="已用比例" value={`${value.bandwidth.percent.toFixed(1)}%`} />
-              <Statistic title="最近采样" value={new Date(value.bandwidth.updatedAt).toLocaleTimeString()} />
+              <Statistic title="最近采样" value={formatDateTime(value.bandwidth.updatedAt)} valueStyle={{ fontSize: 14, fontFamily: "'JetBrains Mono', ui-monospace, monospace" }} />
             </Space>
             <Progress
               style={{ maxWidth: 480, marginTop: 8 }}

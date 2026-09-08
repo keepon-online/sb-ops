@@ -11,6 +11,7 @@ import { monitorApi, type MonitorStatus } from '../../../services/monitor';
 import { ApiError } from '../../../services/http';
 import type { components } from '../../../generated/management-api';
 import { useAppTheme } from '../../../context/ThemeContext';
+import { formatDateTime } from '../../../util/time';
 
 type MonitorInterface = components['schemas']['MonitorInterface'];
 
@@ -73,7 +74,7 @@ export function MonitorPage() {
 
   const history = value?.history || [];
   const labels = history.map((point) => dayjs(point.time).format('HH:mm:ss'));
-  const sampledAt = value?.sampledAt ? new Date(value.sampledAt).toLocaleTimeString() : '';
+  const sampledAt = value?.sampledAt ? formatDateTime(value.sampledAt) : '';
   const peakRecv = Math.max(0, ...history.map((point) => point.netRecvRate));
   const peakSend = Math.max(0, ...history.map((point) => point.netSendRate));
 
@@ -131,7 +132,7 @@ export function MonitorPage() {
         { key: 'kernel', label: '内核', children: value ? `${value.host.kernelVersion} ${value.host.kernelArch}` : '—' },
         { key: 'cpu', label: '处理器', children: value?.cpu.modelName || '—' },
         { key: 'virtualization', label: '虚拟化', children: value?.host.virtualizationSystem || '—' },
-        { key: 'boot', label: '开机时间', children: value?.host.bootTime ? new Date(value.host.bootTime * 1000).toLocaleString() : '—' },
+        { key: 'boot', label: '开机时间', children: value?.host.bootTime ? <span style={{ fontFamily: "'JetBrains Mono', ui-monospace, monospace" }}>{formatDateTime(value.host.bootTime * 1000)}</span> : '—' },
         { key: 'uptime', label: '运行时长', children: value ? duration(value.host.uptimeSeconds) : '—' },
         { key: 'load', label: '负载', children: value ? `${value.cpu.load1.toFixed(2)} / ${value.cpu.load5.toFixed(2)} / ${value.cpu.load15.toFixed(2)}` : '—' }
       ]} />

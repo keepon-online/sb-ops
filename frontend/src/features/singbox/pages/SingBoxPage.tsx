@@ -52,6 +52,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { Page } from '../../../components/Page';
 import { ApiError } from '../../../services/http';
 import { configStatusLabel, kernelStatusLabel } from '../../../util/labels';
+import { formatDateTime } from '../../../util/time';
 import { queryClient } from '../../../services/queryClient';
 import { protocolsApi } from '../../../services/protocols';
 import {
@@ -669,8 +670,12 @@ export function SingBoxPage() {
     {
       title: '建立时间',
       dataIndex: 'startedAt',
-      width: 170,
-      render: (value: string) => value ? new Date(value).toLocaleTimeString() : '-'
+      width: 190,
+      render: (value: string) => value ? (
+        <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 13, whiteSpace: 'nowrap' }}>
+          {formatDateTime(value)}
+        </span>
+      ) : '-'
     },
     {
       title: '断开',
@@ -771,7 +776,7 @@ export function SingBoxPage() {
                       <Text type="secondary">持续运行：</Text>
                       <Text strong style={{ marginLeft: 6 }}>{formatUptime(runtime.data?.startedAt)}</Text>
                       <Text type="secondary" style={{ fontSize: 12, marginLeft: 8 }}>
-                        （{runtime.data?.startedAt ? new Date(runtime.data.startedAt).toLocaleString() : '未启动'}）
+                        （{runtime.data?.startedAt ? formatDateTime(runtime.data.startedAt) : '未启动'}）
                       </Text>
                     </Col>
                     <Col xs={24} md={12}>
@@ -780,7 +785,7 @@ export function SingBoxPage() {
                         {configStatusLabel(runtime.data?.configStatus || '加载中')}
                       </Tag>
                       <Text type="secondary" style={{ fontSize: 12, marginLeft: 8 }}>
-                        同步于 {runtime.data?.lastAppliedAt ? new Date(runtime.data.lastAppliedAt).toLocaleString() : '暂无'}
+                        同步于 {runtime.data?.lastAppliedAt ? formatDateTime(runtime.data.lastAppliedAt) : '暂无'}
                       </Text>
                     </Col>
                   </Row>

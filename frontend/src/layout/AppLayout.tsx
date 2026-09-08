@@ -33,6 +33,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import { alertsApi } from '../services/alerts';
 import { controlPlaneApi } from '../services/controlPlane';
 import { clearSessionAndRedirect } from '../services/http';
+import { formatDateTime } from '../util/time';
 import { identityApi } from '../services/identity';
 import { systemApi } from '../services/system';
 import { useEventStream } from '../features/events/useEventStream';
@@ -427,8 +428,8 @@ export function AppLayout() {
                             <Tag color={item.severity === 'critical' ? 'error' : 'warning'} style={{ margin: 0, fontSize: 11 }}>
                               {item.severity === 'critical' ? '严重' : '警告'}
                             </Tag>
-                            <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
-                              {new Date(item.lastSeenAt).toLocaleTimeString()}
+                            <span style={{ fontSize: 11, color: 'var(--text-secondary)', fontFamily: "'JetBrains Mono', ui-monospace, monospace" }}>
+                              {formatDateTime(item.lastSeenAt)}
                             </span>
                           </div>
                           <div style={{ fontSize: 12, lineHeight: 1.4, wordBreak: 'break-word' }}>{item.message}</div>
