@@ -326,13 +326,23 @@ export function UsersPage() {
       render: (_, value) => {
         const isUnlimited = value.quotaBytes <= 0;
         const percent = isUnlimited ? 0 : Math.min(100, Math.round((value.usedBytes / value.quotaBytes) * 100));
+        const rawPercent = isUnlimited ? 0 : (value.usedBytes / value.quotaBytes) * 100;
         const isOver = !isUnlimited && value.usedBytes > value.quotaBytes;
         const strokeColor = isOver || percent >= 90 ? 'var(--color-error)' : percent >= 70 ? 'var(--color-warning)' : 'var(--primary-color)';
+        const percentColor = isOver || percent >= 90 ? 'var(--color-error)' : percent >= 70 ? 'var(--color-warning)' : 'var(--color-text-secondary)';
         return (
-          <div style={{ minWidth: 140 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 2 }}>
-              <Typography.Text strong={isOver}>{formatBytes(value.usedBytes)}</Typography.Text>
-              <Typography.Text type="secondary">/ {formatBytes(value.quotaBytes, true)}</Typography.Text>
+          <div style={{ minWidth: 150 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', fontSize: 12, marginBottom: 4 }}>
+              <span style={{ fontFamily: "'JetBrains Mono', ui-monospace, monospace" }}>
+                <Typography.Text strong={isOver}>{formatBytes(value.usedBytes)}</Typography.Text>
+                <Typography.Text type="secondary" style={{ margin: '0 4px' }}>/</Typography.Text>
+                <Typography.Text type="secondary">{formatBytes(value.quotaBytes, true)}</Typography.Text>
+              </span>
+              {!isUnlimited ? (
+                <span style={{ fontSize: 11, fontFamily: "'JetBrains Mono', ui-monospace, monospace", color: percentColor, fontWeight: 500 }}>
+                  {rawPercent.toFixed(rawPercent >= 100 || rawPercent < 10 ? 0 : 1)}%
+                </span>
+              ) : null}
             </div>
             {isUnlimited ? (
               <Typography.Text type="secondary" style={{ fontSize: 11 }}>不限额度</Typography.Text>
@@ -347,13 +357,33 @@ export function UsersPage() {
               />
             )}
             {isOver ? (
-              <Typography.Text type="danger" style={{ fontSize: 11 }}>{remainingText(value.quotaBytes, value.usedBytes)}</Typography.Text>
+              <div style={{ marginTop: 2 }}>
+                <Typography.Text type="danger" style={{ fontSize: 11 }}>{remainingText(value.quotaBytes, value.usedBytes)}</Typography.Text>
+              </div>
             ) : null}
           </div>
         );
       }
     },
-    { title: '到期时间', dataIndex: 'expiresAt', width: 180, responsive: ['lg'], render: (value?: string) => value ? new Date(value).toLocaleString() : '永久' },
+    {
+      title: '到期时间',
+      dataIndex: 'expiresAt',
+      width: 190,
+      responsive: ['lg'],
+      render: (value?: string) => {
+        if (!value) return <Typography.Text type="secondary">永久</Typography.Text>;
+        const d = dayjs(value);
+        const daysLeft = d.startOf('day').diff(dayjs().startOf('day'), 'day');
+        const tooltipText = daysLeft < 0 ? `已过期 ${Math.abs(daysLeft)} 天` : daysLeft === 0 ? '今天到期' : `剩余 ${daysLeft} 天`;
+        return (
+          <Tooltip title={tooltipText}>
+            <span style={{ fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 13, whiteSpace: 'nowrap' }}>
+              {d.format('YYYY-MM-DD HH:mm:ss')}
+            </span>
+          </Tooltip>
+        );
+      }
+    },
     { title: '设备', dataIndex: 'deviceCount', width: 96, responsive: ['lg'], render: (value: number) => `${value} 台` },
     {
       title: '操作', fixed: screens.md ? 'right' : undefined, width: screens.md ? 210 : 160,
@@ -451,7 +481,7 @@ export function UsersPage() {
           <Form.Item
             name="resetIntervalDays"
             label="重置周期（天，0 为不重置）"
-            extra={editing?.nextResetAt ? `下次重置：${new Date(editing.nextResetAt).toLocaleString()}（到期自动清零用量）` : undefined}
+            extra={editing?.nextResetAt ? `下次重置：${dayjs(editing.nextResetAt).format('YYYY-MM-DD HH:mm:ss')}（到期自动清零用量）` : undefined}
             rules={[{ required: true }]}
           ><InputNumber min={0} precision={0} style={{ width: '100%' }} /></Form.Item>
         </Form>

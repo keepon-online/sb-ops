@@ -109,4 +109,49 @@ describe('users batch operations', () => {
     fireEvent.click(screen.getByRole('button', { name: '启 用' }));
     await waitFor(() => expect(usersApi.batchStatus).toHaveBeenCalledWith(['u1'], true));
   });
+
+  it('正确渲染已用额度比例与到期时间格式', async () => {
+    const origMatchMedia = window.matchMedia;
+    window.matchMedia = (query: string) => ({
+      matches: !query.includes('max-width'),
+      media: query,
+      onchange: null,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+      addListener: () => undefined,
+      removeListener: () => undefined,
+      dispatchEvent: () => false
+    });
+    try {
+      vi.mocked(usersApi.list).mockResolvedValueOnce({
+        items: [
+          {
+            id: 'u3',
+            name: 'charlie',
+            enabled: true,
+            status: 'active',
+            quotaBytes: 1000 * 1024 * 1024 * 1024,
+            usedBytes: 819 * 1024 * 1024 * 1024,
+            expiresAt: '2027-08-21T23:59:59Z',
+            resetIntervalDays: 0,
+            protocolIds: [],
+            policyIds: [],
+            deviceCount: 3,
+            revision: 1,
+            createdAt: '2026-08-01T00:00:00Z',
+            updatedAt: '2026-08-01T00:00:00Z'
+          }
+        ],
+        nextCursor: undefined
+      });
+      renderUsersPage();
+      expect(await screen.findByText('charlie')).toBeInTheDocument();
+      expect(screen.getByText('819 GB')).toBeInTheDocument();
+      expect(screen.getByText('1000 GB')).toBeInTheDocument();
+      expect(screen.getByText('81.9%')).toBeInTheDocument();
+      expect(screen.getByText(/2027-08-22 07:59:59/)).toBeInTheDocument();
+    } finally {
+      window.matchMedia = origMatchMedia;
+    }
+  });
 });
