@@ -126,6 +126,7 @@ const (
 	actionSystemBackupCreate   = "system.backup.create"
 	actionSystemBackupDownload = "system.backup.download"
 	actionSystemBackupDelete   = "system.backup.delete"
+	actionSystemBackupRestore  = "system.backup.restore"
 )
 
 // 单例资源的固定 resourceID：singbox_config 是 store 层 id=1 的单行表，

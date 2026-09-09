@@ -223,11 +223,17 @@ func RegisterRoutes(router *gin.Engine, dependencies Dependencies) {
 		systemUpgrade.POST("/check", h.checkUpgrade)
 		systemUpgrade.POST("/start", h.startUpgrade)
 	}
+	// 上传恢复挂在 /system/restore（multipart），与 /system/backups/:name
+	// 分属不同路由段，避免同段静态/参数路径在 gin 路由树上的冲突。
+	if h.Backup != nil && h.Upgrade != nil {
+		authenticated.POST("/system/restore", h.restoreUploadedBackup)
+	}
 	if h.Backup != nil {
 		systemBackups := authenticated.Group("/system/backups")
 		systemBackups.GET("", h.listBackups)
 		systemBackups.POST("", h.createBackup)
 		systemBackups.GET("/:name/download", h.downloadBackup)
+		systemBackups.POST("/:name/restore", h.restoreExistingBackup)
 		systemBackups.DELETE("/:name", h.deleteBackup)
 	}
 }

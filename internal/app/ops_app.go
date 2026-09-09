@@ -74,13 +74,15 @@ type OpsApp struct {
 func NewOps(db *sql.DB, sessionTTL time.Duration, loggers ...*logging.Logger) (*OpsApp, error) {
 	return newOps(db, sessionTTL, deployment.ApplyConfig{}, controltraffic.CollectorConfig{}, func() config.RuntimeConfig {
 		return config.DefaultRuntimeConfig()
-	}, "", nil, loggers...)
+	}, "", nil, nil, loggers...)
 }
 
 // newOps is the testable constructor: callers pass the apply target, the
 // traffic collector knobs, and a config provider for runtime settings. In
-// production these come from RuntimeConfig (see New).
-func newOps(db *sql.DB, sessionTTL time.Duration, apply deployment.ApplyConfig, collector controltraffic.CollectorConfig, configProvider func() config.RuntimeConfig, version string, restart func(), loggers ...*logging.Logger) (*OpsApp, error) {
+// production these come from RuntimeConfig (see New). restoreTrigger registers
+// a swap-files action that main runs after the database is closed and before
+// the exec restart (backup restore); nil disables restoring.
+func newOps(db *sql.DB, sessionTTL time.Duration, apply deployment.ApplyConfig, collector controltraffic.CollectorConfig, configProvider func() config.RuntimeConfig, version string, restart func(), restoreTrigger func(func() error), loggers ...*logging.Logger) (*OpsApp, error) {
 	logger := logging.DefaultLogger()
 	if len(loggers) > 0 && loggers[0] != nil {
 		logger = loggers[0]
@@ -178,8 +180,10 @@ func newOps(db *sql.DB, sessionTTL time.Duration, apply deployment.ApplyConfig, 
 		return cfg.Updates.Repo, cfg.Updates.Token
 	}, version, restart, events)
 	// 数据备份：dir 闭包现取 data_dir（服务不 import internal/config，照
-	// upgrade 的 Source 闭包先例）。
-	backupService := servicebackup.NewService(db, func() string { return configProvider().Server.DataDir })
+	// upgrade 的 Source 闭包先例）；dbPath 闭包同理取 server.db_path——换库
+	// 文件动作由它定位主库；restoreTrigger 把动作注册进 main 停机链的
+	// 「db.Close 之后、exec 之前」窗口。
+	backupService := servicebackup.NewService(db, func() string { return configProvider().Server.DataDir }, func() string { return configProvider().Server.DBPath }, restoreTrigger)
 	// 定时备份快照（每日 04:00 一轮）同时喂给 backup_failed 告警评估。
 	// ScheduleState 纯内存，重启清零：attempted=false（重启后、首轮之前）
 	// 时按磁盘事实兜底——最新快照超过 25h 未更新说明备份链断裂（重启前

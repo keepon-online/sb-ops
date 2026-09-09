@@ -30,17 +30,23 @@ const backupDirName = "backups"
 var backupNamePattern = regexp.MustCompile(`^sb-ops-backup-(\d{8}-\d{6})\.db$`)
 
 // Service 持有与主库相同的 *sql.DB（SetMaxOpenConns(1) 下备份期间其它
-// 查询短暂排队，个人规模库亚秒级）。dir 闭包实时返回 data_dir，服务不
-// import internal/config（照 upgrade 的 Source 闭包先例，便于注入测试）。
+// 查询短暂排队，个人规模库亚秒级）。dir/dbPath 闭包实时返回 data_dir
+// 与 server.db_path，服务不 import internal/config（照 upgrade 的 Source
+// 闭包先例，便于注入测试）；restoreTrigger 把换库文件动作注册进 main
+// 停机链的「db.Close 之后、exec 重生之前」窗口，nil 表示当前环境不支持
+// 恢复（如 NewOps 测试装配）。
 type Service struct {
-	db  *sql.DB
-	dir func() string
-	mu  sync.Mutex // 串行化创建：拦截同一秒内的重复备份（VACUUM INTO 目标已存在会失败）
-	now func() time.Time
+	db             *sql.DB
+	dir            func() string
+	dbPath         func() string
+	restoreTrigger func(func() error)
+	mu             sync.Mutex // 串行化创建：拦截同一秒内的重复备份（VACUUM INTO 目标已存在会失败）
+	restoring      bool       // 恢复已触发（受 mu 保护；触发后进程即停机，无需复位）
+	now            func() time.Time
 }
 
-func NewService(db *sql.DB, dir func() string) *Service {
-	return &Service{db: db, dir: dir, now: func() time.Time { return time.Now().UTC() }}
+func NewService(db *sql.DB, dir func() string, dbPath func() string, restoreTrigger func(func() error)) *Service {
+	return &Service{db: db, dir: dir, dbPath: dbPath, restoreTrigger: restoreTrigger, now: func() time.Time { return time.Now().UTC() }}
 }
 
 // Create 生成新快照并裁剪超限旧备份。同秒重复创建返回 ErrDuplicate。

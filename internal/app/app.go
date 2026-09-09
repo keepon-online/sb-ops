@@ -25,8 +25,9 @@ type App struct {
 
 // New 装配控制面板。version 是构建期注入的面板版本（main.version），
 // restart 是自升级完成后触发进程重生的钩子（置重启标志并向自身发
-// SIGTERM，由 main 的优雅停机路径收尾后 exec 新二进制）。
-func New(cfg *config.RuntimeConfigHolder, stop func(), logger *logging.Logger, version string, restart func()) (*App, error) {
+// SIGTERM，由 main 的优雅停机路径收尾后 exec 新二进制）；restoreTrigger
+// 注册「数据库 Close 后、exec 重生前」执行的换库文件动作（备份恢复用）。
+func New(cfg *config.RuntimeConfigHolder, stop func(), logger *logging.Logger, version string, restart func(), restoreTrigger func(func() error)) (*App, error) {
 	if logger == nil {
 		logger = logging.DefaultLogger()
 	}
@@ -55,7 +56,7 @@ func New(cfg *config.RuntimeConfigHolder, stop func(), logger *logging.Logger, v
 	collector := controltraffic.CollectorConfig{
 		Interval: current.Traffic.Interval,
 	}
-	opsApp, err := newOps(db, current.Panel.SessionTTL, apply, collector, cfg.Current, version, restart, logger)
+	opsApp, err := newOps(db, current.Panel.SessionTTL, apply, collector, cfg.Current, version, restart, restoreTrigger, logger)
 	if err != nil {
 		_ = db.Close()
 		return nil, err

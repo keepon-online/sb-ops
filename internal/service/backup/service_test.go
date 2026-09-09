@@ -29,7 +29,7 @@ func newTestService(t *testing.T) (*Service, string) {
 		t.Fatalf("写入测试数据失败: %v", err)
 	}
 	dir := t.TempDir()
-	return NewService(db, func() string { return dir }), dir
+	return NewService(db, func() string { return dir }, func() string { return filepath.Join(dir, "singbox-web.db") }, nil), dir
 }
 
 func TestCreateAndList(t *testing.T) {

@@ -9,6 +9,8 @@ const statusMock = vi.fn();
 const backupListMock = vi.fn();
 const backupCreateMock = vi.fn();
 const backupDownloadMock = vi.fn();
+const backupRestoreExistingMock = vi.fn();
+const waitForPanelRestartMock = vi.fn();
 
 vi.mock('../services/system', () => ({
   systemApi: {
@@ -21,7 +23,12 @@ vi.mock('../services/system', () => ({
     backupCreate: () => backupCreateMock(),
     backupDelete: (name: string) => Promise.resolve(name)
   },
-  backupDownload: (name: string) => backupDownloadMock(name)
+  backupDownload: (name: string) => backupDownloadMock(name),
+  backupRestoreUpload: () => Promise.resolve(),
+  backupRestoreExisting: (name: string) => backupRestoreExistingMock(name),
+  // 恢复受理后页面等面板重启再整体刷新；测试里挂起该 Promise 即可停在
+  // 「正在重启」态，避免触碰 jsdom 不支持的 location.reload。
+  waitForPanelRestart: () => waitForPanelRestartMock()
 }));
 
 function renderSystem() {
@@ -117,5 +124,27 @@ describe('system upgrade page', () => {
     renderSystem();
     fireEvent.click(await screen.findByRole('button', { name: /立即备份/ }));
     await waitFor(() => expect(backupCreateMock).toHaveBeenCalledTimes(1));
+  });
+
+  it('gates row restore behind the confirmation word and enters restart waiting', async () => {
+    statusMock.mockResolvedValue(baseStatus());
+    backupListMock.mockResolvedValue({ items: [{ name: 'sb-ops-backup-20260905-103000.db', sizeBytes: 20480, createdAt: 1757068200 }] });
+    backupRestoreExistingMock.mockResolvedValue(undefined);
+    waitForPanelRestartMock.mockReturnValue(new Promise(() => {}));
+    renderSystem();
+    expect(await screen.findByText('sb-ops-backup-20260905-103000.db')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /恢复备份/ }));
+    expect(await screen.findByText('恢复数据库备份')).toBeInTheDocument();
+    // 确认词未输入时提交禁用；错误确认词不解锁。
+    const submit = screen.getByRole('button', { name: /确认恢复/ });
+    expect(submit).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('恢复确认词'), { target: { value: '删除' } });
+    expect(submit).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('恢复确认词'), { target: { value: '恢复' } });
+    expect(submit).toBeEnabled();
+    fireEvent.click(submit);
+    await waitFor(() => expect(backupRestoreExistingMock).toHaveBeenCalledWith('sb-ops-backup-20260905-103000.db'));
+    await waitFor(() => expect(waitForPanelRestartMock).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText('面板正在重启以应用恢复的备份')).toBeInTheDocument();
   });
 });

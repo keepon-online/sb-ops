@@ -1,11 +1,11 @@
-import { CloudUploadOutlined, DatabaseOutlined, DeleteOutlined, DownloadOutlined, ReloadOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
+import { CloudUploadOutlined, DatabaseOutlined, DeleteOutlined, DownloadOutlined, RedoOutlined, ReloadOutlined, SafetyCertificateOutlined, UploadOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { App as AntApp, Alert, Button, Descriptions, Popconfirm, Space, Spin, Steps, Table, Tag, Tooltip, Typography } from 'antd';
+import { App as AntApp, Alert, Button, Descriptions, Input, Modal, Popconfirm, Space, Spin, Steps, Table, Tag, Tooltip, Typography, Upload } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useEffect, useRef, useState } from 'react';
 import { Page } from '../../../components/Page';
 import { ApiError } from '../../../services/http';
-import { backupDownload, systemApi, type BackupFile, type UpgradeStatus } from '../../../services/system';
+import { backupDownload, backupRestoreExisting, backupRestoreUpload, systemApi, waitForPanelRestart, type BackupFile, type UpgradeStatus } from '../../../services/system';
 import { formatDateTime } from '../../../util/time';
 
 // 升级流水线的对外阶段 → 展示步骤；checking 瞬时完成不进 Steps。
@@ -219,6 +219,46 @@ function BackupSection() {
     }
   };
 
+  // 恢复确认弹窗与重启等待。恢复已受理（HTTP 200）后面板自行停机换库并
+  // 重启，期间页面只能等 /health/ready 回来后整体刷新——与升级 restarting
+  // 阶段的交互同构。
+  type RestoreTarget = { kind: 'upload'; file: File } | { kind: 'existing'; name: string; sizeBytes: number };
+  const [restoreTarget, setRestoreTarget] = useState<RestoreTarget>();
+  const [confirmText, setConfirmText] = useState('');
+  const [restoring, setRestoring] = useState(false);
+  const [restarting, setRestarting] = useState(false);
+
+  const closeRestoreDialog = () => {
+    setRestoreTarget(undefined);
+    setConfirmText('');
+  };
+
+  const submitRestore = async () => {
+    if (!restoreTarget) return;
+    setRestoring(true);
+    try {
+      if (restoreTarget.kind === 'upload') {
+        await backupRestoreUpload(restoreTarget.file);
+      } else {
+        await backupRestoreExisting(restoreTarget.name);
+      }
+      closeRestoreDialog();
+      setRestarting(true);
+      try {
+        await waitForPanelRestart();
+        window.location.reload();
+      } catch (error) {
+        notification.warning({ message: '等待面板重启超时', description: `${describeError(error)}。恢复已受理，稍后刷新页面即可。` });
+        setRestarting(false);
+      }
+    } catch (error) {
+      notification.error({ message: '恢复备份失败', description: describeError(error) });
+      closeRestoreDialog();
+    } finally {
+      setRestoring(false);
+    }
+  };
+
   const columns: ColumnsType<BackupFile> = [
     { title: '文件名', dataIndex: 'name', ellipsis: true, render: (value: string) => <Typography.Text code style={{ fontSize: 12 }}>{value}</Typography.Text> },
     { title: '大小', dataIndex: 'sizeBytes', width: 100, render: (value: number) => formatBytes(value) },
@@ -231,7 +271,7 @@ function BackupSection() {
       )
     },
     {
-      title: '操作', width: 110, render: (_, row) => (
+      title: '操作', width: 145, render: (_, row) => (
         <Space size={2}>
           <Tooltip title="下载到本地">
             <Button type="text" size="small" aria-label={`下载备份 ${row.name}`} icon={<DownloadOutlined />} loading={downloading === row.name} onClick={() => void handleDownload(row.name)} />
@@ -239,16 +279,32 @@ function BackupSection() {
           <Popconfirm title="确认删除该备份？" okText="删除" cancelText="取消" okButtonProps={{ danger: true }} onConfirm={() => remove.mutate(row.name)}>
             <Tooltip title="删除"><Button type="text" danger size="small" aria-label={`删除备份 ${row.name}`} icon={<DeleteOutlined />} /></Tooltip>
           </Popconfirm>
+          <Tooltip title="用该备份恢复数据库">
+            <Button type="text" size="small" aria-label={`恢复备份 ${row.name}`} icon={<RedoOutlined />} onClick={() => setRestoreTarget({ kind: 'existing', name: row.name, sizeBytes: row.sizeBytes })} />
+          </Tooltip>
         </Space>
       )
     }
   ];
 
+  const restoreLabel = restoreTarget ? (restoreTarget.kind === 'upload' ? restoreTarget.file.name : restoreTarget.name) : '';
+  const restoreSize = restoreTarget ? (restoreTarget.kind === 'upload' ? restoreTarget.file.size : restoreTarget.sizeBytes) : 0;
+
   return <section className="workspace-section">
     <Typography.Title level={4}>数据备份</Typography.Title>
+    {restarting && (
+      <Alert style={{ marginBottom: 12 }} type="info" showIcon
+        message="面板正在重启以应用恢复的备份"
+        description={<Space><Spin size="small" />重启完成后页面将自动刷新；若长时间未恢复，请手动刷新查看面板状态。</Space>} />
+    )}
     <div className="page-toolbar" style={{ marginBottom: 12 }}>
       <Typography.Text type="secondary">基于 VACUUM INTO 的在线快照（WAL 安全，无需停机）；备份含凭据主密钥与订阅 token，请妥善保管</Typography.Text>
-      <Button type="primary" icon={<DatabaseOutlined />} loading={create.isPending} onClick={() => create.mutate()}>立即备份</Button>
+      <Space>
+        <Upload accept=".db" maxCount={1} showUploadList={false} beforeUpload={(file) => { setRestoreTarget({ kind: 'upload', file }); return false; }}>
+          <Button icon={<UploadOutlined />}>导入备份并恢复</Button>
+        </Upload>
+        <Button type="primary" icon={<DatabaseOutlined />} loading={create.isPending} onClick={() => create.mutate()}>立即备份</Button>
+      </Space>
     </div>
     {backups.isError && (
       <Alert style={{ marginBottom: 12 }} type="error" showIcon message="无法获取备份列表" description={describeError(backups.error)}
@@ -257,7 +313,29 @@ function BackupSection() {
     <Table rowKey="name" size="small" pagination={false} loading={backups.isLoading}
       dataSource={backups.data?.items || []} columns={columns} locale={{ emptyText: '暂无备份' }} scroll={{ x: 540 }} />
     <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginTop: 12, marginBottom: 0 }}>
-      每日 04:00 自动备份一次（除手动外，面板持续运行时每日固定留一份）；自动保留最近 5 份，超出裁剪最旧；恢复时停机将备份文件替换 data 目录下的 singbox-web.db（并删除同名 -wal/-shm 文件）后重启面板。
+      每日 04:00 自动备份一次（除手动外，面板持续运行时每日固定留一份）；自动保留最近 5 份，超出裁剪最旧。恢复用备份覆盖当前数据库：恢复前的库会保留为 db_path 同目录的 .pre-restore 文件，需回滚时登录服务器手动换回。
     </Typography.Paragraph>
+    <Modal
+      open={restoreTarget !== undefined}
+      title="恢复数据库备份"
+      okText="确认恢复"
+      cancelText="取消"
+      okButtonProps={{ danger: true, disabled: confirmText !== '恢复', loading: restoring }}
+      onOk={() => void submitRestore()}
+      onCancel={closeRestoreDialog}
+      destroyOnHidden
+    >
+      <Alert style={{ marginBottom: 12 }} type="error" showIcon message="此操作将用备份覆盖当前全部数据"
+        description="用户、协议、流量统计与审计等全部面板数据都会回到备份时刻；恢复前的当前库保留为 .pre-restore 文件，可登录服务器手动换回。恢复完成后面板自动重启。" />
+      <Descriptions size="small" column={1} style={{ marginBottom: 12 }}>
+        <Descriptions.Item label="备份文件"><Typography.Text code style={{ fontSize: 12 }}>{restoreLabel}</Typography.Text></Descriptions.Item>
+        <Descriptions.Item label="大小">{formatBytes(restoreSize)}</Descriptions.Item>
+        {restoreTarget?.kind === 'upload' && <Descriptions.Item label="来源">本地上传（跨实例迁移的快照需与当前面板版本兼容）</Descriptions.Item>}
+      </Descriptions>
+      <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
+        请输入「<Typography.Text strong>恢复</Typography.Text>」以确认执行：
+      </Typography.Paragraph>
+      <Input value={confirmText} onChange={(event) => setConfirmText(event.target.value)} placeholder="恢复" aria-label="恢复确认词" />
+    </Modal>
   </section>;
 }

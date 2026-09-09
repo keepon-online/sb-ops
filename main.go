@@ -51,6 +51,14 @@ func run() error {
 			slog.Error("发送升级重启信号失败", "error", err)
 		}
 	}
+	// 备份恢复重启：换数据库文件必须等 db.Close（WAL 持有文件句柄），
+	// 所以恢复服务把换文件动作注册进此槽，复用 restarter 触发停机链，
+	// 停机链在数据库关闭后、exec 重生前执行它。
+	var restartAction atomic.Pointer[func() error]
+	restoreTrigger := func(action func() error) {
+		restartAction.Store(&action)
+		restarter()
+	}
 
 	cfg, stop, err := config.StartRuntimeConfigWatcher(configPath)
 	if err != nil {
@@ -71,7 +79,7 @@ func run() error {
 		defer logCloser.Close()
 	}
 	logger.Info().Str("version", version).Msg("启动 sing-box 控制面板")
-	application, err := app.New(cfg, stop, logger, version, restarter)
+	application, err := app.New(cfg, stop, logger, version, restarter, restoreTrigger)
 	if err != nil {
 		return fmt.Errorf("创建应用失败: %w", err)
 	}
@@ -119,6 +127,15 @@ func run() error {
 			logger.Error().Err(err).Msg("优雅停机时关闭应用失败")
 		}
 		applicationClosed = true
+		// 备份恢复的换文件动作只能在数据库 Close 之后执行（WAL 模式下
+		// 进程持有库文件句柄）。动作内部失败会自行回滚旧库文件；此时放弃
+		// exec、以错误退出，交由 systemd on-failure 拉起旧库，面板照旧可用。
+		if action := restartAction.Load(); action != nil {
+			restartAction.Store(nil)
+			if err := (*action)(); err != nil {
+				return fmt.Errorf("恢复数据库替换库文件失败（已回滚）: %w", err)
+			}
+		}
 		if restartRequested.Load() {
 			return restartProcess(logger)
 		}
