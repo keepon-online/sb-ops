@@ -38,6 +38,7 @@ import { identityApi } from '../services/identity';
 import { systemApi } from '../services/system';
 import { useEventStream } from '../features/events/useEventStream';
 import { ChangePasswordModal } from '../features/auth/components/ChangePasswordModal';
+import { BrandLogo } from '../components/BrandLogo';
 import { configStatusLabels, kernelStatusLabels } from '../util/labels';
 
 const { Header, Content, Sider } = Layout;
@@ -242,7 +243,7 @@ export function AppLayout() {
             style={{ cursor: 'pointer' }}
           >
             <Tooltip title={siderCollapsed ? '展开菜单 (Ctrl+B)' : 'Sing-box Ops 控制台'} placement={siderCollapsed ? 'right' : 'bottom'}>
-              <SafetyCertificateOutlined className="brand-icon" />
+              <BrandLogo size={22} className="brand-icon" />
             </Tooltip>
             {!siderCollapsed && (
               <div className="brand-info">

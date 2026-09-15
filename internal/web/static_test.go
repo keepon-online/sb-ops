@@ -37,3 +37,35 @@ func TestEmbeddedAssetsCacheHeaders(t *testing.T) {
 		}
 	}
 }
+
+func TestEmbeddedAssetsFaviconServing(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	files := fstest.MapFS{
+		"index.html":  &fstest.MapFile{Data: []byte("<html>ok</html>")},
+		"favicon.ico": &fstest.MapFile{Data: []byte("\x00\x00\x01\x00")},
+		"favicon.svg": &fstest.MapFile{Data: []byte("<svg></svg>")},
+	}
+	assets := &embeddedAssets{files: files}
+	router := gin.New()
+	router.NoRoute(assets.Serve)
+
+	cases := []struct {
+		path       string
+		wantType   string
+		wantStatus int
+	}{
+		{"/favicon.ico", "image/x-icon", 200},
+		{"/favicon.svg", "image/svg+xml", 200},
+	}
+	for _, tc := range cases {
+		recorder := httptest.NewRecorder()
+		router.ServeHTTP(recorder, httptest.NewRequest("GET", tc.path, nil))
+		if recorder.Code != tc.wantStatus {
+			t.Errorf("%s status=%d, want %d", tc.path, recorder.Code, tc.wantStatus)
+		}
+		if got := recorder.Header().Get("Content-Type"); got != tc.wantType {
+			t.Errorf("%s Content-Type=%q, want %q", tc.path, got, tc.wantType)
+		}
+	}
+}
+

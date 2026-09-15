@@ -1,0 +1,115 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <!-- Background: Deep dark slate with subtle radial glow -->
+    <radialGradient id="bgGlow" cx="50%" cy="40%" r="60%">
+      <stop offset="0%" stop-color="#1e293b"/>
+      <stop offset="60%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#070b14"/>
+    </radialGradient>
+    <linearGradient id="borderGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.8"/>
+      <stop offset="40%" stop-color="#818cf8" stop-opacity="0.4"/>
+      <stop offset="100%" stop-color="#3b82f6" stop-opacity="0.1"/>
+    </linearGradient>
+
+    <!-- Top Face: Electric Cyan to Sky Blue -->
+    <linearGradient id="topFace" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#0ea5e9"/>
+      <stop offset="50%" stop-color="#38bdf8"/>
+      <stop offset="100%" stop-color="#bae6fd"/>
+    </linearGradient>
+
+    <!-- Left Face: Royal Indigo to Violet -->
+    <linearGradient id="leftFace" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#818cf8"/>
+      <stop offset="40%" stop-color="#6366f1"/>
+      <stop offset="100%" stop-color="#4338ca"/>
+    </linearGradient>
+
+    <!-- Right Face: Deep Cobalt / Tech Blue -->
+    <linearGradient id="rightFace" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0284c7"/>
+      <stop offset="60%" stop-color="#0369a1"/>
+      <stop offset="100%" stop-color="#075985"/>
+    </linearGradient>
+
+    <!-- S-Curve / Routing Neon Glow -->
+    <linearGradient id="neonS" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="50%" stop-color="#38bdf8"/>
+      <stop offset="100%" stop-color="#a855f7"/>
+    </linearGradient>
+
+    <filter id="neonBlur" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Squircle Base -->
+  <rect x="20" y="20" width="472" height="472" rx="112" fill="url(#bgGlow)"/>
+  <rect x="20" y="20" width="472" height="472" rx="112" fill="none" stroke="url(#borderGrad)" stroke-width="6"/>
+
+  <!-- Core Ambient Glow -->
+  <circle cx="256" cy="256" r="130" fill="#38bdf8" opacity="0.12"/>
+  <circle cx="256" cy="256" r="80" fill="#6366f1" opacity="0.18"/>
+
+  <!-- 3D Isometric Cube: Larger & Centered -->
+  <!-- 
+       Center vertex: (256, 252)
+       Top vertex:    (256, 108)   -> dy = -144
+       Right vertex:  (384, 180)   -> dx = +128, dy = -72
+       Bottom-Right:  (384, 324)   -> dx = +128, dy = +72
+       Bottom:        (256, 396)   -> dy = +144
+       Bottom-Left:   (128, 324)   -> dx = -128, dy = +72
+       Left vertex:   (128, 180)   -> dx = -128, dy = -72
+  -->
+  <g id="cube">
+    <!-- Drop Shadow under Cube -->
+    <path d="M 256 414 L 396 336 L 256 380 L 116 336 Z" fill="#000000" opacity="0.5"/>
+
+    <!-- Left Face -->
+    <path d="M 128 180 L 256 252 L 256 396 L 128 324 Z" fill="url(#leftFace)"/>
+
+    <!-- Right Face -->
+    <path d="M 256 252 L 384 180 L 384 324 L 256 396 Z" fill="url(#rightFace)"/>
+
+    <!-- Top Face -->
+    <path d="M 256 108 L 384 180 L 256 252 L 128 180 Z" fill="url(#topFace)"/>
+
+    <!-- Facet Edge Highlights -->
+    <!-- Center Y-seam -->
+    <line x1="256" y1="252" x2="256" y2="396" stroke="#bae6fd" stroke-width="3" stroke-linecap="round" opacity="0.9"/>
+    <!-- Top inner seams -->
+    <line x1="128" y1="180" x2="256" y2="252" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" opacity="0.7"/>
+    <line x1="256" y1="252" x2="384" y2="180" stroke="#bae6fd" stroke-width="2.5" stroke-linecap="round" opacity="0.5"/>
+    <!-- Top outer rim -->
+    <path d="M 128 180 L 256 108 L 384 180" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" opacity="0.95"/>
+
+    <!-- Dynamic "S" Cyber Routing Ribbon across the Cube -->
+    <!-- 
+         The ribbon traces a high-tech "S" across the 3 faces:
+         Top face: loops from (192, 144) to (320, 144) -> (256, 198)
+         Left face: swoops to (176, 270)
+         Right face: connects through center to (336, 270) -> bottom (256, 344)
+    -->
+    <g filter="url(#neonBlur)">
+      <!-- Smooth Stylized S Path -->
+      <path d="M 330 150 C 290 120 190 130 180 180 C 170 230 330 220 330 280 C 330 340 220 370 170 330"
+            fill="none" stroke="url(#neonS)" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+      
+      <!-- Inner core line of the S for ultra-crisp glow -->
+      <path d="M 330 150 C 290 120 190 130 180 180 C 170 230 330 220 330 280 C 330 340 220 370 170 330"
+            fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+
+      <!-- Routing Nodes on the Ribbon ends and apex -->
+      <circle cx="330" cy="150" r="9" fill="#ffffff"/>
+      <circle cx="170" cy="330" r="9" fill="#38bdf8"/>
+      <circle cx="256" cy="252" r="7" fill="#ffffff"/>
+    </g>
+  </g>
+</svg>

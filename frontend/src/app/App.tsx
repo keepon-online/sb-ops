@@ -1,6 +1,6 @@
 import { App as AntApp } from 'antd';
-import { Suspense, lazy } from 'react';
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { Suspense, lazy, useEffect } from 'react';
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { Spin } from 'antd';
 import { AuthGuard } from '../components/AuthGuard';
 import { ErrorBoundary } from '../components/ErrorBoundary';
@@ -20,10 +20,40 @@ const AlertsPage = lazy(() => import('../features/alerts/pages/AlertsPage').then
 const MonitorPage = lazy(() => import('../features/monitor/pages/MonitorPage').then((m) => ({ default: m.MonitorPage })));
 const SystemPage = lazy(() => import('../features/system/pages/SystemPage').then((m) => ({ default: m.SystemPage })));
 
+const ROUTE_TITLES: Record<string, string> = {
+  '/': '控制总览',
+  '/overview': '控制总览',
+  '/users': '用户订阅',
+  '/protocols': '接入协议',
+  '/singbox': '服务配置',
+  '/policies': '订阅分流',
+  '/traffic': '流量分析',
+  '/alerts': '运行告警',
+  '/monitor': '主机监控',
+  '/system': '系统管理',
+  '/audit': '审计日志',
+  '/login': '登录',
+  '/setup': '初始化'
+};
+
+function PageTitleManager() {
+  const location = useLocation();
+
+  useEffect(() => {
+    const matched = ROUTE_TITLES[location.pathname];
+    if (matched) {
+      document.title = `${matched} · Sing-box Ops`;
+    }
+  }, [location.pathname]);
+
+  return null;
+}
+
 export default function App() {
   return (
     <AntApp>
       <BrowserRouter>
+        <PageTitleManager />
         <Suspense fallback={<div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}><Spin size="large" /></div>}>
           <Routes>
             <Route path="/setup" element={<SetupPage />} />

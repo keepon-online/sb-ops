@@ -13,6 +13,11 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+func init() {
+	_ = mime.AddExtensionType(".ico", "image/x-icon")
+	_ = mime.AddExtensionType(".svg", "image/svg+xml")
+}
+
 func RegisterFrontendRoutes(router *gin.Engine) {
 	registerStaticRoutes(router, newEmbeddedAssets())
 }

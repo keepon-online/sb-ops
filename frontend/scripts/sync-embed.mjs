@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdirSync, rmSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -11,8 +11,14 @@ const embedDir = resolve(frontendDir, '..', 'internal', 'web', 'embedded');
 mkdirSync(embedDir, { recursive: true });
 rmSync(resolve(embedDir, 'assets'), { recursive: true, force: true });
 
-cpSync(resolve(distDir, 'index.html'), resolve(embedDir, 'index.html'));
-
-if (existsSync(resolve(distDir, 'assets'))) {
-  cpSync(resolve(distDir, 'assets'), resolve(embedDir, 'assets'), { recursive: true });
+if (existsSync(distDir)) {
+  for (const item of readdirSync(distDir)) {
+    const src = resolve(distDir, item);
+    const dest = resolve(embedDir, item);
+    if (item === 'assets') {
+      cpSync(src, dest, { recursive: true });
+    } else {
+      cpSync(src, dest);
+    }
+  }
 }

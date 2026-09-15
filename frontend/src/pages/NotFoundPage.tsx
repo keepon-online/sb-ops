@@ -1,9 +1,15 @@
 import { HomeOutlined, RollbackOutlined } from '@ant-design/icons';
 import { Button, Result, Space, Typography } from 'antd';
+import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 export function NotFoundPage() {
   const navigate = useNavigate();
+
+  useEffect(() => {
+    document.title = '404 · Sing-box Ops';
+  }, []);
+
   return (
     <div
       style={{

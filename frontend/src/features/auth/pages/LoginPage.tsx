@@ -1,7 +1,8 @@
-import { CloudServerOutlined, LockOutlined, LoginOutlined, UserOutlined } from '@ant-design/icons';
+import { LockOutlined, LoginOutlined, UserOutlined } from '@ant-design/icons';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { Alert, App as AntApp, Button, Card, Form, Input, Spin, Typography } from 'antd';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { BrandLogo } from '../../../components/BrandLogo';
 import { ThemeSwitcher } from '../../../components/ThemeSwitcher';
 import { consumeReturnTo, setToken } from '../../../services/http';
 import { identityApi } from '../../../services/identity';
@@ -35,8 +36,8 @@ export function LoginPage() {
 
       <Card className="glass-card login-panel" variant="borderless">
         <div className="login-header">
-          <div className="login-icon-badge">
-            <CloudServerOutlined />
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 14 }}>
+            <BrandLogo size={56} />
           </div>
           <div className="login-logo">Sing-box Ops</div>
           <Typography.Text type="secondary" className="login-subtitle">
