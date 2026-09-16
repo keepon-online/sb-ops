@@ -185,6 +185,10 @@ func policyFromInput(input PolicyWriteInput) (Policy, map[string]string) {
 	}
 	if action == "" {
 		fields["defaultAction"] = "is required"
+	} else if !validAction(action) {
+		// 动作非法入库会让之后每一次订阅编译失败（clashAction 报错），
+		// 全站同步 409——在写入期以 fieldErrors 拒绝。
+		fields["defaultAction"] = "must be one of direct, proxy, block"
 	}
 	return Policy{Name: name, Description: strings.TrimSpace(input.Description), Enabled: input.Enabled, DefaultAction: action}, fields
 }
@@ -196,6 +200,8 @@ func ruleFromInput(input RuleWriteInput) (Rule, map[string]string) {
 	}
 	if action == "" {
 		fields["action"] = "is required"
+	} else if !validAction(action) {
+		fields["action"] = "must be one of direct, proxy, block"
 	}
 	if input.Priority < 0 {
 		fields["priority"] = "must not be negative"
@@ -213,7 +219,42 @@ func ruleFromInput(input RuleWriteInput) (Rule, map[string]string) {
 			break
 		}
 	}
+	for _, value := range conditions.Networks {
+		if value != "tcp" && value != "udp" {
+			fields["conditions.networks"] = "must contain only tcp or udp"
+			break
+		}
+	}
+	// 条件类型之间是 AND 语义（评估器如此判定），但 clash.yaml 经典规则
+	// 无法跨类型组合：端口/网络条件只接受单条件规则，应用层协议条件无对应
+	// 规则类型——写入期拒绝，勿让 dry-run 与实际产物静默分叉。
+	if len(conditions.Protocols) > 0 {
+		fields["conditions.protocols"] = "is not expressible in clash subscriptions"
+	}
+	groups := 0
+	for _, present := range []bool{
+		len(conditions.Domains) > 0 || len(conditions.DomainSuffixes) > 0 || len(conditions.IPCIDRs) > 0 || len(conditions.RuleSets) > 0,
+		len(conditions.Ports) > 0,
+		len(conditions.Networks) > 0,
+	} {
+		if present {
+			groups++
+		}
+	}
+	if groups > 1 {
+		fields["conditions"] = "port and network conditions cannot be combined with other condition types"
+	}
 	return Rule{PolicyID: input.PolicyID, Name: name, Enabled: input.Enabled, Priority: input.Priority, Conditions: conditions, Action: action, NoResolve: input.NoResolve}, fields
+}
+
+// validAction 是订阅分流动作的封闭枚举，编译端 clashAction 必须同步认可。
+func validAction(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "direct", "proxy", "block":
+		return true
+	default:
+		return false
+	}
 }
 func normalizeConditions(value Conditions) Conditions {
 	value.Domains = normalizeStrings(value.Domains)

@@ -425,7 +425,19 @@ func clashPolicyRule(rule servicepolicy.Rule) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	result := make([]string, 0, len(rule.Conditions.RuleSets)+len(rule.Conditions.Domains)+len(rule.Conditions.DomainSuffixes)+len(rule.Conditions.IPCIDRs))
+	result := make([]string, 0, len(rule.Conditions.RuleSets)+len(rule.Conditions.Domains)+len(rule.Conditions.DomainSuffixes)+len(rule.Conditions.IPCIDRs)+len(rule.Conditions.Ports)+len(rule.Conditions.Networks))
+	// 端口/网络条件只在单条件规则下编译为 DST-PORT/NETWORK（写入期已拒绝
+	// 组合）；历史遗留的组合行维持跳过——OR 展开只会比评估器的 AND 语义
+	// 更宽，静默放行不可接受。
+	hostLike := len(rule.Conditions.Domains) > 0 || len(rule.Conditions.DomainSuffixes) > 0 || len(rule.Conditions.IPCIDRs) > 0 || len(rule.Conditions.RuleSets) > 0
+	if !hostLike {
+		for _, port := range rule.Conditions.Ports {
+			result = append(result, "DST-PORT,"+strconv.Itoa(port)+","+action)
+		}
+		for _, network := range rule.Conditions.Networks {
+			result = append(result, "NETWORK,"+network+","+action)
+		}
+	}
 	providers := clashRuleProviders()
 	for _, name := range rule.Conditions.RuleSets {
 		provider, ok := providers[name].(map[string]any)

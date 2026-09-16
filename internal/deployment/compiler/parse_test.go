@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	servicepolicy "github.com/keepon-online/sb-ops/internal/service/policy"
 	serviceprotocol "github.com/keepon-online/sb-ops/internal/service/protocol"
 	serviceuser "github.com/keepon-online/sb-ops/internal/service/user"
 	"github.com/sagernet/sing-box/include"
@@ -39,5 +40,37 @@ func TestAllProtocolTypesParseInSingBox(t *testing.T) {
 	var options option.Options
 	if err := options.UnmarshalJSONContext(include.Context(context.Background()), result.ServerConfig); err != nil {
 		t.Fatalf("sing-box rejects compiled config: %v", err)
+	}
+}
+
+// TestClashPolicyRuleCompilesPortAndNetworkConditions：单条件规则的端口/
+// 网络条件编译为 DST-PORT/NETWORK（此前被静默丢弃，dry-run 与产物分叉）；
+// 历史遗留的组合行维持跳过——OR 展开只会比 AND 语义更宽。
+func TestClashPolicyRuleCompilesPortAndNetworkConditions(t *testing.T) {
+	portRule := servicepolicy.Rule{Action: "direct", Conditions: servicepolicy.Conditions{Ports: []int{443, 8443}}}
+	lines, err := clashPolicyRule(portRule)
+	if err != nil {
+		t.Fatalf("compile port rule: %v", err)
+	}
+	if len(lines) != 2 || lines[0] != "DST-PORT,443,DIRECT" || lines[1] != "DST-PORT,8443,DIRECT" {
+		t.Fatalf("port rule lines = %#v", lines)
+	}
+
+	networkRule := servicepolicy.Rule{Action: "block", Conditions: servicepolicy.Conditions{Networks: []string{"udp"}}}
+	lines, err = clashPolicyRule(networkRule)
+	if err != nil {
+		t.Fatalf("compile network rule: %v", err)
+	}
+	if len(lines) != 1 || lines[0] != "NETWORK,udp,REJECT" {
+		t.Fatalf("network rule lines = %#v", lines)
+	}
+
+	mixed := servicepolicy.Rule{Action: "direct", Conditions: servicepolicy.Conditions{Domains: []string{"corp.example.com"}, Ports: []int{443}}}
+	lines, err = clashPolicyRule(mixed)
+	if err != nil {
+		t.Fatalf("compile mixed rule: %v", err)
+	}
+	if len(lines) != 1 || lines[0] != "DOMAIN,corp.example.com,DIRECT" {
+		t.Fatalf("mixed rule lines = %#v, want domain line only", lines)
 	}
 }
