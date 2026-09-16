@@ -373,6 +373,12 @@ func newOps(db *sql.DB, sessionTTL time.Duration, apply deployment.ApplyConfig, 
 		defer value.wg.Done()
 		runBackupScheduleLoop(background, backupService, backupSchedule, logger)
 	}()
+	// 通知外发独立于运维检查：外部渠道最坏 10s 超时不应阻塞聚合、告警评估与 readiness。
+	value.wg.Add(1)
+	go func() {
+		defer value.wg.Done()
+		value.runNotificationDispatchLoop(background)
+	}()
 	// 每日运行报告：到点直发复合 notifier（不走 outbox——alert_id 外键要求
 	// 真实告警行），失败自带轻量重试。
 	value.wg.Add(1)
@@ -666,11 +672,9 @@ func (a *OpsApp) runOperationsBackground(ctx context.Context) {
 	a.runHousekeeping(ctx)
 	a.renewCertificates(ctx)
 	operationsTicker := time.NewTicker(time.Minute)
-	dispatchTicker := time.NewTicker(5 * time.Second)
 	retentionTicker := time.NewTicker(6 * time.Hour)
 	certificateTicker := time.NewTicker(6 * time.Hour)
 	defer operationsTicker.Stop()
-	defer dispatchTicker.Stop()
 	defer retentionTicker.Stop()
 	defer certificateTicker.Stop()
 	for {
@@ -679,8 +683,6 @@ func (a *OpsApp) runOperationsBackground(ctx context.Context) {
 			return
 		case <-operationsTicker.C:
 			a.runOperationalChecks(ctx)
-		case <-dispatchTicker.C:
-			a.dispatchNotifications(ctx)
 		case <-retentionTicker.C:
 			a.runHousekeeping(ctx)
 		case <-certificateTicker.C:
@@ -923,6 +925,21 @@ func kernelConnections(sync *deployment.SyncService) func(context.Context) int {
 			return 0
 		}
 		return len(connections.Items)
+	}
+}
+
+func (a *OpsApp) runNotificationDispatchLoop(ctx context.Context) {
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+	// 启动时先尝试一次，避免重启后等待完整一个周期。
+	a.dispatchNotifications(ctx)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			a.dispatchNotifications(ctx)
+		}
 	}
 }
 

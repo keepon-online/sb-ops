@@ -9,7 +9,10 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
+
+	"golang.org/x/sync/errgroup"
 )
 
 // WebhookConfig carries the externally configurable notification endpoints.
@@ -150,14 +153,25 @@ func NewCompositeNotifier(notifiers ...Notifier) *CompositeNotifier {
 }
 
 func (n *CompositeNotifier) Notify(ctx context.Context, value Notification) error {
+	group, _ := errgroup.WithContext(ctx)
+	var mu sync.Mutex
 	var firstErr error
 	for _, notifier := range n.notifiers {
+		notifier := notifier
 		if notifier == nil {
 			continue
 		}
-		if err := notifier.Notify(ctx, value); err != nil && firstErr == nil {
-			firstErr = err
-		}
+		group.Go(func() error {
+			if err := notifier.Notify(ctx, value); err != nil {
+				mu.Lock()
+				if firstErr == nil {
+					firstErr = err
+				}
+				mu.Unlock()
+			}
+			return nil
+		})
 	}
+	_ = group.Wait()
 	return firstErr
 }
