@@ -153,12 +153,11 @@ func (h *handler) batchUserProtocols(c *gin.Context) {
 }
 
 func (h *handler) resetUserTraffic(c *gin.Context) {
+	before, beforeErr := h.Users.Get(c.Request.Context(), c.Param("id"))
 	value, err := h.Users.ResetTraffic(c.Request.Context(), c.Param("id"))
-	if err != nil {
-		writeResourceError(c, err)
+	if !h.finishQuotaChange(c, err, actionUserTrafficReset, c.Param("id"), before, beforeErr, value) {
 		return
 	}
-	h.audit(c, actionUserTrafficReset, ResourceUser, value.ID, ResultSuccess)
 	httpx.OK(c, value)
 }
 
@@ -168,13 +167,38 @@ func (h *handler) adjustUser(c *gin.Context, action string, call func(context.Co
 	if !httpx.BindJSON(c, &request, "请选择方式并填写字节数") {
 		return
 	}
+	before, beforeErr := h.Users.Get(c.Request.Context(), c.Param("id"))
 	value, err := call(c.Request.Context(), c.Param("id"), request)
-	if err != nil {
-		writeResourceError(c, err)
+	if !h.finishQuotaChange(c, err, action, c.Param("id"), before, beforeErr, value) {
 		return
 	}
-	h.audit(c, action, ResourceUser, value.ID, ResultSuccess)
 	httpx.OK(c, value)
+}
+
+// finishQuotaChange 处理额度/用量调整的审计与同步收尾。不走 h.mutate 的
+// 无条件同步：超额剔除只发生在编译期，额度变更只有让用户在内核的可用
+// 状态翻转（超额↔可用）时才需要重编译——照 ops_app resetDueQuotas 的
+// Recovered 语义，避免每次微调额度都全量同步并重启内核断全体连接。
+func (h *handler) finishQuotaChange(c *gin.Context, err error, action, requestID string, before serviceuser.User, beforeErr error, after serviceuser.User) bool {
+	if err != nil {
+		h.audit(c, action, ResourceUser, requestID, resultFailure, err)
+		writeResourceError(c, err)
+		return false
+	}
+	if changes := diffable(beforeErr, err, before, after); len(changes) > 0 {
+		h.auditChanges(c, action, ResourceUser, after.ID, changes)
+	} else {
+		h.audit(c, action, ResourceUser, after.ID, ResultSuccess)
+	}
+	if beforeErr == nil {
+		// StatusAt 同时涵盖启停/过期/额度三个内核成员条件；额度调整只会
+		// 搬动其中的额度维度，状态不变即内核成员不变，无需同步。
+		now := time.Now()
+		if before.StatusAt(now) != after.StatusAt(now) {
+			return h.synchronize(c, ResourceUser, after.ID)
+		}
+	}
+	return true
 }
 
 func (h *handler) adjustUserQuota(c *gin.Context) {
