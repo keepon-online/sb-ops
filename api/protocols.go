@@ -133,8 +133,9 @@ func (h *handler) updateProtocol(c *gin.Context) {
 		return
 	}
 	request.ID = c.Param("id")
+	before, beforeErr := h.Protocols.Get(c.Request.Context(), request.ID)
 	value, err := h.Protocols.Update(c.Request.Context(), request)
-	if !h.mutate(c, err, actionProtocolUpdate, resourceProtocol, request.ID, value.ID) {
+	if !h.mutate(c, err, actionProtocolUpdate, resourceProtocol, request.ID, value.ID, diffable(beforeErr, err, before, value)) {
 		return
 	}
 	httpx.OK(c, value)

@@ -97,12 +97,13 @@ func (h *handler) updateUser(c *gin.Context) {
 	if !httpx.BindJSON(c, &request, "用户信息无效") {
 		return
 	}
+	before, beforeErr := h.Users.Get(c.Request.Context(), c.Param("id"))
 	value, err := h.Users.Update(c.Request.Context(), serviceuser.UpdateInput{
 		ID: c.Param("id"), Revision: request.Revision, Name: request.Name, Enabled: *request.Enabled,
 		QuotaBytes: request.QuotaBytes, ExpiresAt: request.ExpiresAt,
 		ResetIntervalDays: request.ResetIntervalDays, ProtocolIDs: request.ProtocolIDs, PolicyIDs: request.PolicyIDs,
 	})
-	if !h.mutate(c, err, actionUserUpdate, ResourceUser, c.Param("id"), value.ID) {
+	if !h.mutate(c, err, actionUserUpdate, ResourceUser, c.Param("id"), value.ID, diffable(beforeErr, err, before, value)) {
 		return
 	}
 	httpx.OK(c, value)

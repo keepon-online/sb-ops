@@ -47,8 +47,9 @@ func (h *handler) updateArgoTunnel(c *gin.Context) {
 		return
 	}
 	request.ID = c.Param("id")
+	before, beforeErr := h.Argo.Get(c.Request.Context(), request.ID)
 	value, err := h.Argo.Update(c.Request.Context(), request)
-	if !h.mutate(c, err, actionArgoTunnelUpdate, resourceArgoTunnel, c.Param("id"), value.ID) {
+	if !h.mutate(c, err, actionArgoTunnelUpdate, resourceArgoTunnel, c.Param("id"), value.ID, diffable(beforeErr, err, before, value)) {
 		return
 	}
 	httpx.OK(c, value)

@@ -190,6 +190,12 @@ func (s *Service) GetRule(ctx context.Context, id string) (RouteRule, error) {
 	return s.store.GetRule(ctx, id)
 }
 
+// GetRuleSet 返回规则集视图（含 download_detour 等非敏感字段），供更新类
+// handler 取改前快照产出字段级审计 diff。
+func (s *Service) GetRuleSet(ctx context.Context, id string) (RuleSet, error) {
+	return s.store.GetRuleSet(ctx, id)
+}
+
 func (s *Service) CreateOutbound(ctx context.Context, input OutboundWriteInput) (Outbound, error) {
 	value, fields := outboundFromInput(input)
 	if value.Type == OutboundTypeWarp && (value.Warp == nil || value.Warp.PrivateKey == "") {

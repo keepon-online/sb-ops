@@ -24,6 +24,12 @@ func (s *Service) List(ctx context.Context) ([]Tunnel, error) {
 	return s.store.List(ctx)
 }
 
+// Get 返回隧道视图（token 脱敏），供更新类 handler 取改前快照产出字段级
+// 审计 diff。
+func (s *Service) Get(ctx context.Context, id string) (Tunnel, error) {
+	return s.store.Get(ctx, id)
+}
+
 func (s *Service) Create(ctx context.Context, input TunnelWriteInput) (Tunnel, error) {
 	value, fields := s.tunnelFromInput(ctx, input)
 	if len(fields) > 0 {

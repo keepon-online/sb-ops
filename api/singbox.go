@@ -334,8 +334,9 @@ func (h *handler) updateSingBoxRuleSet(c *gin.Context) {
 		return
 	}
 	request.ID = c.Param("id")
+	before, beforeErr := h.SingBox.GetRuleSet(c.Request.Context(), request.ID)
 	value, err := h.SingBox.UpdateRuleSet(c.Request.Context(), request)
-	if !h.mutate(c, err, actionSingBoxRuleSetUpdate, resourceSingBoxRuleSet, request.ID, value.ID) {
+	if !h.mutate(c, err, actionSingBoxRuleSetUpdate, resourceSingBoxRuleSet, request.ID, value.ID, diffable(beforeErr, err, before, value)) {
 		return
 	}
 	httpx.OK(c, value)
