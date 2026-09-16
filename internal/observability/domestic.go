@@ -111,12 +111,12 @@ func (n *domesticNotifier) postJSON(ctx context.Context, endpoint string, payloa
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
-		return fmt.Errorf("创建%s通知请求失败: %w", channel, err)
+		return fmt.Errorf("创建%s通知请求失败: %w", channel, sanitizeTransportError(err))
 	}
 	request.Header.Set("Content-Type", "application/json")
 	response, err := n.client.Do(request)
 	if err != nil {
-		return fmt.Errorf("发送%s通知失败: %w", channel, err)
+		return fmt.Errorf("发送%s通知失败: %w", channel, sanitizeTransportError(err))
 	}
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {

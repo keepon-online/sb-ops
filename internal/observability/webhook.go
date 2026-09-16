@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -60,7 +62,7 @@ func (n *WebhookNotifier) postWebhook(ctx context.Context, config WebhookConfig,
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimSpace(config.URL), bytes.NewReader(body))
 	if err != nil {
-		return err
+		return sanitizeTransportError(err)
 	}
 	request.Header.Set("Content-Type", "application/json")
 	if secret := strings.TrimSpace(config.Secret); secret != "" {
@@ -77,7 +79,7 @@ func (n *WebhookNotifier) postTelegram(ctx context.Context, config WebhookConfig
 	endpoint := n.telegramBase + "/bot" + strings.TrimSpace(config.BotToken) + "/sendMessage"
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
-		return err
+		return sanitizeTransportError(err)
 	}
 	request.Header.Set("Content-Type", "application/json")
 	return n.do(request)
@@ -86,13 +88,26 @@ func (n *WebhookNotifier) postTelegram(ctx context.Context, config WebhookConfig
 func (n *WebhookNotifier) do(request *http.Request) error {
 	response, err := n.client.Do(request)
 	if err != nil {
-		return fmt.Errorf("发送通知: %w", err)
+		return fmt.Errorf("发送通知: %w", sanitizeTransportError(err))
 	}
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return fmt.Errorf("发送通知：异常状态码 %d", response.StatusCode)
 	}
 	return nil
+}
+
+// sanitizeTransportError 剥掉 *url.Error 自带的完整请求 URL：Telegram 的
+// bot token、飞书/钉钉/企微 hook 的 access_token 与 sign 都在 URL 里，
+// 传输失败的错误文本会原样进日志与 notification_outbox.last_error，
+// 违反「机器人 URL 与密钥不入日志」的仓库不变量。渠道名已在包装文本
+// 里，剥掉 URL 不影响排障。
+func sanitizeTransportError(err error) error {
+	var urlErr *url.Error
+	if errors.As(err, &urlErr) {
+		return urlErr.Err
+	}
+	return err
 }
 
 // formatNotificationText renders the alert payload as a compact single block
