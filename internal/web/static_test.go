@@ -68,4 +68,3 @@ func TestEmbeddedAssetsFaviconServing(t *testing.T) {
 		}
 	}
 }
-
