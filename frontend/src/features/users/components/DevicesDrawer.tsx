@@ -235,7 +235,7 @@ export function DevicesDrawer({ user, onClose }: { user: ResourceUser | null; on
               {qrDevice === 'user-link' ? (
                 <Space direction="vertical" align="center" size={4} style={{ width: '100%', padding: '8px 0' }}>
                   <QRCode value={maskIpEnabled ? maskSubscriptionUrl(rawUrl, true) : rawUrl} size={150} bordered={false} />
-                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>用客户端扫码后导入订阅</Typography.Text>
+                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>{maskIpEnabled ? '当前为脱敏预览，点击“显示 IP”后二维码才可导入' : '用客户端扫码后导入订阅'}</Typography.Text>
                 </Space>
               ) : null}
             </div>

@@ -358,6 +358,15 @@ func (s *Service) UpdateRuleSet(ctx context.Context, input RuleSetWriteInput) (R
 	if err != nil {
 		return RuleSet{}, err
 	}
+	if !strings.EqualFold(current.Tag, value.Tag) {
+		used, err := s.store.RuleSetReferenced(ctx, current.Tag)
+		if err != nil {
+			return RuleSet{}, err
+		}
+		if used {
+			return RuleSet{}, common.ErrReferenced
+		}
+	}
 	value.ID, value.CreatedAt, value.UpdatedAt = current.ID, current.CreatedAt, s.now()
 	if err := s.store.UpdateRuleSet(ctx, value, input.Revision); err != nil {
 		return RuleSet{}, err
