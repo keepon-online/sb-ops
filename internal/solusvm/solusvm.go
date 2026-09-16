@@ -39,7 +39,12 @@ type Client struct {
 }
 
 func NewClient(endpoint, key, hash string) *Client {
-	return &Client{endpoint: endpoint, key: key, hash: hash, http: &http.Client{Timeout: requestTimeout}}
+	return &Client{endpoint: endpoint, key: key, hash: hash, http: &http.Client{
+		Timeout: requestTimeout,
+		// 凭据拥有 VPS 重启权限；不跟随重定向，防止 307/308 保留 POST
+		// body 将 key/hash 重发到降级或非预期目标。
+		CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse },
+	}}
 }
 
 // Sample 一次账单口径的月流量采样。
@@ -100,10 +105,13 @@ func ParseInfo(body string, at time.Time) (Sample, error) {
 	values := make([]int64, 4)
 	for i, part := range parts {
 		value, err := strconv.ParseInt(strings.TrimSpace(part), 10, 64)
-		if err != nil {
+		if err != nil || value < 0 {
 			return Sample{}, fmt.Errorf("SolusVM API bw 字段格式异常：%q", bw)
 		}
 		values[i] = value
+	}
+	if values[1] > values[0] || values[2] > values[0] || values[0]-values[1] != values[2] {
+		return Sample{}, fmt.Errorf("SolusVM API bw 字段不自洽：%q", bw)
 	}
 	sample := Sample{TotalBytes: values[0], UsedBytes: values[1], FreeBytes: values[2], At: at}
 	if sample.TotalBytes > 0 {

@@ -150,6 +150,7 @@ func writeIdentityError(c *gin.Context, err error) {
 	case strings.Contains(strings.ToLower(err.Error()), "unique constraint"):
 		httpx.Error(c, http.StatusConflict, httpx.CodeUsernameConflict, "用户名已存在", map[string]string{"username": "已存在"})
 	default:
+		slog.Error("认证请求失败", "requestId", httpx.RequestID(c), "error", err)
 		writeInternalError(c, "内部服务器错误")
 	}
 }

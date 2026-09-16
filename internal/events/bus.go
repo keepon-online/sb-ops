@@ -82,7 +82,7 @@ func (b *Bus) Since(ctx context.Context, after int64, permission func(string) bo
 	if after > 0 && minimum.Valid && after < minimum.Int64-1 {
 		return []Event{}, true, nil
 	}
-	rows, err := b.db.QueryContext(ctx, `SELECT id,type,scope,resource_id,permission,idempotency_key,payload_json,created_at FROM system_events WHERE id>? ORDER BY id LIMIT 1000`, after)
+	rows, err := b.db.QueryContext(ctx, `SELECT id,type,scope,resource_id,permission,idempotency_key,payload_json,created_at FROM system_events WHERE id>? ORDER BY id LIMIT 1001`, after)
 	if err != nil {
 		return nil, false, err
 	}
@@ -92,6 +92,11 @@ func (b *Bus) Since(ctx context.Context, after int64, permission func(string) bo
 		value, err := scanEvent(rows)
 		if err != nil {
 			return nil, false, err
+		}
+		if len(values) >= 1000 {
+			// 第 1001 条说明游标回放窗口超过了单次上限；若只返回前
+			// 1000 条再订阅，剩余事件会被静默跳过。让前端全量重拉。
+			return []Event{}, true, nil
 		}
 		if value.Permission == "" || permission(value.Permission) {
 			values = append(values, value)

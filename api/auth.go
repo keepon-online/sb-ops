@@ -98,6 +98,7 @@ func (h *handler) login(c *gin.Context) {
 		Token: result.Token, ExpiresAt: result.ExpiresAt, User: newAccountResponse(result.Account),
 	})
 	c.Set(principalKey, identity.Principal{AccountID: result.Account.ID})
+	h.audit(c, actionAuthLogin, resourceAccount, result.Account.ID, ResultSuccess)
 }
 
 func (h *handler) me(c *gin.Context) {
