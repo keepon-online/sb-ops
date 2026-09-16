@@ -1,6 +1,9 @@
 package resource
 
-const SchemaVersion = 11
+// SchemaVersion 是全局迁移版本号（勿与其它包共用：条件迁移按版本号判定，
+// 共用号会让迁移体永不执行或误执行——11 曾与 observability 撞号，2026-09
+// 腾到 14 并把条件门控迁去 seed_markers）。新迁移取全局下一个空闲值。
+const SchemaVersion = 14
 
 const Schema = `
 CREATE TABLE IF NOT EXISTS control_plane_secrets (

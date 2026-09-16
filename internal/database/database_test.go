@@ -749,3 +749,78 @@ func TestMigrateRebuildsAuditLogsOnce(t *testing.T) {
 		t.Fatalf("rebuild re-fired on recorded version, rows=%d", count)
 	}
 }
+
+// TestSchemaVersionsUniqueAndCurrentIsMax 锚定全局版本号不变量：各包版本
+// 互不共用（条件迁移按版本号判定，撞号会让迁移体永不执行——audit=1 撞
+// identity=1、resource=11 撞 observability=11 均为此坑），CurrentSchemaVersion
+// 必须等于记录清单的最大值（readiness 按 MAX==expected 严格比较）。
+func TestSchemaVersionsUniqueAndCurrentIsMax(t *testing.T) {
+	versions := schemaVersionByPackage()
+	max := 0
+	for label, version := range versions {
+		if version <= 0 {
+			t.Fatalf("%s schema version %d must be positive", label, version)
+		}
+		if version > max {
+			max = version
+		}
+		for otherLabel, other := range versions {
+			if label != otherLabel && other == version {
+				t.Fatalf("schema version %d shared by %s and %s", version, label, otherLabel)
+			}
+		}
+	}
+	if CurrentSchemaVersion != max {
+		t.Fatalf("CurrentSchemaVersion = %d, want max of recorded versions %d", CurrentSchemaVersion, max)
+	}
+}
+
+// TestManagedSingBoxConfigResetDoesNotReplay：一次性托管配置重置改由
+// seed_markers 门控后，已执行的迁移不得在任何升级路径上重放（重放会清掉
+// 管理员当前的全部托管 sing-box 配置）。
+func TestManagedSingBoxConfigResetDoesNotReplay(t *testing.T) {
+	db, err := Open(Options{Path: filepath.Join(t.TempDir(), "control.db")})
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	if err := Migrate(t.Context(), db); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO singbox_config (id, updated_at, log_level) VALUES (1, 0, 'debug')`); err != nil {
+		t.Fatalf("seed managed config row: %v", err)
+	}
+	assertLogLevel := func(stage string) {
+		t.Helper()
+		var logLevel string
+		if err := db.QueryRow(`SELECT log_level FROM singbox_config WHERE id=1`).Scan(&logLevel); err != nil {
+			t.Fatalf("%s: query managed config: %v", stage, err)
+		}
+		if logLevel != "debug" {
+			t.Fatalf("%s: managed config was reset (log_level=%q)", stage, logLevel)
+		}
+	}
+
+	// 常规重启：marker 已在，直接跳过。
+	if err := Migrate(t.Context(), db); err != nil {
+		t.Fatalf("second migrate: %v", err)
+	}
+	assertLogLevel("marker present")
+
+	// 模拟从旧门控时代升级：marker 缺失但 11 已记录（存量库形态）——
+	// 旧语义下重置已执行过，只补记 marker，不得清数据。
+	if _, err := db.Exec(`DELETE FROM seed_markers WHERE name=?`, resetManagedSingBoxConfigMarker); err != nil {
+		t.Fatalf("drop marker: %v", err)
+	}
+	if err := Migrate(t.Context(), db); err != nil {
+		t.Fatalf("legacy-shape migrate: %v", err)
+	}
+	assertLogLevel("legacy version 11 recorded")
+	var restored int
+	if err := db.QueryRow(`SELECT COUNT(1) FROM seed_markers WHERE name=?`, resetManagedSingBoxConfigMarker).Scan(&restored); err != nil {
+		t.Fatalf("query marker: %v", err)
+	}
+	if restored != 1 {
+		t.Fatalf("marker not restored, count=%d", restored)
+	}
+}

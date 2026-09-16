@@ -21,7 +21,9 @@ const identitySchemaVersion = 1
 
 // CurrentSchemaVersion is the highest schema version recorded after a fresh
 // migration. It reflects the single-VPS layout (agent/node tables removed).
-const CurrentSchemaVersion = observability.ProbeSchemaVersion
+// 取迁移记录清单里的最大常量——新增包版本超过它时必须同步此处（readiness
+// 按 MAX(version)==expected 严格比较）。
+const CurrentSchemaVersion = resource.SchemaVersion
 
 // dropAgentSchema removes the legacy agent/node/rollout tables. These are
 // idempotent DROPs so fresh databases (which never had them) are unaffected.
@@ -238,6 +240,11 @@ DROP TABLE IF EXISTS templates;
 	return err
 }
 
+// resetManagedSingBoxConfigMarker 用 seed_markers 门控一次性托管配置重置，
+// 替代旧的 schema 版本号门控——resource 的版本号曾与 observability 的 11
+// 撞号，版本号判定无法区分记录归属，也无法在腾号后继续安全复用。
+const resetManagedSingBoxConfigMarker = "reset-managed-singbox-config-1"
+
 func resetManagedSingBoxConfig(ctx context.Context, tx *sql.Tx) error {
 	hasColumn, err := tableHasColumn(ctx, tx, "singbox_config", "clash_api_secret_ciphertext")
 	if err != nil {
@@ -249,11 +256,25 @@ func resetManagedSingBoxConfig(ctx context.Context, tx *sql.Tx) error {
 		}
 	}
 	var applied int
-	err = tx.QueryRowContext(ctx, `SELECT COUNT(1) FROM schema_versions WHERE version=?`, resource.SchemaVersion).Scan(&applied)
-	if err != nil || applied > 0 {
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(1) FROM seed_markers WHERE name=?`, resetManagedSingBoxConfigMarker).Scan(&applied); err != nil {
 		return err
 	}
-	_, err = tx.ExecContext(ctx, `DELETE FROM singbox_config`)
+	if applied > 0 {
+		return nil
+	}
+	// 兼容存量库：旧门控是「schema_versions 已记录 11」。11 已在库即说明
+	// 重置已随历史升级执行过，不得重放（重放会清掉管理员当前的全部托管
+	// sing-box 配置）；fresh 库 11 未记录，照常执行（空表上的 DELETE 无害）。
+	var legacy int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(1) FROM schema_versions WHERE version=?`, 11).Scan(&legacy); err != nil {
+		return err
+	}
+	if legacy == 0 {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM singbox_config`); err != nil {
+			return err
+		}
+	}
+	_, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO seed_markers (name, applied_at) VALUES (?, ?)`, resetManagedSingBoxConfigMarker, time.Now().Unix())
 	return err
 }
 
