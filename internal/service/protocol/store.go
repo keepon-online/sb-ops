@@ -128,6 +128,16 @@ UPDATE protocols SET name=?,type=?,enabled=?,listen=?,listen_port=?,settings_jso
 }
 
 func (s *Store) Delete(ctx context.Context, id string) error {
+	// argo_tunnels 对 protocols 的外键是 ON DELETE CASCADE，照 user_protocols
+	// RESTRICT 的「资源正在被引用」语义在删除前显式拦截：隧道行含加密 token
+	// 与固定域名，静默级联删除等于单向数据丢失、且不产生任何审计痕迹。
+	var tunnels int
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(1) FROM argo_tunnels WHERE protocol_id=?`, id).Scan(&tunnels); err != nil {
+		return err
+	}
+	if tunnels > 0 {
+		return common.ErrReferenced
+	}
 	result, err := s.db.ExecContext(ctx, `DELETE FROM protocols WHERE id=?`, id)
 	if err != nil {
 		return common.MapSQLiteError(err)
