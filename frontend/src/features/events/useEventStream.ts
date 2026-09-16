@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { getToken } from '../../services/http';
+import { clearSessionAndRedirect, getToken } from '../../services/http';
 import { queryClient } from '../../services/queryClient';
 
 const lastEventKey = 'sb-last-event-id';
@@ -38,6 +38,10 @@ export function useEventStream() {
         const last = localStorage.getItem(lastEventKey);
         if (last) headers['Last-Event-ID'] = last;
         const response = await fetch('/api/v1/events', { headers, signal: controller.signal });
+        if (response.status === 401) {
+          clearSessionAndRedirect();
+          return;
+        }
         if (!response.ok || !response.body) throw new Error(`SSE HTTP ${response.status}`);
         retry = 1000;
         const reader = response.body.getReader();

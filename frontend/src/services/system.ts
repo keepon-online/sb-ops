@@ -38,7 +38,9 @@ export async function backupDownload(name: string): Promise<void> {
     anchor.download = name;
     anchor.click();
   } finally {
-    URL.revokeObjectURL(url);
+    // Safari/iOS 可能在同步 revoke 前尚未启动下载；延迟释放 object URL，
+    // 避免备份文件在用户侧静默中断。
+    window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
   }
 }
 

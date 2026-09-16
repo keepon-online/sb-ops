@@ -56,8 +56,8 @@ export default function App() {
         <PageTitleManager />
         <Suspense fallback={<div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}><Spin size="large" /></div>}>
           <Routes>
-            <Route path="/setup" element={<SetupPage />} />
-            <Route path="/login" element={<LoginPage />} />
+            <Route path="/setup" element={<ErrorBoundary><SetupPage /></ErrorBoundary>} />
+            <Route path="/login" element={<ErrorBoundary><LoginPage /></ErrorBoundary>} />
             <Route path="/" element={<AuthGuard><AppLayout /></AuthGuard>}>
               <Route index element={<Navigate to="/overview" replace />} />
               <Route path="overview" element={<ErrorBoundary><OverviewPage /></ErrorBoundary>} />

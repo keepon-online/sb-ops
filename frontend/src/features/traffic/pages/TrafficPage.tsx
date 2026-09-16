@@ -263,10 +263,13 @@ export function TrafficPage() {
   const mode = useMemo(() => bucketModeFor(fromDay, toDay), [fromDay, toDay]);
   const queryInterval: 'hour' | 'day' = mode === 'hour' ? 'hour' : 'day';
   const filter = useMemo(() => {
-    // toDay 含当天(统计到 23:59:59)。
-    const to = new Date(`${toDay}T23:59:59.999`);
+    // toDay 含当天(统计到 23:59:59)。URL 可被手工修改，非法日期回退到
+    // 当前页面已解析出的默认范围，避免 Invalid Date.toISOString 抛异常。
+    const safeFromDay = dayjs(fromDay).isValid() ? fromDay : dayjs().subtract(30, 'day').format('YYYY-MM-DD');
+    const safeToDay = dayjs(toDay).isValid() ? toDay : dayjs().format('YYYY-MM-DD');
+    const to = new Date(`${safeToDay}T23:59:59.999`);
     return {
-      from: new Date(`${fromDay}T00:00:00`).toISOString(),
+      from: new Date(`${safeFromDay}T00:00:00`).toISOString(),
       to: to.toISOString(),
       interval: queryInterval,
       userId,
