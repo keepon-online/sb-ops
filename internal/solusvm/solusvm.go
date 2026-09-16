@@ -110,8 +110,13 @@ func ParseInfo(body string, at time.Time) (Sample, error) {
 		}
 		values[i] = value
 	}
-	if values[1] > values[0] || values[2] > values[0] || values[0]-values[1] != values[2] {
-		return Sample{}, fmt.Errorf("SolusVM API bw 字段不自洽：%q", bw)
+	// 总量-已用=剩余 的精确闭合是实测契约；total=0（不限量套餐形态）时
+	// 只校验非负，不做恒等校验——否则合法采样会被永久拒绝，6 小时后误报
+	// vps_bandwidth_stalled。
+	if values[0] > 0 {
+		if values[1] > values[0] || values[2] > values[0] || values[0]-values[1] != values[2] {
+			return Sample{}, fmt.Errorf("SolusVM API bw 字段不自洽：%q", bw)
+		}
 	}
 	sample := Sample{TotalBytes: values[0], UsedBytes: values[1], FreeBytes: values[2], At: at}
 	if sample.TotalBytes > 0 {

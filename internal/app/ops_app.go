@@ -668,7 +668,6 @@ func (a *OpsApp) runOperationsBackground(ctx context.Context) {
 		a.logger.Error().Err(err).Msg("流量日桶全量重建失败")
 	}
 	a.runOperationalChecks(ctx)
-	a.dispatchNotifications(ctx)
 	a.runHousekeeping(ctx)
 	a.renewCertificates(ctx)
 	operationsTicker := time.NewTicker(time.Minute)

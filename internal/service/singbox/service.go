@@ -358,7 +358,9 @@ func (s *Service) UpdateRuleSet(ctx context.Context, input RuleSetWriteInput) (R
 	if err != nil {
 		return RuleSet{}, err
 	}
-	if !strings.EqualFold(current.Tag, value.Tag) {
+	// 编译期对规则集 tag 是大小写敏感的精确匹配：任何文本变更（含仅改
+	// 大小写）都可能让引用悬空，与删除同口径先查引用。
+	if current.Tag != value.Tag {
 		used, err := s.store.RuleSetReferenced(ctx, current.Tag)
 		if err != nil {
 			return RuleSet{}, err

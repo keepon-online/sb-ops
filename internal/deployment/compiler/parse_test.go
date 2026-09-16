@@ -73,4 +73,15 @@ func TestClashPolicyRuleCompilesPortAndNetworkConditions(t *testing.T) {
 	if len(lines) != 1 || lines[0] != "DOMAIN,corp.example.com,DIRECT" {
 		t.Fatalf("mixed rule lines = %#v, want domain line only", lines)
 	}
+
+	// 历史遗留的「端口+网络」组合行同样跳过：两类条件各自成行是 OR 语义，
+	// 比评估器的 AND 更宽（写入期已拒绝该组合）。
+	legacyPortsNetworks := servicepolicy.Rule{Action: "block", Conditions: servicepolicy.Conditions{Ports: []int{443}, Networks: []string{"udp"}}}
+	lines, err = clashPolicyRule(legacyPortsNetworks)
+	if err != nil {
+		t.Fatalf("compile legacy ports+networks rule: %v", err)
+	}
+	if len(lines) != 0 {
+		t.Fatalf("legacy ports+networks lines = %#v, want none", lines)
+	}
 }
