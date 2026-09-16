@@ -152,6 +152,13 @@ func (s *Service) Start(ctx context.Context) error {
 	}
 
 	s.mu.Lock()
+	// 复查并原子占用：上面的检查与 Check 调用之间让出了锁，两个并发
+	// Start 可能都通过了首次检查——此处第二个让位，避免双下载互相截断
+	// （O_TRUNC 同写同一 temp 文件会双双校验失败）。
+	if s.phase.Active() {
+		s.mu.Unlock()
+		return ErrBusy
+	}
 	s.phase = PhaseDownloading
 	s.failure = ""
 	s.updatedAt = s.now()

@@ -88,7 +88,10 @@ rules:
 // subscriptionBaseURL 返回对外分发订阅链接所使用的根地址。
 //  1. 若配置了 deployment.subscription_url_base，以此为单一事实来源（加载期已
 //     归一化：绝对 http(s) 地址、无末尾斜杠）；
-//  2. 未配置时，从当前 HTTP 请求头动态提取（支持反向代理 X-Forwarded-Proto 与 X-Forwarded-Host）。
+//  2. 未配置时，从当前请求的 Host 头与 X-Forwarded-Proto 提取。不采信
+//     X-Forwarded-Host：它不受 SetTrustedProxies 的可信代理机制保护，直连
+//     即可伪造——若被采信，诱导管理员经攻击者域名访问面板后，页面展示的
+//     订阅链接会指向攻击者主机并携带真实 token。
 func (h *handler) subscriptionBaseURL(c *gin.Context) string {
 	if base := h.Config().Deployment.SubscriptionURLBase; base != "" {
 		return base
@@ -97,9 +100,5 @@ func (h *handler) subscriptionBaseURL(c *gin.Context) string {
 	if c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https" {
 		scheme = "https"
 	}
-	host := c.GetHeader("X-Forwarded-Host")
-	if host == "" {
-		host = c.Request.Host
-	}
-	return scheme + "://" + host
+	return scheme + "://" + c.Request.Host
 }

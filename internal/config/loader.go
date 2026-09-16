@@ -2,6 +2,8 @@ package config
 
 import (
 	"log/slog"
+	"os"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -61,6 +63,7 @@ func StartRuntimeConfigWatcher(path string) (*RuntimeConfigHolder, func(), error
 		return nil, nil, err
 	}
 	holder := NewRuntimeConfigHolder(cfg)
+	warnWorldReadable(path)
 	var stopped atomic.Bool
 
 	v.OnConfigChange(func(event fsnotify.Event) {
@@ -94,4 +97,20 @@ func StartRuntimeConfigWatcher(path string) (*RuntimeConfigHolder, func(), error
 		stopped.Store(true)
 	}
 	return holder, stop, nil
+}
+
+// warnWorldReadable 在类 Unix 平台提示权限过松的 config.yaml：notifications
+// 与 solusvm 段携带 bot token / API key 等敏感凭据，组或其他用户可读时应
+// 收紧到 0600（Windows 的 Stat 权限位无意义，跳过检查）。
+func warnWorldReadable(path string) {
+	if runtime.GOOS == "windows" {
+		return
+	}
+	info, err := os.Stat(path)
+	if err != nil || info.IsDir() {
+		return
+	}
+	if info.Mode().Perm()&0o077 != 0 {
+		slog.Warn("config.yaml 权限过松（含敏感凭据），建议执行 chmod 600", "path", path, "mode", info.Mode().Perm().String())
+	}
 }

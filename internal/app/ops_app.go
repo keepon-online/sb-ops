@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -293,11 +294,7 @@ func newOps(db *sql.DB, sessionTTL time.Duration, apply deployment.ApplyConfig, 
 		logger.Error().Err(err).Msg("恢复内嵌 sing-box 运行时失败")
 	}
 	argoManager.Start()
-	value.wg.Add(1)
-	go func() {
-		defer value.wg.Done()
-		value.runOperationsBackground(background)
-	}()
+	value.goLoop(background, "operations", value.runOperationsBackground)
 	// Traffic collection uses the panel-managed V2Ray stats gRPC API, which
 	// provides per-user attribution. The address is resolved on every cycle so
 	// panel changes apply without a restart.
@@ -327,66 +324,77 @@ func newOps(db *sql.DB, sessionTTL time.Duration, apply deployment.ApplyConfig, 
 	collector.OnError = func(err error) {
 		logger.Error().Err(err).Msg("本地流量采集失败")
 	}
-	value.wg.Add(1)
-	go func() {
-		defer value.wg.Done()
-		_ = controltraffic.NewLocalCollector(traffic, collector).Run(background)
-	}()
+	value.goLoop(background, "traffic-collector", func(ctx context.Context) {
+		_ = controltraffic.NewLocalCollector(traffic, collector).Run(ctx)
+	})
 	// 服务器监控指标（CPU/内存/磁盘/网络）为纯内存采样，独立于数据库与
 	// sing-box 运行时，失败只影响面板展示。
-	value.wg.Add(1)
-	go func() {
-		defer value.wg.Done()
-		_ = monitor.Run(background)
-	}()
+	value.goLoop(background, "monitor", func(ctx context.Context) {
+		_ = monitor.Run(ctx)
+	})
 	// 设备平台画像：按实时连接的目标域名（微软更新/NCSI、苹果软件更新、
 	// FCM 推送等高置信信号）推断 UA 未携带系统信息的设备平台，只回填
 	// unknown，不覆盖 UA 识别结果。
-	value.wg.Add(1)
-	go func() {
-		defer value.wg.Done()
-		_ = newDeviceProfiler(syncer, users, logger).Run(background)
-	}()
+	value.goLoop(background, "device-profiler", func(ctx context.Context) {
+		_ = newDeviceProfiler(syncer, users, logger).Run(ctx)
+	})
 	// 协议端到端拨测：启动后等首轮同步落定再首测，之后固定周期滚动。
-	value.wg.Add(1)
-	go func() {
-		defer value.wg.Done()
-		runProtocolProbeLoop(background, prober, logger, configProvider)
-	}()
+	value.goLoop(background, "protocol-probe", func(ctx context.Context) {
+		runProtocolProbeLoop(ctx, prober, logger, configProvider)
+	})
 	// VPS 月流量计量：启动即首轮，之后小时级轮询；未配置即空转。
-	value.wg.Add(1)
-	go func() {
-		defer value.wg.Done()
-		runSolusVMMetering(background, solusvmState, configProvider, logger)
-	}()
+	value.goLoop(background, "solusvm-metering", func(ctx context.Context) {
+		runSolusVMMetering(ctx, solusvmState, configProvider, logger)
+	})
 	// 面板新版本自动发现：周期检查 GitHub Release，结果进升级服务缓存与
 	// upgrade_available 告警。
-	value.wg.Add(1)
-	go func() {
-		defer value.wg.Done()
-		runUpgradeCheckLoop(background, upgradeService, logger)
-	}()
+	value.goLoop(background, "upgrade-check", func(ctx context.Context) {
+		runUpgradeCheckLoop(ctx, upgradeService, logger)
+	})
 	// 定时数据库备份：每日 04:00（本地时区）复用一键备份路径生成快照并裁剪，
 	// 失败经 backup_failed 告警外发。
-	value.wg.Add(1)
-	go func() {
-		defer value.wg.Done()
-		runBackupScheduleLoop(background, backupService, backupSchedule, logger)
-	}()
+	value.goLoop(background, "backup-schedule", func(ctx context.Context) {
+		runBackupScheduleLoop(ctx, backupService, backupSchedule, logger)
+	})
 	// 通知外发独立于运维检查：外部渠道最坏 10s 超时不应阻塞聚合、告警评估与 readiness。
-	value.wg.Add(1)
-	go func() {
-		defer value.wg.Done()
-		value.runNotificationDispatchLoop(background)
-	}()
+	value.goLoop(background, "notification-dispatch", value.runNotificationDispatchLoop)
 	// 每日运行报告：到点直发复合 notifier（不走 outbox——alert_id 外键要求
 	// 真实告警行），失败自带轻量重试。
-	value.wg.Add(1)
-	go func() {
-		defer value.wg.Done()
-		runReportLoop(background, configProvider, notifier, reportSources, logger)
-	}()
+	value.goLoop(background, "daily-report", func(ctx context.Context) {
+		runReportLoop(ctx, configProvider, notifier, reportSources, logger)
+	})
 	return value, nil
+}
+
+// loopRestartBackoff 是循环 panic 退出后的重启退避：防紧密 panic 循环刷爆
+// 日志，同时保证监控类循环尽快恢复。
+const loopRestartBackoff = 5 * time.Second
+
+// goLoop 在受 wg 管理的 goroutine 里运行一个后台循环。循环体 panic 只重启
+// 该循环并记错误日志（含堆栈），不把整个面板带崩——内核与面板同进程，probe
+// 等循环直接调第三方 sing-box / gRPC 代码，上游 panic 不应中断全体代理。
+// 循环正常返回视为退出（各循环仅在 ctx 取消时返回）；此时同样带退避重启，
+// 循环自身 bug 导致的提前退出不至于静默死亡。
+func (a *OpsApp) goLoop(ctx context.Context, name string, loop func(context.Context)) {
+	a.wg.Add(1)
+	go func() {
+		defer a.wg.Done()
+		for {
+			func() {
+				defer func() {
+					if recovered := recover(); recovered != nil {
+						a.logger.Error().Str("loop", name).Msg(fmt.Sprintf("后台循环 panic（将自动重启）: %v\n%s", recovered, debug.Stack()))
+					}
+				}()
+				loop(ctx)
+			}()
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(loopRestartBackoff):
+			}
+		}
+	}()
 }
 
 // runProtocolProbeLoop 周期拨测循环。内核未就绪的跳过属常态（同步窗口、

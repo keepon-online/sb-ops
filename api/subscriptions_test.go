@@ -44,7 +44,7 @@ func TestSubscriptionBaseURL(t *testing.T) {
 		}
 	})
 
-	t.Run("falls back to forwarded headers when unconfigured", func(t *testing.T) {
+	t.Run("ignores spoofable forwarded host when unconfigured", func(t *testing.T) {
 		h := &handler{
 			Config: func() config.RuntimeConfig {
 				return config.DefaultRuntimeConfig()
@@ -52,9 +52,11 @@ func TestSubscriptionBaseURL(t *testing.T) {
 		}
 		c, _ := gin.CreateTestContext(httptest.NewRecorder())
 		c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/users/123/devices", nil)
-		c.Request.Host = "127.0.0.1:8080"
+		c.Request.Host = "panel.example.com"
 		c.Request.Header.Set("X-Forwarded-Proto", "https")
-		c.Request.Header.Set("X-Forwarded-Host", "panel.example.com")
+		// X-Forwarded-Host 不受可信代理机制保护、直连即可伪造：采信它会让
+		// 展示的订阅链接（含 token）指向攻击者主机。只认 Host 头。
+		c.Request.Header.Set("X-Forwarded-Host", "attacker.example.com")
 
 		got := h.subscriptionBaseURL(c)
 		if got != "https://panel.example.com" {
