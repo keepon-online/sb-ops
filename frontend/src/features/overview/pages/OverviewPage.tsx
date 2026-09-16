@@ -70,6 +70,9 @@ export function OverviewPage() {
     mutationFn: () => protocolsApi.runProbe(),
     onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ['resources', 'protocols-probe'] }); }
   });
+  // 所有 Hook 必须在任何提前 return 之前调用：overview 轮询中途转 isError
+  // 会让重渲染少一个 Hook，React 直接抛「Rendered fewer hooks than expected」。
+  const { trafficDownColor } = useAppTheme();
 
   if (overview.isError) {
     return (
@@ -85,7 +88,6 @@ export function OverviewPage() {
     );
   }
   const value = overview.data;
-  const { trafficDownColor } = useAppTheme();
   const showTasks = Boolean(value?.tasks.some((task) => !task.completed));
   const autoCount = value?.devices?.auto ?? 0;
 

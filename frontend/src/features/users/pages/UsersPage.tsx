@@ -329,7 +329,7 @@ export function UsersPage() {
         const rawPercent = isUnlimited ? 0 : (value.usedBytes / value.quotaBytes) * 100;
         const isOver = !isUnlimited && value.usedBytes > value.quotaBytes;
         const strokeColor = isOver || percent >= 90 ? 'var(--color-error)' : percent >= 70 ? 'var(--color-warning)' : 'var(--primary-color)';
-        const percentColor = isOver || percent >= 90 ? 'var(--color-error)' : percent >= 70 ? 'var(--color-warning)' : 'var(--color-text-secondary)';
+        const percentColor = isOver || percent >= 90 ? 'var(--color-error)' : percent >= 70 ? 'var(--color-warning)' : 'var(--text-secondary)';
         return (
           <div style={{ minWidth: 150 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', fontSize: 12, marginBottom: 4 }}>

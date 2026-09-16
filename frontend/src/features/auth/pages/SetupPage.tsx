@@ -45,9 +45,9 @@ export function SetupPage() {
               className="login-icon-badge"
               style={{
                 color: 'var(--color-error)',
-                background: 'rgba(239, 68, 68, 0.12)',
-                borderColor: 'rgba(239, 68, 68, 0.25)',
-                boxShadow: '0 4px 16px rgba(239, 68, 68, 0.18)'
+                background: 'color-mix(in srgb, var(--color-error) 12%, transparent)',
+                borderColor: 'color-mix(in srgb, var(--color-error) 25%, transparent)',
+                boxShadow: '0 4px 16px color-mix(in srgb, var(--color-error) 18%, transparent)'
               }}
             >
               <DisconnectOutlined />

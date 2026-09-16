@@ -647,7 +647,7 @@ html.light-theme, html.light-theme body {
 }
 
 .pulse-dot.running {
-  background-color: #10b981; /* green */
+  background-color: var(--color-success, #52c41a);
 }
 
 .pulse-dot.running::after {
@@ -658,13 +658,13 @@ html.light-theme, html.light-theme body {
   width: 100%;
   height: 100%;
   border-radius: 50%;
-  background-color: #10b981;
+  background-color: var(--color-success, #52c41a);
   animation: pulse 1.8s infinite ease-in-out;
   opacity: 0.7;
 }
 
 .pulse-dot.warning {
-  background-color: #f59e0b; /* amber */
+  background-color: var(--color-warning, #faad14);
 }
 
 .pulse-dot.warning::after {
@@ -675,13 +675,13 @@ html.light-theme, html.light-theme body {
   width: 100%;
   height: 100%;
   border-radius: 50%;
-  background-color: #f59e0b;
+  background-color: var(--color-warning, #faad14);
   animation: pulse 1.8s infinite ease-in-out;
   opacity: 0.7;
 }
 
 .pulse-dot.error {
-  background-color: #ef4444; /* red */
+  background-color: var(--color-error, #ff4d4f);
 }
 
 @keyframes pulse {
@@ -752,13 +752,14 @@ html.light-theme, html.light-theme body {
 }
 
 /* antd 的 defaultHoverBg/defaultActiveBg 对所有 outlined 变体生效（含 danger），
-   danger 按钮 hover/active 覆盖为红色浅底，避免被主题色浅底盖住 */
+   danger 按钮 hover/active 覆盖为红色浅底，避免被主题色浅底盖住。
+   浅底用 color-mix 从 var(--color-error) 派生，深浅模式各自跟随语义错误色 */
 .ant-btn-dangerous.ant-btn-variant-outlined:not(:disabled):not(.ant-btn-disabled):hover {
-  background: rgba(239, 68, 68, 0.1) !important;
+  background: color-mix(in srgb, var(--color-error) 10%, transparent) !important;
 }
 
 .ant-btn-dangerous.ant-btn-variant-outlined:not(:disabled):not(.ant-btn-disabled):active {
-  background: rgba(239, 68, 68, 0.18) !important;
+  background: color-mix(in srgb, var(--color-error) 18%, transparent) !important;
 }
 
 /* Input elements focus glows */

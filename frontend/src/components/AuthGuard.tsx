@@ -107,9 +107,9 @@ function ConnectionBarrier({ onRefetch }: { onRefetch: () => void }) {
             className="login-icon-badge"
             style={{
               color: isOnline ? 'var(--color-warning)' : 'var(--color-error)',
-              background: isOnline ? 'rgba(245, 158, 11, 0.12)' : 'rgba(239, 68, 68, 0.12)',
-              borderColor: isOnline ? 'rgba(245, 158, 11, 0.25)' : 'rgba(239, 68, 68, 0.25)',
-              boxShadow: isOnline ? '0 4px 16px rgba(245, 158, 11, 0.18)' : '0 4px 16px rgba(239, 68, 68, 0.18)'
+              background: isOnline ? 'color-mix(in srgb, var(--color-warning) 12%, transparent)' : 'color-mix(in srgb, var(--color-error) 12%, transparent)',
+              borderColor: isOnline ? 'color-mix(in srgb, var(--color-warning) 25%, transparent)' : 'color-mix(in srgb, var(--color-error) 25%, transparent)',
+              boxShadow: isOnline ? '0 4px 16px color-mix(in srgb, var(--color-warning) 18%, transparent)' : '0 4px 16px color-mix(in srgb, var(--color-error) 18%, transparent)'
             }}
           >
             {isOnline ? <CloudServerOutlined /> : <DisconnectOutlined />}
