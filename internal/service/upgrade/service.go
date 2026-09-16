@@ -342,7 +342,7 @@ func (s *Service) publish(ctx context.Context, eventType string, target Release,
 }
 
 // newRelease 把 GitHub 响应收敛为对外缓存。currentVersion 非法（如本地
-// dev 构建）时退化为「tag 不等即可升」。
+// dev 构建）时恒为不可升级（见 newer）。
 func newRelease(current string, release githubRelease) Release {
 	published := int64(0)
 	if when, err := time.Parse(time.RFC3339, release.PublishedAt); err == nil {
@@ -356,9 +356,15 @@ func newRelease(current string, release githubRelease) Release {
 	}
 }
 
+// newer 判断 tag 是否比 current 新。current 非法 semver（本地开发构建，
+// version 固定为 "dev"）恒为不可升级——开发环境不做升级提示，否则每次
+// 检查都会因 "dev" != tag 触发 upgrade_available 告警与页面提示。
 func newer(current, tag string) bool {
-	if semver.IsValid(current) && semver.IsValid(tag) {
-		return semver.Compare(tag, current) > 0
+	if !semver.IsValid(current) {
+		return false
 	}
-	return current != tag
+	if !semver.IsValid(tag) {
+		return current != tag
+	}
+	return semver.Compare(tag, current) > 0
 }

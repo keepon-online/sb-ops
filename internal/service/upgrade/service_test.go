@@ -167,7 +167,7 @@ func TestCheckOlderTagNotUpgradable(t *testing.T) {
 	}
 }
 
-func TestCheckDevBuildComparesInequality(t *testing.T) {
+func TestCheckDevBuildNotUpgradable(t *testing.T) {
 	rig := newTestRig(t, "dev", &fakeGitHub{bodies: map[int64][]byte{}})
 	rig.fake.setBinary(t, "v0.3.0", []byte("new"), true)
 
@@ -175,8 +175,11 @@ func TestCheckDevBuildComparesInequality(t *testing.T) {
 	if err != nil {
 		t.Fatalf("check: %v", err)
 	}
-	if !release.Upgradable {
-		t.Fatalf("dev build vs any tag should be upgradable: %+v", release)
+	if release.Upgradable {
+		t.Fatalf("dev build should never prompt upgrade: %+v", release)
+	}
+	if err := rig.service.Start(context.Background()); err != ErrAlreadyLatest {
+		t.Fatalf("start should reject dev build, got %v", err)
 	}
 }
 
