@@ -32,10 +32,16 @@ type Service struct {
 	store   *Store
 	secrets *secret.Store
 	now     func() time.Time
+	// issue 是 ACME 签发链的可注入接缝：生产绑定 issueACME（DNS-01 全流程），
+	// 测试覆写以绕开外部网络。签发与「落库为 Create 还是 Update」是两件事，
+	// 后者才是续期正确性的关键（续期必须原地更新，撞 name 唯一约束即 H1）。
+	issue func(ctx context.Context, input AcmeInput, options AcmeOptions) (WriteInput, error)
 }
 
 func NewService(store *Store, secrets *secret.Store) *Service {
-	return &Service{store: store, secrets: secrets, now: func() time.Time { return time.Now().UTC() }}
+	service := &Service{store: store, secrets: secrets, now: func() time.Time { return time.Now().UTC() }}
+	service.issue = service.issueACME
+	return service
 }
 
 func (s *Service) Create(ctx context.Context, input WriteInput) (Certificate, error) {
@@ -135,6 +141,11 @@ func (s *Service) Update(ctx context.Context, input WriteInput) (Certificate, er
 	}
 	if strings.TrimSpace(input.Source) == "" {
 		input.Source = current.Source
+	}
+	// Domain 与 Source 同语义：API 更新请求不携带该字段，空值继承既有值。
+	// 若直接落空，ACME 证书会因 domain 为空永久退出自动续期且无告警。
+	if strings.TrimSpace(input.Domain) == "" {
+		input.Domain = current.Domain
 	}
 	value, encrypted, fields := s.prepare(ctx, input)
 	if len(fields) > 0 {

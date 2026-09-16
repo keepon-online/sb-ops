@@ -700,8 +700,9 @@ func (a *OpsApp) renewCertificates(ctx context.Context) {
 		Email: cfg.Acme.Email, Provider: cfg.Acme.DNSProvider, APIToken: cfg.Acme.APIToken,
 	}, 30*24*time.Hour)
 	if err != nil {
+		// RenewDueACME 单张失败不阻断其余，此时 renewed 可能 > 0：
+		// 记错误后继续走重同步，别让已续期的证书滞留在旧内核配置里。
 		a.logger.Error().Err(err).Msg("ACME 证书续期失败")
-		return
 	}
 	if renewed == 0 {
 		return

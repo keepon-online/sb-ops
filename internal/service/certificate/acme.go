@@ -10,6 +10,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -31,52 +32,62 @@ var acmeDirectoryURL = acme.LetsEncryptURL
 // personal deployment volume is far below Let's Encrypt's per-IP account rate
 // limit, so persisting the key is not worth the extra secret plumbing.
 func (s *Service) IssueACME(ctx context.Context, input AcmeInput, options AcmeOptions) (Certificate, error) {
+	material, err := s.issue(ctx, input, options)
+	if err != nil {
+		return Certificate{}, err
+	}
+	return s.Create(ctx, material)
+}
+
+// issueACME 完成 DNS-01 签发并把产物整理成可入库的 WriteInput（不落库）：
+// 新建与续期共用同一条签发链，落库方式（Create/Update）由调用方决定。
+func (s *Service) issueACME(ctx context.Context, input AcmeInput, options AcmeOptions) (WriteInput, error) {
 	domain := strings.ToLower(strings.TrimSpace(input.Domain))
 	name := strings.TrimSpace(input.Name)
 	if name == "" {
-		return Certificate{}, &common.ValidationError{Fields: map[string]string{"name": "is required"}}
+		return WriteInput{}, &common.ValidationError{Fields: map[string]string{"name": "is required"}}
 	}
 	if !hostnamePattern.MatchString(domain) {
-		return Certificate{}, &common.ValidationError{Fields: map[string]string{"domain": "must be a valid domain name"}}
+		return WriteInput{}, &common.ValidationError{Fields: map[string]string{"domain": "must be a valid domain name"}}
 	}
 	if strings.TrimSpace(options.Email) == "" || strings.TrimSpace(options.APIToken) == "" {
-		return Certificate{}, fmt.Errorf("ACME 未配置：请在 config.yaml 的 acme 段填写 email 与 api_token")
+		return WriteInput{}, fmt.Errorf("ACME 未配置：请在 config.yaml 的 acme 段填写 email 与 api_token")
 	}
 
 	accountKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
-		return Certificate{}, err
+		return WriteInput{}, err
 	}
 	client := &acme.Client{Key: accountKey, DirectoryURL: acmeDirectoryURL}
 	if _, err := client.Register(ctx, &acme.Account{Contact: []string{"mailto:" + strings.TrimSpace(options.Email)}}, acme.AcceptTOS); err != nil {
-		return Certificate{}, fmt.Errorf("注册 ACME 账户: %w", err)
+		return WriteInput{}, fmt.Errorf("注册 ACME 账户: %w", err)
 	}
 
 	order, err := client.AuthorizeOrder(ctx, acme.DomainIDs(domain))
 	if err != nil {
-		return Certificate{}, fmt.Errorf("创建 ACME 订单: %w", err)
+		return WriteInput{}, fmt.Errorf("创建 ACME 订单: %w", err)
 	}
 	dns := newCloudflareDNS(strings.TrimSpace(options.APIToken))
 	for _, authzURL := range order.AuthzURLs {
 		if err := s.completeDNS01(ctx, client, dns, authzURL, domain); err != nil {
-			return Certificate{}, err
+			return WriteInput{}, err
 		}
 	}
 
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
-		return Certificate{}, err
+		return WriteInput{}, err
 	}
 	csrDER, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{
 		Subject:  pkix.Name{CommonName: domain},
 		DNSNames: []string{domain},
 	}, key)
 	if err != nil {
-		return Certificate{}, err
+		return WriteInput{}, err
 	}
 	chain, _, err := client.CreateOrderCert(ctx, order.FinalizeURL, csrDER, true)
 	if err != nil {
-		return Certificate{}, fmt.Errorf("签发证书: %w", err)
+		return WriteInput{}, fmt.Errorf("签发证书: %w", err)
 	}
 	var certPEM bytes.Buffer
 	for _, der := range chain {
@@ -84,14 +95,16 @@ func (s *Service) IssueACME(ctx context.Context, input AcmeInput, options AcmeOp
 	}
 	keyDER, err := x509.MarshalPKCS8PrivateKey(key)
 	if err != nil {
-		return Certificate{}, err
+		return WriteInput{}, err
 	}
 	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyDER})
-	return s.Create(ctx, WriteInput{Name: name, Source: SourceACME, Domain: domain, CertificatePEM: certPEM.String(), PrivateKeyPEM: string(keyPEM)})
+	return WriteInput{Name: name, Source: SourceACME, Domain: domain, CertificatePEM: certPEM.String(), PrivateKeyPEM: string(keyPEM)}, nil
 }
 
 // RenewACME re-issues the certificate for an existing ACME certificate using
-// its stored domain.
+// its stored domain. 续期是对原行的原地 Update（带 revision），不是新建行：
+// certificates.name 的唯一约束会让「同名新建」必然失败，协议的
+// certificate_id 引用也要求 ID 保持稳定。
 func (s *Service) RenewACME(ctx context.Context, id string, options AcmeOptions) (Certificate, error) {
 	current, err := s.store.Get(ctx, id)
 	if err != nil {
@@ -100,12 +113,18 @@ func (s *Service) RenewACME(ctx context.Context, id string, options AcmeOptions)
 	if current.Source != SourceACME || current.Domain == "" {
 		return Certificate{}, fmt.Errorf("证书 %s 不是 ACME 证书", current.Name)
 	}
-	return s.IssueACME(ctx, AcmeInput{Name: current.Name, Domain: current.Domain}, options)
+	material, err := s.issue(ctx, AcmeInput{Name: current.Name, Domain: current.Domain}, options)
+	if err != nil {
+		return Certificate{}, err
+	}
+	material.ID, material.Revision = current.ID, current.Revision
+	return s.Update(ctx, material)
 }
 
 // RenewDueACME renews ACME certificates whose not_after falls within the next
 // renewalWindow, returning how many were renewed. When ACME is not configured
-// it is a no-op.
+// it is a no-op. 单张续期失败不阻断其余证书——各自的续期窗口独立，全部
+// 尝试完后聚合错误返回（调用方按续期数决定是否重同步内核）。
 func (s *Service) RenewDueACME(ctx context.Context, options AcmeOptions, renewalWindow time.Duration) (int, error) {
 	if strings.TrimSpace(options.Email) == "" || strings.TrimSpace(options.APIToken) == "" {
 		return 0, nil
@@ -116,6 +135,7 @@ func (s *Service) RenewDueACME(ctx context.Context, options AcmeOptions, renewal
 	}
 	cutoff := s.now().Add(renewalWindow)
 	renewed := 0
+	var failures []error
 	for _, cert := range certs {
 		if cert.Source != SourceACME || cert.Domain == "" {
 			continue
@@ -124,11 +144,12 @@ func (s *Service) RenewDueACME(ctx context.Context, options AcmeOptions, renewal
 			continue
 		}
 		if _, err := s.RenewACME(ctx, cert.ID, options); err != nil {
-			return renewed, err
+			failures = append(failures, fmt.Errorf("证书 %s 续期失败: %w", cert.Name, err))
+			continue
 		}
 		renewed++
 	}
-	return renewed, nil
+	return renewed, errors.Join(failures...)
 }
 
 func (s *Service) completeDNS01(ctx context.Context, client *acme.Client, dns *cloudflareDNS, authzURL, domain string) error {
