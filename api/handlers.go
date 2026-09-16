@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
-	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -118,12 +117,13 @@ func bearerToken(header string) string {
 	return strings.TrimSpace(strings.TrimPrefix(header, prefix))
 }
 
+// clientAddress 返回请求来源地址，供登录限速键与审计使用。经
+// RegisterRoutes 的 SetTrustedProxies 限定：反代（回环 Nginx）注入的
+// X-Forwarded-For / X-Real-IP 才被采信，直连时即对端地址。勿退回裸
+// RemoteAddr——固定反代部署下它恒为 127.0.0.1，登录限速会退化成全局桶
+// （未认证者可锁死管理员登录）。
 func clientAddress(c *gin.Context) string {
-	host, _, err := net.SplitHostPort(strings.TrimSpace(c.Request.RemoteAddr))
-	if err == nil {
-		return host
-	}
-	return strings.TrimSpace(c.Request.RemoteAddr)
+	return c.ClientIP()
 }
 
 // writeInternalError 收敛 500 INTERNAL_ERROR 响应；message 描述失败的操作上下文。

@@ -89,13 +89,31 @@ func TestChangePasswordRevokesOldSession(t *testing.T) {
 	}
 }
 
-func TestClientAddressIgnoresUntrustedForwardedHeaders(t *testing.T) {
-	c, _ := gin.CreateTestContext(httptest.NewRecorder())
-	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", nil)
-	c.Request.RemoteAddr = "192.0.2.10:43210"
-	c.Request.Header.Set("X-Forwarded-For", "203.0.113.99")
-	if got := clientAddress(c); got != "192.0.2.10" {
-		t.Fatalf("clientAddress=%q, want socket peer", got)
+func TestClientAddressTrustsForwardedHeadersOnlyFromTrustedProxy(t *testing.T) {
+	// 与生产 RegisterRoutes 相同的可信代理配置：只有回环反代注入的
+	// X-Forwarded-For 才被采信（设备指纹与登录限速都依赖来源地址）。
+	newContext := func(remoteAddr string) *gin.Context {
+		c, engine := gin.CreateTestContext(httptest.NewRecorder())
+		if err := engine.SetTrustedProxies([]string{"127.0.0.1", "::1"}); err != nil {
+			t.Fatalf("set trusted proxies: %v", err)
+		}
+		c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", nil)
+		c.Request.RemoteAddr = remoteAddr
+		c.Request.Header.Set("X-Forwarded-For", "203.0.113.99")
+		return c
+	}
+
+	// 直连（对端不是可信代理）：XFF 是客户端自带的可伪造头，必须忽略。
+	direct := newContext("192.0.2.10:43210")
+	if got := clientAddress(direct); got != "192.0.2.10" {
+		t.Fatalf("direct clientAddress=%q, want socket peer", got)
+	}
+	// 经同机反代（对端回环）：XFF 由 Nginx 追加真实来源，应采信——否则
+	// 固定反代部署下所有请求的来源都塌缩成 127.0.0.1，登录限速退化为
+	// 全局桶、设备指纹的 IP 维度失效。
+	proxied := newContext("127.0.0.1:51234")
+	if got := clientAddress(proxied); got != "203.0.113.99" {
+		t.Fatalf("proxied clientAddress=%q, want forwarded peer", got)
 	}
 }
 

@@ -63,6 +63,12 @@ func RegisterRoutes(router *gin.Engine, dependencies Dependencies) {
 	if dependencies.Config == nil {
 		dependencies.Config = func() config.RuntimeConfig { return config.DefaultRuntimeConfig() }
 	}
+	// 只信任同机反代（Nginx → 127.0.0.1）：gin 默认信任所有代理，XFF 最左值
+	// 完全由客户端控制，会让订阅设备指纹的 IP 维度可任意伪造；限定后
+	// c.ClientIP() 仅在直连方为回环时采信转发头，直连场景仍取 RemoteAddr。
+	if err := router.SetTrustedProxies([]string{"127.0.0.1", "::1"}); err != nil {
+		panic("配置可信代理失败: " + err.Error())
+	}
 	h := handler(dependencies)
 	h.registerPublicRoutes(router)
 
