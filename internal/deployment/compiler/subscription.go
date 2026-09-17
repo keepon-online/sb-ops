@@ -427,8 +427,11 @@ func clashPolicyRule(rule servicepolicy.Rule) ([]string, error) {
 	}
 	result := make([]string, 0, len(rule.Conditions.RuleSets)+len(rule.Conditions.Domains)+len(rule.Conditions.DomainSuffixes)+len(rule.Conditions.IPCIDRs)+len(rule.Conditions.Ports)+len(rule.Conditions.Networks))
 	// 端口/网络条件只在「唯一条件类型」的规则下编译为 DST-PORT/NETWORK
-	// （写入期已拒绝组合）；历史遗留的组合行维持跳过——OR 展开只会比评估
-	// 器的 AND 语义更宽，静默放行不可接受。
+	// 行（写入期已拒绝新增组合）。历史遗留的组合行分两类：host × 端口/
+	// 网络的行丢弃端口/网络腿、host 腿照常产出——比评估器 AND 语义宽，
+	// 但保住域名级路由意图，编辑该行即触发写入期拒绝迫使用户拆分；端口
+	// × 网络的行两腿都不编译、整行落空。不做 OR 展开成多条规则——那只会
+	// 产出更宽的规则，静默放行不可接受。
 	hostLike := len(rule.Conditions.Domains) > 0 || len(rule.Conditions.DomainSuffixes) > 0 || len(rule.Conditions.IPCIDRs) > 0 || len(rule.Conditions.RuleSets) > 0
 	portsOnly := !hostLike && len(rule.Conditions.Networks) == 0
 	networksOnly := !hostLike && len(rule.Conditions.Ports) == 0

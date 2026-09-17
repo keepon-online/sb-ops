@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"time"
@@ -91,17 +92,30 @@ func (m *Manager) Start() {
 		defer m.wg.Done()
 		ticker := time.NewTicker(reconcileInterval)
 		defer ticker.Stop()
-		m.reconcile(ctx)
+		m.safeReconcile(ctx)
 		for {
 			select {
 			case <-ctx.Done():
 				m.stopAll()
 				return
 			case <-ticker.C:
-				m.reconcile(ctx)
+				m.safeReconcile(ctx)
 			}
 		}
 	}()
+}
+
+// safeReconcile 带 panic 自愈地跑一轮对账：reconcile 触达 cloudflared 下载
+// 与进程管理边界，本包与面板/内核同进程，一处 panic 不应带崩全体服务；
+// 恢复后等下一个 tick 自然重试（reconcileInterval 即退避），与 ops_app
+// goLoop 的循环级自愈同语义（ticker 循环内就地 recover 即可）。
+func (m *Manager) safeReconcile(ctx context.Context) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			m.log("error", fmt.Sprintf("Argo 对账循环 panic（已恢复，下一轮重试）: %v\n%s", recovered, debug.Stack()))
+		}
+	}()
+	m.reconcile(ctx)
 }
 
 // Close stops the reconcile loop and all tunnel processes.

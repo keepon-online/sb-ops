@@ -27,7 +27,8 @@ go test -tags=with_quic,with_utls,with_clash_api,with_v2ray_api,with_wireguard,w
 - `internal/traffic`：V2Ray 采集、历史聚合、保留清理；`internal/observability`：告警评估、readiness、设备平台画像、Webhook/Telegram 外发。
 - `internal/deployment/compiler` + `singlevps`：资源 → `sb.json` 编译、同步与回滚；`internal/runtime/singbox`：内核生命周期。**内核日志统一进面板日志**——`kernelLogWriter` 经 sing-box 的 `log.PlatformWriter` 转发进 `internal/logging` 门面（剥 `INFO[  12]` 前缀与 ANSI 色码，级别映射 debug/info/warn/error），内核自身输出重定向 `/dev/null`；不要让内核直接写 stderr（硬编码 `+0800 …` 时间戳格式）。
 - `internal/database`：SQLite 打开与迁移。
-- 分层规则：HTTP handler 调 service，service 调 store；store 持有 `*sql.DB`。**写操作收尾统一走 `h.mutate`**（审计 + 内核同步一体，勿绕开）；更新类 handler 先取改前快照再传 `diffable(beforeErr, err, before, value)`，成功审计的 details 会带字段级 `{old,new}` diff（`resourceChanges` 自动忽略 revision/updatedAt；出站快照走脱敏视图）——新增更新端点照此接，别再退回只留 `{}`。审计读写统一在 `internal/audit`（Service 门面 + Store；留存走 `audit.retention_days`，0=永久），identity 只管账号与会话。
+- **后台循环一律 panic 自愈**：ops_app 内周期循环经 `OpsApp.goLoop`（panic 记 error 日志含堆栈、5s 退避重启；循环提前返回同样重启，不静默死亡）；包内自起的长循环就地 recover 同语义（先例 `argo.Manager.safeReconcile`，ticker 循环内每轮 recover、下个 tick 自然重试）。第三方内核/gRPC/cloudflared 边界一处 panic 不得带崩同进程的面板与内核，勿裸 `go func()` 起无人值守循环。
+- 分层规则：HTTP handler 调 service，service 调 store；store 持有 `*sql.DB`。**写操作收尾统一走 `h.mutate`**（审计 + 内核同步一体，勿绕开）；更新类 handler 先取改前快照再传 `diffable(beforeErr, err, before, value)`，成功审计的 details 会带字段级 `{old,new}` diff（`resourceChanges` 自动忽略 revision/updatedAt；出站快照走脱敏视图）——新增更新端点照此接，别再退回只留 `{}`。审计读写统一在 `internal/audit`（Service 门面 + Store；留存走 `audit.retention_days`，0=永久），identity 只管账号与会话。条件同步豁免先例：额度/用量调整收尾走 `api/users.go` 的 `finishQuotaChange`——审计照记字段级 diff，但仅当用户内核可用状态翻转（超额↔可用，前后 `StatusAt` 比较）才重编译同步（微调额度不得重启内核断全体连接，照 `resetDueQuotas` 的 Recovered 语义），勿接回 `h.mutate`。
 
 ## 领域约定（勿破坏）
 

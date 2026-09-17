@@ -157,7 +157,6 @@ func (n *CompositeNotifier) Notify(ctx context.Context, value Notification) erro
 	var mu sync.Mutex
 	var firstErr error
 	for _, notifier := range n.notifiers {
-		notifier := notifier
 		if notifier == nil {
 			continue
 		}
