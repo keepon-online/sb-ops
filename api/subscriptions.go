@@ -3,6 +3,7 @@ package api
 import (
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"strings"
 
@@ -88,17 +89,26 @@ rules:
 // subscriptionBaseURL 返回对外分发订阅链接所使用的根地址。
 //  1. 若配置了 deployment.subscription_url_base，以此为单一事实来源（加载期已
 //     归一化：绝对 http(s) 地址、无末尾斜杠）；
-//  2. 未配置时，从当前请求的 Host 头与 X-Forwarded-Proto 提取。不采信
-//     X-Forwarded-Host：它不受 SetTrustedProxies 的可信代理机制保护，直连
-//     即可伪造——若被采信，诱导管理员经攻击者域名访问面板后，页面展示的
-//     订阅链接会指向攻击者主机并携带真实 token。
+//  2. 未配置时，取当前请求的 Host 头；scheme 优先面板自身 TLS，其次仅在
+//     直连对端为回环（同机 Nginx 反代，镜像 SetTrustedProxies 的信任模型）
+//     时采信 X-Forwarded-Proto——直连客户端伪造的转发头不改变展示 scheme。
+//     不采信 X-Forwarded-Host：它不受可信代理机制保护，直连即可伪造——
+//     若被采信，诱导管理员经攻击者域名访问面板后，页面展示的订阅链接会
+//     指向攻击者主机并携带真实 token。
 func (h *handler) subscriptionBaseURL(c *gin.Context) string {
 	if base := h.Config().Deployment.SubscriptionURLBase; base != "" {
 		return base
 	}
 	scheme := "http"
-	if c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https" {
+	if c.Request.TLS != nil || (isLoopback(c.RemoteIP()) && c.GetHeader("X-Forwarded-Proto") == "https") {
 		scheme = "https"
 	}
 	return scheme + "://" + c.Request.Host
+}
+
+// isLoopback 判断直连对端是否回环（gin 的 RemoteIP 返回字符串，解析
+// 失败为空串、非 IP 一律按非回环处理）。
+func isLoopback(peer string) bool {
+	ip := net.ParseIP(peer)
+	return ip != nil && ip.IsLoopback()
 }

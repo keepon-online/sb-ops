@@ -44,7 +44,29 @@ func TestSubscriptionBaseURL(t *testing.T) {
 		}
 	})
 
-	t.Run("ignores spoofable forwarded host when unconfigured", func(t *testing.T) {
+	t.Run("ignores spoofable forwarded headers on direct connection", func(t *testing.T) {
+		h := &handler{
+			Config: func() config.RuntimeConfig {
+				return config.DefaultRuntimeConfig()
+			},
+		}
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		// httptest 默认 RemoteAddr 为 192.0.2.1（非回环直连）。
+		c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/users/123/devices", nil)
+		c.Request.Host = "panel.example.com"
+		// 直连客户端可任意伪造 X-Forwarded-*：Host 伪造会让展示的订阅链接
+		// （含 token）指向攻击者主机，Proto 伪造会篡改 scheme——两者都只在
+		// 直连对端为回环（同机反代）时采信。
+		c.Request.Header.Set("X-Forwarded-Proto", "https")
+		c.Request.Header.Set("X-Forwarded-Host", "attacker.example.com")
+
+		got := h.subscriptionBaseURL(c)
+		if got != "http://panel.example.com" {
+			t.Fatalf("expected http://panel.example.com, got %q", got)
+		}
+	})
+
+	t.Run("honors forwarded proto from loopback reverse proxy", func(t *testing.T) {
 		h := &handler{
 			Config: func() config.RuntimeConfig {
 				return config.DefaultRuntimeConfig()
@@ -52,11 +74,9 @@ func TestSubscriptionBaseURL(t *testing.T) {
 		}
 		c, _ := gin.CreateTestContext(httptest.NewRecorder())
 		c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/users/123/devices", nil)
+		c.Request.RemoteAddr = "127.0.0.1:51234"
 		c.Request.Host = "panel.example.com"
 		c.Request.Header.Set("X-Forwarded-Proto", "https")
-		// X-Forwarded-Host 不受可信代理机制保护、直连即可伪造：采信它会让
-		// 展示的订阅链接（含 token）指向攻击者主机。只认 Host 头。
-		c.Request.Header.Set("X-Forwarded-Host", "attacker.example.com")
 
 		got := h.subscriptionBaseURL(c)
 		if got != "https://panel.example.com" {
