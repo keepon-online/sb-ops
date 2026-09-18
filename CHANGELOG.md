@@ -2,6 +2,12 @@
 
 本文件记录 sb-ops 的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/)。
 
+## [未发布]
+
+### 变更
+
+- **内嵌 sing-box 内核升级 v1.13.19 → v1.14.1**（依赖含 quic-go v0.61、uTLS v1.8.7、gvisor 20260727 等全家桶刷新，go directive 升至 1.25.5）：编译器 DNS 段从 legacy `address` 格式（上游 1.14.0 已移除）迁移为 typed 服务器格式——面板存储的地址串在编译期转换（udp/tcp/tls/https/quic/h3/dhcp/local），端口与 DoH 路径缺省交内核按类型默认；配置了域名型 DNS 服务器时自动回填 `route.default_domain_resolver` 指向首个 IP 型/local 服务器（等价原 address_resolver 职责），仅有域名服务器时编译期拒绝并给出中文提示。geoip/geosite 路由条件（上游 1.12 已移除、写入即内核启动失败）改为编译期明确拒绝。全协议入站、WARP endpoint、规则集、typed DNS 与七个拨测客户端配置均已通过 v1.14.1 `sing-box check` 逐字段核验（导出夹具 `SB_CHECK_DUMP`/`SB_PROBE_DUMP` 可复跑）。
+
 ## [0.5.6] - 2026-09-17
 
 ### 新增

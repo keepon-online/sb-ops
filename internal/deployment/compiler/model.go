@@ -203,6 +203,11 @@ func (i Input) validateSingBoxConfig() error {
 		if server.Detour != "" && !tags[server.Detour] {
 			return fmt.Errorf("DNS detour %q 不存在", server.Detour)
 		}
+		// 编译期把 legacy 地址串转换为 sing-box 1.14 typed 服务器，格式
+		// 不受支持在此即拒（勿等内核启动失败）。
+		if _, _, err := dnsServerFromAddress(server.Tag, server.Address, server.Detour); err != nil {
+			return err
+		}
 	}
 	if config.DNSFinal != "" && !dnsTags[config.DNSFinal] {
 		return fmt.Errorf("DNS final %q 不存在", config.DNSFinal)
@@ -226,6 +231,11 @@ func (i Input) validateSingBoxConfig() error {
 	for _, rule := range i.RouteRules {
 		if rule.Enabled && !tags[rule.OutboundTag] {
 			return fmt.Errorf("路由规则 %s 引用了未知出站 %q", rule.Name, rule.OutboundTag)
+		}
+		// geoip/geosite 数据库 sing-box 1.12 已移除，规则带这两类条件会让
+		// 内核启动直接失败（存量模型字段仍保留，写入期应已不可达）。
+		if len(rule.Conditions.GeoIP) > 0 || len(rule.Conditions.GeoSite) > 0 {
+			return fmt.Errorf("路由规则 %s 使用了已移除的 geoip/geosite 条件（请改用规则集）", rule.Name)
 		}
 		for _, cidr := range rule.Conditions.IPCIDRs {
 			if _, err := netip.ParsePrefix(cidr); err != nil {

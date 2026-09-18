@@ -79,11 +79,15 @@ func Compile(input Input) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
+	dns, domainResolver, err := singBoxDNS(input.SingBoxConfig)
+	if err != nil {
+		return Result{}, err
+	}
 	server := map[string]any{
 		"log":       singBoxLog(input.SingBoxConfig),
 		"inbounds":  inbounds,
 		"outbounds": outbounds,
-		"route":     singBoxRoute(input.SingBoxConfig, input.RouteRules, input.RuleSets),
+		"route":     singBoxRoute(input.SingBoxConfig, input.RouteRules, input.RuleSets, domainResolver),
 	}
 	if len(endpoints) > 0 {
 		server["endpoints"] = endpoints
@@ -91,7 +95,7 @@ func Compile(input Input) (Result, error) {
 	if experimental := singBoxExperimental(input.SingBoxConfig, input.ClashAPISecret, trafficUsers, inboundTags, input.CacheFilePath); experimental != nil {
 		server["experimental"] = experimental
 	}
-	if dns := singBoxDNS(input.SingBoxConfig); dns != nil {
+	if dns != nil {
 		server["dns"] = dns
 	}
 	raw, err := json.MarshalIndent(server, "", "  ")
@@ -185,7 +189,7 @@ func warpEndpoint(tag string, settings *servicesingbox.WarpSettings) (map[string
 	return endpoint, nil
 }
 
-func singBoxRoute(config servicesingbox.Config, rules []servicesingbox.RouteRule, ruleSets []servicesingbox.RuleSet) map[string]any {
+func singBoxRoute(config servicesingbox.Config, rules []servicesingbox.RouteRule, ruleSets []servicesingbox.RuleSet, domainResolver string) map[string]any {
 	final := config.DefaultOutboundTag
 	if final == "" {
 		final = "direct"
@@ -229,6 +233,9 @@ func singBoxRoute(config servicesingbox.Config, rules []servicesingbox.RouteRule
 	if definitions := singBoxRuleSets(ruleSets); len(definitions) > 0 {
 		result["rule_set"] = definitions
 	}
+	if domainResolver != "" {
+		result["default_domain_resolver"] = map[string]any{"server": domainResolver}
+	}
 	return result
 }
 
@@ -244,23 +251,89 @@ func singBoxRuleSets(ruleSets []servicesingbox.RuleSet) []any {
 	return values
 }
 
-func singBoxDNS(config servicesingbox.Config) map[string]any {
+// singBoxDNS 组装 dns 段。sing-box 1.14 起 legacy `address` 服务器格式已
+// 移除，面板存储的地址串在此转换为 typed 服务器；端口与 https 路径未显式
+// 给出时省略，由内核按类型取默认（udp/tcp 53、tls/quic 853、https 443、
+// /dns-query）。存在域名型服务器地址时返回 resolverTag（首个非域名服务
+// 器），由 singBoxRoute 写入 route.default_domain_resolver——等价 legacy
+// address_resolver 的职责，缺它内核启动即报 missing domain resolver。
+func singBoxDNS(config servicesingbox.Config) (map[string]any, string, error) {
 	if len(config.DNSServers) == 0 {
-		return nil
+		return nil, "", nil
 	}
 	servers := make([]any, 0, len(config.DNSServers))
+	resolverTag, sawDomain := "", false
 	for _, server := range config.DNSServers {
-		value := map[string]any{"tag": server.Tag, "address": server.Address}
-		if server.Detour != "" {
-			value["detour"] = server.Detour
+		value, domainHost, err := dnsServerFromAddress(server.Tag, server.Address, server.Detour)
+		if err != nil {
+			return nil, "", err
+		}
+		if domainHost {
+			sawDomain = true
+		} else if resolverTag == "" {
+			resolverTag = server.Tag
 		}
 		servers = append(servers, value)
+	}
+	if sawDomain && resolverTag == "" {
+		return nil, "", fmt.Errorf("域名型 DNS 服务器需要至少一个 IP 型或 local 服务器用于解析（route.default_domain_resolver）")
 	}
 	value := map[string]any{"servers": servers}
 	if config.DNSFinal != "" {
 		value["final"] = config.DNSFinal
 	}
-	return value
+	if !sawDomain {
+		resolverTag = ""
+	}
+	return value, resolverTag, nil
+}
+
+// dnsServerFromAddress 把 legacy 地址串转换为 typed DNS 服务器对象。
+// domainHost 标记 server 字段是否为域名（驱动 default_domain_resolver 回填）。
+func dnsServerFromAddress(tag, address, detour string) (map[string]any, bool, error) {
+	trimmed := strings.TrimSpace(address)
+	value := map[string]any{"tag": tag}
+	if detour != "" {
+		value["detour"] = detour
+	}
+	if trimmed == "" || trimmed == "local" {
+		value["type"] = "local"
+		return value, false, nil
+	}
+	scheme, rest := "udp", trimmed
+	if idx := strings.Index(trimmed, "://"); idx >= 0 {
+		scheme, rest = trimmed[:idx], trimmed[idx+3:]
+	}
+	if scheme == "dhcp" {
+		value["type"] = "dhcp"
+		if rest != "" && rest != "auto" {
+			value["interface"] = rest
+		}
+		return value, false, nil
+	}
+	switch scheme {
+	case "udp", "tcp", "tls", "quic", "h3", "https":
+	default:
+		return nil, false, fmt.Errorf("DNS 服务器 %q 的地址 %q 不受支持（可用：udp:// tcp:// tls:// https:// quic:// h3:// dhcp:// local）", tag, address)
+	}
+	value["type"] = scheme
+	if scheme == "https" || scheme == "h3" {
+		if slash := strings.Index(rest, "/"); slash >= 0 {
+			value["path"] = rest[slash:]
+			rest = rest[:slash]
+		}
+	}
+	if host, portText, err := net.SplitHostPort(rest); err == nil {
+		if port, perr := strconv.ParseUint(portText, 10, 16); perr != nil {
+			return nil, false, fmt.Errorf("DNS 服务器 %q 的端口 %q 无效", tag, portText)
+		} else if port > 0 {
+			value["server_port"] = uint16(port)
+		}
+		rest = host
+	}
+	value["server"] = rest
+	domainHost := net.ParseIP(rest) == nil
+	return value, domainHost, nil
 }
 
 func singBoxExperimental(config servicesingbox.Config, clashAPISecret string, users, inboundTags []string, cacheFilePath string) map[string]any {
