@@ -206,6 +206,19 @@ sudo chmod +x /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh
 sudo certbot renew --dry-run
 ```
 
+### 域名经 Cloudflare 代理（橙云）时必须还原真实来源 IP
+
+面板若挂在 CF 代理后面（订阅域名想借 CF 隐藏源站 IP 时常见），Nginx 看到的客户端地址是**轮换的 CF 边缘节点 IP**，而面板的设备自动发现（UA + 来源 IP 指纹、平台画像前缀归因）、登录限速键、审计 IP 全依赖真实客户端地址——不还原的话设备名后缀与来源地址会变成无意义且不停漂移的 CF 地址，平台画像永远匹配不上，同款多客户端折进同一行设备。在每个经 CF 的 server 块（443）加：
+
+```nginx
+    # 从 CF 专属头还原真实客户端 IP；网段列表见 https://www.cloudflare.com/ips（变更不频繁，定期对齐）
+    real_ip_header CF-Connecting-IP;
+    set_real_ip_from 173.245.48.0/20;
+    # ……其余 CF IPv4/IPv6 网段逐行列出
+```
+
+要点：`set_real_ip_from` 只信任 CF 网段，非 CF 来源伪造 `CF-Connecting-IP` 头不会生效（realip 模块只对可信来源采信该头）；配置后 `$remote_addr`、`X-Real-IP`、`X-Forwarded-For` 末端与 access log 全部恢复真实地址，存量设备的污染地址会在下次订阅拉取时自动修正（改名 + `source_ip` 更新）。订阅若专门走独立域名（如 `sub.example.com`），该域名的 server 块同样要配。
+
 ## 四、防火墙
 
 ```bash
