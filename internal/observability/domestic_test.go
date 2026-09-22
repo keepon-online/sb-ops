@@ -208,6 +208,102 @@ func TestDomesticNotifierRendersDailyReportCards(t *testing.T) {
 	}
 }
 
+func TestDomesticNotifierRejectsBusinessErrorCode(t *testing.T) {
+	// 业务失败回 HTTP 200 是三家平台的真实契约（签名错、IP 白名单拒绝、
+	// 机器人失效、频控），载荷键名按平台真实响应：飞书 code/msg，钉钉/
+	// 企微 errcode/errmsg。曾因只看状态码把这类拒绝当成功，静默吞掉一周
+	// 每日报告。
+	cases := []struct {
+		name    string
+		config  func(base string) DomesticConfig
+		reply   string
+		wantErr string
+	}{
+		{
+			name:    "飞书签名失败",
+			config:  func(base string) DomesticConfig { return DomesticConfig{FeishuWebhookURL: base + "/feishu"} },
+			reply:   `{"code":19021,"msg":"sign match fail"}`,
+			wantErr: "code=19021",
+		},
+		{
+			name:    "钉钉签名失败",
+			config:  func(base string) DomesticConfig { return DomesticConfig{DingTalkWebhookURL: base + "/dingtalk"} },
+			reply:   `{"errcode":310000,"errmsg":"sign not match"}`,
+			wantErr: "code=310000",
+		},
+		{
+			name:    "企业微信拒绝",
+			config:  func(base string) DomesticConfig { return DomesticConfig{WeComWebhookURL: base + "/wecom"} },
+			reply:   `{"errcode":45002,"errmsg":"api forbidden"}`,
+			wantErr: "code=45002",
+		},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(testCase.reply))
+			}))
+			defer server.Close()
+			notifier := NewDomesticNotifier(func(context.Context) (DomesticConfig, error) {
+				return testCase.config(server.URL), nil
+			})
+			err := notifier.Notify(context.Background(), Notification{Payload: json.RawMessage(`{}`)})
+			if err == nil || !strings.Contains(err.Error(), testCase.wantErr) {
+				t.Fatalf("err=%v, want contains %q", err, testCase.wantErr)
+			}
+		})
+	}
+}
+
+func TestDomesticNotifierAcceptsSuccessAndLenientBodies(t *testing.T) {
+	replies := []string{
+		// 飞书成功响应的真实形状（StatusCode 与 code 并存且均为 0）。
+		`{"StatusCode":0,"StatusMessage":"success","code":0,"data":{},"msg":"success"}`,
+		// 钉钉/企微成功。
+		`{"errcode":0,"errmsg":"ok"}`,
+		// 非 JSON 成功体（空体/纯文本，如反代返回）宽松放行，只拦截可确信的业务失败。
+		``,
+		`ok`,
+	}
+	for _, reply := range replies {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(reply))
+		}))
+		notifier := NewDomesticNotifier(func(context.Context) (DomesticConfig, error) {
+			return DomesticConfig{FeishuWebhookURL: server.URL + "/feishu", DingTalkWebhookURL: server.URL + "/ding", WeComWebhookURL: server.URL + "/wecom"}, nil
+		})
+		if err := notifier.Notify(context.Background(), Notification{Payload: json.RawMessage(`{}`)}); err != nil {
+			t.Fatalf("reply %q: err=%v", reply, err)
+		}
+		server.Close()
+	}
+}
+
+func TestDomesticNotifierContinuesAfterBusinessError(t *testing.T) {
+	called := make(chan string, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called <- r.URL.Path
+		w.WriteHeader(http.StatusOK)
+		if r.URL.Path == "/feishu" {
+			_, _ = w.Write([]byte(`{"code":19021,"msg":"sign match fail"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"errcode":0,"errmsg":"ok"}`))
+	}))
+	defer server.Close()
+	notifier := NewDomesticNotifier(func(context.Context) (DomesticConfig, error) {
+		return DomesticConfig{FeishuWebhookURL: server.URL + "/feishu", WeComWebhookURL: server.URL + "/wecom"}, nil
+	})
+	if err := notifier.Notify(context.Background(), Notification{Payload: json.RawMessage(`{}`)}); err == nil || !strings.Contains(err.Error(), "飞书") {
+		t.Fatalf("err=%v", err)
+	}
+	if <-called != "/feishu" || <-called != "/wecom" {
+		t.Fatal("second channel was not attempted")
+	}
+}
+
 func TestDomesticNotifierContinuesAfterChannelFailure(t *testing.T) {
 	called := make(chan string, 2)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

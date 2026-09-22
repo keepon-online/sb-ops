@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -121,6 +122,42 @@ func (n *domesticNotifier) postJSON(ctx context.Context, endpoint string, payloa
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return fmt.Errorf("发送%s通知：异常状态码 %d", channel, response.StatusCode)
+	}
+	// 三家平台的业务失败（签名错、IP 白名单拒绝、机器人失效、频控等）大多
+	// 仍回 HTTP 200，只看状态码会把拒绝当成功静默吞掉——曾因此连吞一周
+	// 每日报告（面板全绿、群里无消息）。必须再校验响应体业务码：飞书
+	// code/StatusCode、钉钉/企微 errcode。响应体非 JSON 时宽松放行，只拦截
+	// 可确信的业务失败。
+	responseBody, err := io.ReadAll(io.LimitReader(response.Body, 4096))
+	if err != nil {
+		return fmt.Errorf("读取%s通知响应失败: %w", channel, err)
+	}
+	var result struct {
+		Code       int    `json:"code"`
+		StatusCode int    `json:"StatusCode"`
+		ErrCode    int    `json:"errcode"`
+		Msg        string `json:"msg"`
+		ErrMsg     string `json:"errmsg"`
+	}
+	if json.Unmarshal(responseBody, &result) != nil {
+		return nil
+	}
+	code := result.Code
+	if code == 0 {
+		code = result.StatusCode
+	}
+	if code == 0 {
+		code = result.ErrCode
+	}
+	if code != 0 {
+		message := result.Msg
+		if message == "" {
+			message = result.ErrMsg
+		}
+		if message != "" {
+			return fmt.Errorf("发送%s通知：平台业务错误 code=%d（%s）", channel, code, message)
+		}
+		return fmt.Errorf("发送%s通知：平台业务错误 code=%d", channel, code)
 	}
 	return nil
 }
