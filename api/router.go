@@ -54,7 +54,7 @@ type Dependencies struct {
 	// Prober 跑协议端到端拨测；测试可缺省（对应端点返回 503）。
 	Prober *controlprobe.Prober
 	// WarpRotate 执行 WARP 一键换出口（sudo warp-cli 断开重连 + 立即复测）；
-	// 缺省时不注册对应端点。
+	// 测试可缺省（对应端点返回 503，同 Prober 先例）。
 	WarpRotate func(context.Context) (controlwarphealth.Result, error)
 	// ArgoManager restarts tunnel processes; the supervisor may be absent in
 	// tests, hence the narrow interface.
@@ -248,9 +248,7 @@ func RegisterRoutes(router *gin.Engine, dependencies Dependencies) {
 		systemBackups.POST("/:name/restore", h.restoreExistingBackup)
 		systemBackups.DELETE("/:name", h.deleteBackup)
 	}
-	if h.WarpRotate != nil {
-		authenticated.POST("/system/warp/rotate", h.rotateWarp)
-	}
+	authenticated.POST("/system/warp/rotate", h.rotateWarp)
 }
 
 // registerPublicRoutes 注册无需管理员认证的公开路由。订阅拉取是全项目

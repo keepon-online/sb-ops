@@ -277,6 +277,25 @@ func TestStateStickyAndReset(t *testing.T) {
 	}
 }
 
+func TestSnapshotStale(t *testing.T) {
+	// 未成功判定过：不算 stale（存在性由门控负责）。
+	if (Snapshot{}).Stale(StaleAfter) {
+		t.Fatal("无成功判定的快照不应 stale")
+	}
+	base := time.Date(2026, 9, 24, 12, 0, 0, 0, time.UTC)
+	// 最近成功判定后持续失败未超阈值：不 stale（正常防抖窗口）。
+	fresh := Snapshot{Verdict: VerdictOK, CheckedAt: base, LastAttempt: base.Add(30 * time.Minute)}
+	if fresh.Stale(StaleAfter) {
+		t.Fatal("30 分钟不粘滞不应 stale")
+	}
+	// 持续失败超阈值：stale（隧道死亡而 SOCKS 监听仍在的形态，判定永不
+	// 翻转，靠 stale 兜底告警）。
+	stale := Snapshot{Verdict: VerdictOK, CheckedAt: base, LastAttempt: base.Add(StaleAfter + time.Minute)}
+	if !stale.Stale(StaleAfter) {
+		t.Fatal("持续失败超阈值应 stale")
+	}
+}
+
 func contextDeadlineError() error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
 	defer cancel()

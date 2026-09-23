@@ -215,10 +215,11 @@ func (s *Service) Evaluate(ctx context.Context, aggregationErr error, trafficSta
 	// WARP MASQUE 解锁链路：Google 域名经官方 WARP 客户端本地代理出站的
 	// 健康度（代理可达性、warp=on、出口地区判定）。自愈型故障用 warning，
 	// 翻回 ok 候选消失自动恢复；未部署该链路时源返回 ok=false 不评估。
+	// Reason 恒为完整人话原因（确定性终态或持续探测失败的 stale 兜底）。
 	if s.warpHealth != nil {
 		if status, ok := s.warpHealth(); ok && status.Degraded {
 			values = append(values, candidate{"warp_masque_degraded", "warning", "control_plane", "egress",
-				fmt.Sprintf("WARP 解锁链路异常（%s）：%s", status.Verdict, status.Reason)})
+				fmt.Sprintf("WARP 解锁链路异常：%s", status.Reason)})
 		}
 	}
 	// 协议端到端拨测失败行驱动告警（行翻绿后下一轮自动恢复）；skipped 行

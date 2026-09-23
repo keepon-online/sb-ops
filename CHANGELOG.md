@@ -2,6 +2,12 @@
 
 本文件记录 sb-ops 的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/)。
 
+## [未发布]
+
+### 修复
+
+- **WARP 解锁链路监控的三处缺陷（v0.6.0 自审发现）**：① 隧道死亡而 warp-svc 的 SOCKS 监听仍接受连接时（MASQUE 断连的常见形态），探测每轮都落在「歧义失败」里按防抖粘滞上一判定——监控对最主要故障形态可能永久失明（卡片常绿、告警不响）。现照 `backup_stalled` 的 stale 语义兜底：最近尝试距最近成功判定超过 45 分钟（≈连续 3 轮失败）即判 degraded，总览 `warpHealth` 新增 `degraded` 字段驱动卡片与告警（此时 verdict 仍展示最后一次成功判定）。② 门控查询（warp-masque 出站存在性）遇到数据库瞬时错误会误 `Reset()` 监控状态——洗掉开放中的告警与卡片；现仅 `sql.ErrNoRows`（出站确不存在）才 Reset，其余错误记日志保留状态。③ `POST /system/warp/rotate` 路由注册与 Prober 先例不一致（nil 时不注册、handler 的 503 分支成死代码），改为无条件注册 + handler 判 nil 回 503。
+
 ## [0.6.0] - 2026-09-24
 
 ### 新增

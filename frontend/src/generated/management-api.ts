@@ -1451,7 +1451,7 @@ export interface paths {
         put?: never;
         /**
          * Rotate the WARP MASQUE exit (disconnect + reconnect via sudo warp-cli, then re-probe immediately)
-         * @description Part of the WARP MASQUE unlock chain maintenance: severs and re-establishes the official cloudflare-warp tunnel so Cloudflare may assign a different exit, then polls the health probe until a definitive verdict. The request blocks until the re-probe settles (typically a few seconds, worst case about a minute). The route is only registered when the rotation is wired in the deployment.
+         * @description Part of the WARP MASQUE unlock chain maintenance: severs and re-establishes the official cloudflare-warp tunnel so Cloudflare may assign a different exit, then polls the health probe until a definitive verdict. The request blocks until the re-probe settles (typically a few seconds, worst case about a minute).
          */
         post: operations["rotateSystemWarp"];
         delete?: never;
@@ -2350,13 +2350,15 @@ export interface components {
             egressGeo?: components["schemas"]["ManagementOverviewEgressGeo"];
             warpHealth?: components["schemas"]["ManagementOverviewWarpHealth"];
         };
-        /** @description Health of the WARP MASQUE unlock chain: Google-domain traffic exits through the local official cloudflare-warp client (proxy-mode SOCKS5) fronted by the warp-masque SOCKS outbound. Each probe verifies the trace warp flag and Google's region verdict via a redirect-following- free GET through the proxy. Absent when no warp-masque outbound exists or before the first successful probe after startup. */
+        /** @description Health of the WARP MASQUE unlock chain: Google-domain traffic exits through the local official cloudflare-warp client (proxy-mode SOCKS5) fronted by the warp-masque SOCKS outbound. Each probe verifies the trace warp flag and Google's region verdict via a redirect-following- free GET through the proxy. Absent when no warp-masque outbound exists or before the first successful probe after startup. degraded covers both definitive unhealthy verdicts and the stale fallback (probes failing continuously past a threshold — e.g. a dead tunnel whose SOCKS listener still accepts — in which case verdict still shows the last successful one). */
         ManagementOverviewWarpHealth: {
             /**
-             * @description ok = tunnel up and Google treats the WARP exit as non-CN; proxy-down = local WARP proxy unreachable; warp-off = tunnel not active (trace warp=off); misjudged = Google redirects google.com to google.com.hk through the WARP exit.
+             * @description ok = tunnel up and Google treats the WARP exit as non-CN; proxy-down = local WARP proxy unreachable; warp-off = tunnel not active (trace warp=off); misjudged = Google redirects google.com to google.com.hk through the WARP exit. Under the stale fallback the verdict still reflects the last successful probe; check degraded.
              * @enum {string}
              */
             verdict: "ok" | "proxy-down" | "warp-off" | "misjudged";
+            /** @description True for any unhealthy verdict or the stale fallback (probes failing continuously past a threshold); drives the card badge and the alert. */
+            degraded: boolean;
             /** @description Chinese failure reason; present when verdict is not ok. */
             reason?: string;
             /**

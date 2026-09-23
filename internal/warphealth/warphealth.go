@@ -32,6 +32,10 @@ const (
 	GoogleURL         = "https://www.google.com/"
 	proxyDialTimeout  = 3 * time.Second
 	maxBodySize       = 1 << 10
+	// StaleAfter 是「最近尝试距最近一次成功判定」的告警阈值（≈连续 3 轮
+	// 探测失败）：隧道黑洞等歧义失败不改变判定，持续失败超过阈值即视为
+	// 链路 degraded（照 backup_stalled 的 stale 语义），防粘滞掩盖真实故障。
+	StaleAfter = 45 * time.Minute
 )
 
 // 单次探测的读超时上限。用 var 仅为测试可调（黑洞隧道用例不必烧满上限）。
@@ -285,4 +289,15 @@ func (s *State) Snapshot() Snapshot {
 		LastAttempt: s.lastAttempt,
 		LastError:   s.lastError,
 	}
+}
+
+// Stale 报告「最近尝试距最近一次成功判定」是否超过阈值：歧义失败粘滞
+// 判定是防抖设计，但隧道死亡而 SOCKS 监听仍在的形态下探测会永远落在
+// 歧义失败里，判定永远不翻转——持续失败超阈值须按 degraded 处理。
+// 尚无成功判定（CheckedAt 零值）时不算 stale（存在性由门控负责）。
+func (s Snapshot) Stale(threshold time.Duration) bool {
+	if s.CheckedAt.IsZero() || s.LastAttempt.IsZero() {
+		return false
+	}
+	return s.LastAttempt.Sub(s.CheckedAt) > threshold
 }

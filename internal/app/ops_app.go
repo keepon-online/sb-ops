@@ -196,15 +196,28 @@ func newOps(db *sql.DB, sessionTTL time.Duration, apply deployment.ApplyConfig, 
 	// socks 出站才启用（未部署实例静默）；轮询 state 同时喂给告警评估与
 	// 总览卡片，degraded 自动经 warp_masque_degraded 告警外发。
 	warpHealthState := controlwarphealth.NewState()
+	// degraded = 确定性劣化终态，或歧义失败粘滞超阈值（隧道死亡而 SOCKS
+	// 监听仍在的形态探测永远落在歧义失败里，判定不翻转——照 backup_stalled
+	// 的 stale 语义兜底）。
+	warpHealthDegraded := func(snapshot controlwarphealth.Snapshot) (bool, string) {
+		if snapshot.Verdict != controlwarphealth.VerdictOK {
+			return true, snapshot.Reason
+		}
+		if snapshot.Stale(controlwarphealth.StaleAfter) {
+			return true, fmt.Sprintf("链路探测持续失败（最近成功 %s 前）：%s", time.Since(snapshot.CheckedAt).Round(time.Minute), snapshot.LastError)
+		}
+		return false, ""
+	}
 	alerts.SetWarpHealthSource(func() (controlobservability.WarpHealthStatus, bool) {
 		snapshot := warpHealthState.Snapshot()
 		if snapshot.Verdict == "" {
 			return controlobservability.WarpHealthStatus{}, false
 		}
+		degraded, reason := warpHealthDegraded(snapshot)
 		return controlobservability.WarpHealthStatus{
-			Degraded:  snapshot.Verdict != controlwarphealth.VerdictOK,
+			Degraded:  degraded,
 			Verdict:   snapshot.Verdict,
-			Reason:    snapshot.Reason,
+			Reason:    reason,
 			CheckedAt: snapshot.CheckedAt,
 		}, true
 	})
@@ -213,15 +226,19 @@ func newOps(db *sql.DB, sessionTTL time.Duration, apply deployment.ApplyConfig, 
 		if snapshot.Verdict == "" {
 			return controloverview.WarpHealth{}, false
 		}
-		return controloverview.WarpHealth{Verdict: snapshot.Verdict, Reason: snapshot.Reason, ExitFamily: snapshot.ExitFamily, CheckedAt: snapshot.CheckedAt}, true
+		degraded, reason := warpHealthDegraded(snapshot)
+		return controloverview.WarpHealth{Verdict: snapshot.Verdict, Reason: reason, Degraded: degraded, ExitFamily: snapshot.ExitFamily, CheckedAt: snapshot.CheckedAt}, true
 	})
 	// 一键换出口：sudo -n 白名单方式执行 warp-cli（只放行 disconnect/connect
 	// 两条命令，sudoers 配置见 docs/deployment.md）；未放行时错误归类
 	// ErrSudoersMissing 由端点转 409 与配置指引。复测滚动调 Check，终态经
 	// state 即时驱动告警与总览。
 	warpRotate := func(ctx context.Context) (controlwarphealth.Result, error) {
-		addr, ok := warpMasqueProxyAddr(ctx, db)
-		if !ok {
+		addr, found, err := warpMasqueOutbound(ctx, db)
+		if err != nil {
+			return controlwarphealth.Result{}, fmt.Errorf("读取 warp-masque 出站失败: %w", err)
+		}
+		if !found {
 			return controlwarphealth.Result{}, controlwarphealth.ErrWarpNotDeployed
 		}
 		ctx, cancel := context.WithTimeout(ctx, warpRotateTimeout)
@@ -560,8 +577,15 @@ func runWarpHealthLoop(ctx context.Context, state *controlwarphealth.State, data
 			return
 		case <-timer.C:
 		}
-		proxyAddr, ok := warpMasqueProxyAddr(ctx, database)
-		if !ok {
+		proxyAddr, found, err := warpMasqueOutbound(ctx, database)
+		if err != nil {
+			// 查询故障不清状态：误 Reset 会洗掉开放中的告警与总览判定，
+			// 下轮重查即可。
+			logger.Error().Err(err).Msg("读取 warp-masque 出站失败")
+			timer.Reset(controlwarphealth.CheckInterval)
+			continue
+		}
+		if !found {
 			state.Reset()
 			timer.Reset(controlwarphealth.CheckInterval)
 			continue
@@ -577,18 +601,24 @@ func runWarpHealthLoop(ctx context.Context, state *controlwarphealth.State, data
 	}
 }
 
-// warpMasqueProxyAddr 返回 warp-masque socks 出站指向的本地代理地址；出站
-// 不存在或类型/取值不符返回 ok=false（用户级门控：未部署链路的实例静默）。
+// warpMasqueOutbound 返回 warp-masque socks 出站指向的本地代理地址与
+// 存在性；查询本身失败以 error 区分（调用方据此保留状态而不是误 Reset）。
 // 直查 singbox_outbounds 与告警评估直查 runtime_state 同例，不引 service 层。
-func warpMasqueProxyAddr(ctx context.Context, database *sql.DB) (string, bool) {
+func warpMasqueOutbound(ctx context.Context, database *sql.DB) (address string, found bool, err error) {
 	var server string
 	var port int
-	err := database.QueryRowContext(ctx,
+	err = database.QueryRowContext(ctx,
 		`SELECT server, server_port FROM singbox_outbounds WHERE tag='warp-masque' AND type='socks' LIMIT 1`).Scan(&server, &port)
-	if err != nil || strings.TrimSpace(server) == "" || port <= 0 || port > 65535 {
-		return "", false
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", false, nil
 	}
-	return net.JoinHostPort(strings.TrimSpace(server), strconv.Itoa(port)), true
+	if err != nil {
+		return "", false, err
+	}
+	if strings.TrimSpace(server) == "" || port <= 0 || port > 65535 {
+		return "", false, nil
+	}
+	return net.JoinHostPort(strings.TrimSpace(server), strconv.Itoa(port)), true, nil
 }
 
 // warp-cli 的调用形态：官方客户端装在 /usr/bin/warp-cli，面板运行用户非

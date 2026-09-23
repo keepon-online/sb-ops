@@ -53,9 +53,12 @@ type EgressGeo struct {
 
 // WarpHealth 是 WARP MASQUE 解锁链路（官方 cloudflare-warp 客户端 proxy 模式
 // 本地代理 + 面板 warp-masque socks 出站）的健康快照。verdict 取
-// ok/proxy-down/warp-off/misjudged；未部署该链路或首轮检查成功前为 nil。
+// ok/proxy-down/warp-off/misjudged；Degraded 在确定性劣化终态之外还包括
+// 「探测持续失败超阈值」的 stale 兜底（此时 verdict 仍展示最后一次成功
+// 判定）。未部署该链路或首轮检查成功前为 nil。
 type WarpHealth struct {
 	Verdict    string    `json:"verdict"`
+	Degraded   bool      `json:"degraded"`
 	Reason     string    `json:"reason,omitempty"`
 	ExitFamily string    `json:"exitFamily,omitempty"`
 	CheckedAt  time.Time `json:"checkedAt"`

@@ -307,7 +307,7 @@ export function OverviewPage() {
             <Space size={24} wrap align="center">
               <div>
                 <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>链路状态</Typography.Text>
-                {value.warpHealth.verdict === 'ok' ? <Tag color="success">正常</Tag> : <Tag color="error">异常</Tag>}
+                {value.warpHealth.degraded ? <Tag color="error">异常</Tag> : <Tag color="success">正常</Tag>}
               </div>
               {value.warpHealth.exitFamily ? (
                 <div>
@@ -326,7 +326,7 @@ export function OverviewPage() {
                 <Button size="small" icon={<ThunderboltOutlined />} loading={warpRotate.isPending}>换出口</Button>
               </Popconfirm>
             </Space>
-            {value.warpHealth.verdict !== 'ok' && value.warpHealth.reason ? (
+            {value.warpHealth.degraded && value.warpHealth.reason ? (
               <Typography.Paragraph type="secondary" style={{ marginTop: 8, marginBottom: 0, fontSize: 12 }}>
                 {value.warpHealth.reason}
               </Typography.Paragraph>
