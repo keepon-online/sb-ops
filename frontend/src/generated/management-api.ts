@@ -2328,6 +2328,24 @@ export interface components {
             lastTrafficCollectedAt?: string;
             bandwidth?: components["schemas"]["ManagementOverviewBandwidth"];
             egressGeo?: components["schemas"]["ManagementOverviewEgressGeo"];
+            warpHealth?: components["schemas"]["ManagementOverviewWarpHealth"];
+        };
+        /** @description Health of the WARP MASQUE unlock chain: Google-domain traffic exits through the local official cloudflare-warp client (proxy-mode SOCKS5) fronted by the warp-masque SOCKS outbound. Each probe verifies the trace warp flag and Google's region verdict via a redirect-following- free GET through the proxy. Absent when no warp-masque outbound exists or before the first successful probe after startup. */
+        ManagementOverviewWarpHealth: {
+            /**
+             * @description ok = tunnel up and Google treats the WARP exit as non-CN; proxy-down = local WARP proxy unreachable; warp-off = tunnel not active (trace warp=off); misjudged = Google redirects google.com to google.com.hk through the WARP exit.
+             * @enum {string}
+             */
+            verdict: "ok" | "proxy-down" | "warp-off" | "misjudged";
+            /** @description Chinese failure reason; present when verdict is not ok. */
+            reason?: string;
+            /**
+             * @description Address family of the WARP exit; Cloudflare assigns it inside the MASQUE tunnel, so IPv4-only hosts may get an IPv6 exit. Absent when unknown.
+             * @enum {string}
+             */
+            exitFamily?: "ipv4" | "ipv6";
+            /** Format: date-time */
+            checkedAt: string;
         };
         /** @description Provider-metered (SolusVM client API, billing basis) monthly VPS bandwidth. Covers all NIC traffic including host-side overhead — a different basis than traffic24h (tunnel traffic only). Absent when the solusvm config section is unset or the first poll has not succeeded yet. */
         ManagementOverviewBandwidth: {

@@ -51,6 +51,16 @@ type EgressGeo struct {
 	Redirect  string    `json:"redirect,omitempty"`
 }
 
+// WarpHealth 是 WARP MASQUE 解锁链路（官方 cloudflare-warp 客户端 proxy 模式
+// 本地代理 + 面板 warp-masque socks 出站）的健康快照。verdict 取
+// ok/proxy-down/warp-off/misjudged；未部署该链路或首轮检查成功前为 nil。
+type WarpHealth struct {
+	Verdict    string    `json:"verdict"`
+	Reason     string    `json:"reason,omitempty"`
+	ExitFamily string    `json:"exitFamily,omitempty"`
+	CheckedAt  time.Time `json:"checkedAt"`
+}
+
 type Result struct {
 	Counts          map[string]int           `json:"counts"`
 	Devices         Devices                  `json:"devices"`
@@ -70,14 +80,16 @@ type Result struct {
 	LastCollectedAt *time.Time               `json:"lastTrafficCollectedAt,omitempty"`
 	Bandwidth       *Bandwidth               `json:"bandwidth,omitempty"`
 	EgressGeo       *EgressGeo               `json:"egressGeo,omitempty"`
+	WarpHealth      *WarpHealth              `json:"warpHealth,omitempty"`
 }
 
 type Service struct {
-	db        *sql.DB
-	sync      *deployment.SyncService
-	traffic   *controltraffic.Service
-	bandwidth func() (Bandwidth, bool)
-	egressGeo func() (EgressGeo, bool)
+	db         *sql.DB
+	sync       *deployment.SyncService
+	traffic    *controltraffic.Service
+	bandwidth  func() (Bandwidth, bool)
+	egressGeo  func() (EgressGeo, bool)
+	warpHealth func() (WarpHealth, bool)
 }
 
 func NewServiceWithTraffic(db *sql.DB, syncer *deployment.SyncService, traffic *controltraffic.Service) *Service {
@@ -94,6 +106,12 @@ func (s *Service) SetBandwidthSource(source func() (Bandwidth, bool)) {
 // 闭包，由装配层提供），保持 overview 包不依赖 internal/egressgeo。
 func (s *Service) SetEgressGeoSource(source func() (EgressGeo, bool)) {
 	s.egressGeo = source
+}
+
+// SetWarpHealthSource 注入 WARP 解锁链路健康视图（warphealth 轮询 state 的
+// 换算闭包，由装配层提供），保持 overview 包不依赖 internal/warphealth。
+func (s *Service) SetWarpHealthSource(source func() (WarpHealth, bool)) {
+	s.warpHealth = source
 }
 
 func (s *Service) Get(ctx context.Context) (Result, error) {
@@ -192,6 +210,11 @@ FROM devices`, dayStart).Scan(&result.Devices.Total, &result.Devices.Auto, &resu
 	if s.egressGeo != nil {
 		if egressGeo, ok := s.egressGeo(); ok {
 			result.EgressGeo = &egressGeo
+		}
+	}
+	if s.warpHealth != nil {
+		if warpHealth, ok := s.warpHealth(); ok {
+			result.WarpHealth = &warpHealth
 		}
 	}
 	result.Tasks = onboardingTasks(result)

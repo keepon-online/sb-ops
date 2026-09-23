@@ -204,6 +204,7 @@ var alertTypeLabels = map[string]string{
 	"upgrade_available":     "面板有新版本",
 	"backup_failed":         "定时备份失败",
 	"egress_geo_misjudged":  "Google 出口判定异常",
+	"warp_masque_degraded":  "WARP 解锁链路异常",
 }
 
 func cardTitle(severity string) (title, template string) {

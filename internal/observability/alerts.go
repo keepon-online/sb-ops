@@ -64,6 +64,7 @@ type Service struct {
 	upgrade       func() (UpgradeStatus, bool)
 	backup        func() (BackupStatus, bool)
 	egressGeo     func() (EgressGeoStatus, bool)
+	warpHealth    func() (WarpHealthStatus, bool)
 }
 
 func NewService(db *sql.DB, notifier Notifier) *Service {
@@ -119,6 +120,21 @@ type EgressGeoStatus struct {
 // SetEgressGeoSource 注入出口判定视图（未注入或返回 ok=false 时不评估）。
 func (s *Service) SetEgressGeoSource(source func() (EgressGeoStatus, bool)) {
 	s.egressGeo = source
+}
+
+// WarpHealthStatus 是 WARP 解锁链路探测循环的注入视图（warphealth 轮询
+// state 的换算，本地引用类型同 EgressGeoStatus 例）。ok=false 表示未部署
+// 该链路或启动后尚无成功检查，不产生候选。
+type WarpHealthStatus struct {
+	Degraded  bool
+	Verdict   string
+	Reason    string
+	CheckedAt time.Time
+}
+
+// SetWarpHealthSource 注入 WARP 解锁链路视图（未注入或返回 ok=false 时不评估）。
+func (s *Service) SetWarpHealthSource(source func() (WarpHealthStatus, bool)) {
+	s.warpHealth = source
 }
 
 func (s *Service) Evaluate(ctx context.Context, aggregationErr error, trafficStalled bool) error {
@@ -194,6 +210,15 @@ func (s *Service) Evaluate(ctx context.Context, aggregationErr error, trafficSta
 		if status, ok := s.egressGeo(); ok && status.Misjudged {
 			values = append(values, candidate{"egress_geo_misjudged", "warning", "control_plane", "egress",
 				"Google 将出口 IP 判定为 CN 区：google.com 将跳转 google.com.hk、Gemini 等会被地区拦截（该判定全年周期性漂移，通常数周自愈）"})
+		}
+	}
+	// WARP MASQUE 解锁链路：Google 域名经官方 WARP 客户端本地代理出站的
+	// 健康度（代理可达性、warp=on、出口地区判定）。自愈型故障用 warning，
+	// 翻回 ok 候选消失自动恢复；未部署该链路时源返回 ok=false 不评估。
+	if s.warpHealth != nil {
+		if status, ok := s.warpHealth(); ok && status.Degraded {
+			values = append(values, candidate{"warp_masque_degraded", "warning", "control_plane", "egress",
+				fmt.Sprintf("WARP 解锁链路异常（%s）：%s", status.Verdict, status.Reason)})
 		}
 	}
 	// 协议端到端拨测失败行驱动告警（行翻绿后下一轮自动恢复）；skipped 行

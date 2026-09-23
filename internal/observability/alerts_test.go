@@ -352,6 +352,43 @@ func TestEvaluateEgressGeoMisjudgedAlert(t *testing.T) {
 	}
 }
 
+func TestEvaluateWarpHealthDegradedAlert(t *testing.T) {
+	now := time.Date(2026, 9, 24, 12, 0, 0, 0, time.UTC)
+	service := newAlertTestService(t)
+	service.now = func() time.Time { return now }
+	var status WarpHealthStatus
+	var checked bool
+	service.SetWarpHealthSource(func() (WarpHealthStatus, bool) { return status, checked })
+
+	// 未部署链路或尚无成功检查：不告警。
+	if err := service.Evaluate(context.Background(), nil, false); err != nil {
+		t.Fatalf("Evaluate (unchecked): %v", err)
+	}
+	if alerts := openAlerts(t, service, "warp_masque_degraded"); len(alerts) != 0 {
+		t.Fatalf("未检测不应告警：%+v", alerts)
+	}
+
+	// 链路 degraded（如代理不可达）：warning 告警带原因。
+	checked = true
+	status = WarpHealthStatus{Degraded: true, Verdict: "proxy-down", Reason: "WARP 本地代理 127.0.0.1:40000 不可达（warp-svc 可能未运行）", CheckedAt: now.Add(-10 * time.Minute)}
+	if err := service.Evaluate(context.Background(), nil, false); err != nil {
+		t.Fatalf("Evaluate (degraded): %v", err)
+	}
+	alerts := openAlerts(t, service, "warp_masque_degraded")
+	if len(alerts) != 1 || alerts[0].Severity != "warning" || !strings.Contains(alerts[0].Message, "127.0.0.1:40000") {
+		t.Fatalf("alerts=%+v", alerts)
+	}
+
+	// 链路翻回 ok 后下一轮自动恢复。
+	status = WarpHealthStatus{Verdict: "ok", CheckedAt: now}
+	if err := service.Evaluate(context.Background(), nil, false); err != nil {
+		t.Fatalf("Evaluate (recovered): %v", err)
+	}
+	if alerts := openAlerts(t, service, "warp_masque_degraded"); len(alerts) != 0 {
+		t.Fatalf("恢复后应自动解除：%+v", alerts)
+	}
+}
+
 func TestEvaluateUpgradeAvailableAlert(t *testing.T) {
 	now := time.Date(2026, 9, 4, 12, 0, 0, 0, time.UTC)
 	service := newAlertTestService(t)

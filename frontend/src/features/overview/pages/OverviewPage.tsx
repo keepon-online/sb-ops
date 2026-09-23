@@ -281,6 +281,37 @@ export function OverviewPage() {
           </section>
         ) : null}
 
+        {value?.warpHealth ? (
+          <section className="overview-card">
+            <div className="overview-card-title">
+              <Typography.Title level={4} style={{ margin: 0 }}>WARP 解锁链路</Typography.Title>
+              <Typography.Text type="secondary">Google 域名经 WARP 出站 · 周期探测</Typography.Text>
+            </div>
+            <Space size={24} wrap align="center">
+              <div>
+                <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>链路状态</Typography.Text>
+                {value.warpHealth.verdict === 'ok' ? <Tag color="success">正常</Tag> : <Tag color="error">异常</Tag>}
+              </div>
+              {value.warpHealth.exitFamily ? (
+                <div>
+                  <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>出口协议族</Typography.Text>
+                  <Tag color="processing">{value.warpHealth.exitFamily === 'ipv6' ? 'IPv6 出口' : 'IPv4 出口'}</Tag>
+                </div>
+              ) : null}
+              <Statistic title="最近检查" value={formatDateTime(value.warpHealth.checkedAt)} valueStyle={{ fontSize: 14, fontFamily: "'JetBrains Mono', ui-monospace, monospace" }} />
+            </Space>
+            {value.warpHealth.verdict !== 'ok' && value.warpHealth.reason ? (
+              <Typography.Paragraph type="secondary" style={{ marginTop: 8, marginBottom: 0, fontSize: 12 }}>
+                {value.warpHealth.reason}
+              </Typography.Paragraph>
+            ) : (
+              <Typography.Paragraph type="secondary" style={{ marginTop: 8, marginBottom: 0, fontSize: 12 }}>
+                异常时推送「WARP 解锁链路异常」告警，翻回正常自动恢复；出口判定漂移可在 VPS 执行 warp-cli disconnect &amp;&amp; warp-cli connect 换出口。
+              </Typography.Paragraph>
+            )}
+          </section>
+        ) : null}
+
         <section className="overview-card">
           <div className="overview-card-title">
             <Typography.Title level={4} style={{ margin: 0 }}>流量概览</Typography.Title>

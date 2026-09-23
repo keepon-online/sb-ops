@@ -2,6 +2,12 @@
 
 本文件记录 sb-ops 的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/)。
 
+## [未发布]
+
+### 新增
+
+- **WARP MASQUE 解锁链路健康监控**：Google 域名经「官方 cloudflare-warp 客户端（proxy 模式本地 SOCKS5 代理，MASQUE 隧道）+ 面板 warp-masque socks 出站」出站的链路纳入面板可观测体系——每 15 分钟经该代理校验 Cloudflare trace 的 `warp=on` 与出口协议族（MASQUE 由 Cloudflare 内部调度，IPv4-only 主机也可能拿到 IPv6 出口），再以不跟随重定向的 GET 访问 google.com 判定出口地区（**必须 GET**：HEAD 不触发 CN 区 302，曾因此误判）。判定四态 ok / proxy-down / warp-off / misjudged，歧义失败（超时等）粘滞上一已知判定防抖；仅当面板存在 warp-masque 出站才启用，未部署实例完全静默。链路异常推送 `warp_masque_degraded`（warning，带原因，翻回正常自动恢复），总览页新增「WARP 解锁链路」卡片展示状态、出口族与最近检查。照 egressgeo 先例纯进程内 state（无表无迁移，重启首轮即恢复）。
+
 ## [0.5.9] - 2026-09-23
 
 ### 修复

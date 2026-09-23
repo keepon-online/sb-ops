@@ -6,8 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"path/filepath"
 	"runtime/debug"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -43,6 +46,7 @@ import (
 	serviceuser "github.com/keepon-online/sb-ops/internal/service/user"
 	controlsolusvm "github.com/keepon-online/sb-ops/internal/solusvm"
 	controltraffic "github.com/keepon-online/sb-ops/internal/traffic"
+	controlwarphealth "github.com/keepon-online/sb-ops/internal/warphealth"
 	"github.com/keepon-online/sb-ops/internal/web"
 )
 
@@ -186,6 +190,29 @@ func newOps(db *sql.DB, sessionTTL time.Duration, apply deployment.ApplyConfig, 
 			return controloverview.EgressGeo{}, false
 		}
 		return controloverview.EgressGeo{Verdict: snapshot.Verdict, CheckedAt: snapshot.CheckedAt, Redirect: snapshot.Redirect}, true
+	})
+	// WARP MASQUE 解锁链路（warphealth 探测循环）：仅当存在 warp-masque
+	// socks 出站才启用（未部署实例静默）；轮询 state 同时喂给告警评估与
+	// 总览卡片，degraded 自动经 warp_masque_degraded 告警外发。
+	warpHealthState := controlwarphealth.NewState()
+	alerts.SetWarpHealthSource(func() (controlobservability.WarpHealthStatus, bool) {
+		snapshot := warpHealthState.Snapshot()
+		if snapshot.Verdict == "" {
+			return controlobservability.WarpHealthStatus{}, false
+		}
+		return controlobservability.WarpHealthStatus{
+			Degraded:  snapshot.Verdict != controlwarphealth.VerdictOK,
+			Verdict:   snapshot.Verdict,
+			Reason:    snapshot.Reason,
+			CheckedAt: snapshot.CheckedAt,
+		}, true
+	})
+	overview.SetWarpHealthSource(func() (controloverview.WarpHealth, bool) {
+		snapshot := warpHealthState.Snapshot()
+		if snapshot.Verdict == "" {
+			return controloverview.WarpHealth{}, false
+		}
+		return controloverview.WarpHealth{Verdict: snapshot.Verdict, Reason: snapshot.Reason, ExitFamily: snapshot.ExitFamily, CheckedAt: snapshot.CheckedAt}, true
 	})
 	// 协议端到端拨测：内核 running 且配置 applied 才放行（内核故障已有
 	// runtime_sync_failed 告警，拨测此时写失败行只会制造误报）。
@@ -372,6 +399,12 @@ func newOps(db *sql.DB, sessionTTL time.Duration, apply deployment.ApplyConfig, 
 	value.goLoop(background, "egress-geo", func(ctx context.Context) {
 		runEgressGeoLoop(ctx, egressGeoState, logger)
 	})
+	// WARP 解锁链路健康：启动延迟 1 分钟避开 warp-svc 竞速，之后 15 分钟
+	// 一轮；无 warp-masque 出站时空转，degraded 走 warp_masque_degraded 告警
+	// （warning，翻回正常自动恢复）。
+	value.goLoop(background, "warp-health", func(ctx context.Context) {
+		runWarpHealthLoop(ctx, warpHealthState, db, logger)
+	})
 	// 面板新版本自动发现：周期检查 GitHub Release，结果进升级服务缓存与
 	// upgrade_available 告警。
 	value.goLoop(background, "upgrade-check", func(ctx context.Context) {
@@ -498,6 +531,50 @@ func runEgressGeoLoop(ctx context.Context, state *controlegressgeo.State, logger
 		}
 		timer.Reset(controlegressgeo.CheckInterval)
 	}
+}
+
+// runWarpHealthLoop 周期探测 WARP MASQUE 解锁链路（经 warp-masque socks
+// 出站指向的本地 WARP 代理校验 warp=on 与 Google 出口判定）。歧义失败只记
+// 状态与日志、粘滞上一个已知判定（防抖）；门控关闭（出站不存在或被删）时
+// Reset 回未检测态并空转。成功不打日志。
+func runWarpHealthLoop(ctx context.Context, state *controlwarphealth.State, database *sql.DB, logger *logging.Logger) {
+	timer := time.NewTimer(controlwarphealth.CheckInitialDelay)
+	defer timer.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-timer.C:
+		}
+		proxyAddr, ok := warpMasqueProxyAddr(ctx, database)
+		if !ok {
+			state.Reset()
+			timer.Reset(controlwarphealth.CheckInterval)
+			continue
+		}
+		result, err := controlwarphealth.Check(ctx, proxyAddr)
+		if err != nil {
+			state.RecordUnknown(err)
+			logger.Error().Err(err).Msg("WARP 解锁链路探测失败")
+		} else {
+			state.Record(result)
+		}
+		timer.Reset(controlwarphealth.CheckInterval)
+	}
+}
+
+// warpMasqueProxyAddr 返回 warp-masque socks 出站指向的本地代理地址；出站
+// 不存在或类型/取值不符返回 ok=false（用户级门控：未部署链路的实例静默）。
+// 直查 singbox_outbounds 与告警评估直查 runtime_state 同例，不引 service 层。
+func warpMasqueProxyAddr(ctx context.Context, database *sql.DB) (string, bool) {
+	var server string
+	var port int
+	err := database.QueryRowContext(ctx,
+		`SELECT server, server_port FROM singbox_outbounds WHERE tag='warp-masque' AND type='socks' LIMIT 1`).Scan(&server, &port)
+	if err != nil || strings.TrimSpace(server) == "" || port <= 0 || port > 65535 {
+		return "", false
+	}
+	return net.JoinHostPort(strings.TrimSpace(server), strconv.Itoa(port)), true
 }
 
 // upgradeCheckInitialDelay / upgradeCheckInterval 是新版本自动发现的节奏：
