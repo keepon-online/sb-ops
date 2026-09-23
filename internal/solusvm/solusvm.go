@@ -1,8 +1,9 @@
 // Package solusvm 拉取 SolusVM 1 客户端 API 的带宽计量。VPS 提供商在面板侧
 // 按账单口径计量月流量（含全部网卡流量与宿主层开销），是比本机 V2Ray stats
-// 或网卡计数器更权威的月度预算数据源；RackNerd 的 nerdvm 面板即是 SolusVM 1。
+// 或网卡计数器更权威的月度预算数据源；RackNerd 面板即是 SolusVM 1（2026-09-22
+// 由 nerdvm.racknerd.com 迁至 ctrl.racknerd.com，旧端点作废、key/hash 需重生成）。
 //
-// 契约（2026-09 实测 nerdvm.racknerd.com）：POST 表单 action=info&bw=true，
+// 契约（2026-09 实测）：POST 表单 action=info&bw=true，
 // 响应是拼接的 XML 风格标签（无根元素，非标准 XML）；<bw> 四元组单位为字节、
 // 顺序为 总量,已用,剩余,百分比整数——2TB 套餐实测 总量=2147483648000（2000GiB）、
 // 剩余=总量-已用 精确闭合。<status> 非 success 时失败原因在 <statusmsg>。
