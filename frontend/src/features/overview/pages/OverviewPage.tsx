@@ -255,12 +255,24 @@ export function OverviewPage() {
               <Statistic title="最近检查" value={formatDateTime(value.egressGeo.checkedAt)} valueStyle={{ fontSize: 14, fontFamily: "'JetBrains Mono', ui-monospace, monospace" }} />
             </Space>
             {value.egressGeo.verdict === 'misjudged' ? (
-              <Typography.Paragraph type="secondary" style={{ marginTop: 8, marginBottom: 0, fontSize: 12 }}>
-                google.com 将跳转 google.com.hk、Gemini 等会被地区拦截；该判定全年周期性漂移，通常数周自愈，翻回正常时告警自动恢复。
+              <>
+                <Typography.Paragraph type="secondary" style={{ marginTop: 8, marginBottom: 0, fontSize: 12 }}>
+                  google.com 将跳转 google.com.hk、Gemini 等会被地区拦截；该判定全年周期性漂移，通常数周自愈，翻回正常时告警自动恢复。
+                </Typography.Paragraph>
                 {value.egressGeo.redirect ? (
-                  <>跳转目标：<Typography.Text code copyable style={{ fontSize: 12 }}>{value.egressGeo.redirect}</Typography.Text></>
+                  <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                    <Typography.Text type="secondary" style={{ fontSize: 12, flexShrink: 0 }}>跳转目标</Typography.Text>
+                    <Typography.Text
+                      code
+                      style={{ fontSize: 12, minWidth: 0, fontFamily: "'JetBrains Mono', ui-monospace, monospace" }}
+                      ellipsis={{ tooltip: value.egressGeo.redirect }}
+                      copyable={{ text: value.egressGeo.redirect }}
+                    >
+                      {value.egressGeo.redirect}
+                    </Typography.Text>
+                  </div>
                 ) : null}
-              </Typography.Paragraph>
+              </>
             ) : (
               <Typography.Paragraph type="secondary" style={{ marginTop: 8, marginBottom: 0, fontSize: 12 }}>
                 判为 CN 区时会推送「Google 出口判定异常」告警，翻回正常自动恢复。

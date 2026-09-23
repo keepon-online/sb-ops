@@ -131,6 +131,8 @@ describe('overview navigation', () => {
     renderOverview();
     expect(await screen.findByText('Google 出口判定')).toBeInTheDocument();
     expect(screen.getByText('判为 CN 区')).toBeInTheDocument();
+    // 跳转证据独立成行：标签 + 省略展示的完整 URL（复制走 copyable.text）。
+    expect(screen.getByText('跳转目标')).toBeInTheDocument();
     expect(screen.getByText('https://www.google.com.hk/url?sa=p&pref=hkredirect')).toBeInTheDocument();
   });
 
