@@ -657,7 +657,27 @@ export function SingBoxPage() {
     {
       title: '命中规则',
       dataIndex: 'rule',
-      render: (value?: string) => value ? <Tag color="default">{value}</Tag> : <Text type="secondary">默认出口</Text>
+      render: (value?: string) => {
+        if (!value) return <Text type="secondary">默认出口</Text>;
+        // 内核串形如 "domain_suffix=[a b c...] => route(tag)"：出站已在「链路流向」列展示，
+        // 这里只留条件部分做紧凑展示；内核对长条件列表只保留前 3 项 + ...，悬停可见
+        // 内核原文，完整条件以「路由规则」标签页为准。
+        const condition = value.split(' => ')[0];
+        return (
+          <Tooltip title={value} placement="topLeft">
+            <Tag
+              color="default"
+              style={{
+                margin: 0, maxWidth: 240, fontSize: 11,
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                fontFamily: "'JetBrains Mono', ui-monospace, monospace"
+              }}
+            >
+              {condition}
+            </Tag>
+          </Tooltip>
+        );
+      }
     },
     {
       title: '流量 (上行 / 下行)',
