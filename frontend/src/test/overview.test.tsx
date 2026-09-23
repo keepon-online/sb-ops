@@ -113,4 +113,30 @@ describe('overview navigation', () => {
     expect(screen.getByText('24h 活跃设备')).toBeInTheDocument();
     expect(screen.queryByText(/设备平台分布/)).not.toBeInTheDocument();
   });
+
+  it('renders the egress geo card with the misjudged verdict and redirect evidence', async () => {
+    const { controlPlaneApi } = await import('../services/controlPlane');
+    vi.mocked(controlPlaneApi.overview).mockResolvedValue({
+      counts: { users: 0, protocols: 0, policies: 0 },
+      runtimeStatus: 'not_configured',
+      configStatus: 'not_configured',
+      kernelStatus: 'not_checked',
+      tasks: [],
+      artifactCount: 0,
+      connections: { available: false, count: 0 },
+      traffic24h: { totalBytes: 0, upBytes: 0, downBytes: 0, samples: 0 },
+      topUsers: [],
+      egressGeo: { verdict: 'misjudged', checkedAt: '2026-09-23T12:00:00Z', redirect: 'https://www.google.com.hk/url?sa=p&pref=hkredirect' }
+    } as never);
+    renderOverview();
+    expect(await screen.findByText('Google 出口判定')).toBeInTheDocument();
+    expect(screen.getByText('判为 CN 区')).toBeInTheDocument();
+    expect(screen.getByText('https://www.google.com.hk/url?sa=p&pref=hkredirect')).toBeInTheDocument();
+  });
+
+  it('hides the egress geo card before the first successful probe', async () => {
+    renderOverview();
+    expect(await screen.findByText('接入设备')).toBeInTheDocument();
+    expect(screen.queryByText('Google 出口判定')).not.toBeInTheDocument();
+  });
 });

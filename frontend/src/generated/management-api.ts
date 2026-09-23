@@ -2327,6 +2327,7 @@ export interface components {
              */
             lastTrafficCollectedAt?: string;
             bandwidth?: components["schemas"]["ManagementOverviewBandwidth"];
+            egressGeo?: components["schemas"]["ManagementOverviewEgressGeo"];
         };
         /** @description Provider-metered (SolusVM client API, billing basis) monthly VPS bandwidth. Covers all NIC traffic including host-side overhead — a different basis than traffic24h (tunnel traffic only). Absent when the solusvm config section is unset or the first poll has not succeeded yet. */
         ManagementOverviewBandwidth: {
@@ -2337,6 +2338,15 @@ export interface components {
             percent: number;
             /** Format: date-time */
             updatedAt: string;
+        };
+        /** @description Google's region verdict for the egress IP, probed every 30 minutes via a redirect-following-free GET to www.google.com. misjudged means Google currently treats the egress IP as CN (google.com redirects to google.com.hk, Gemini region-blocked); the verdict drifts periodically and typically self-heals within weeks. Absent before the first successful probe after startup. */
+        ManagementOverviewEgressGeo: {
+            /** @enum {string} */
+            verdict: "ok" | "misjudged";
+            /** Format: date-time */
+            checkedAt: string;
+            /** @description Redirect target evidencing the misjudgment; present only when verdict is misjudged. */
+            redirect?: string;
         };
         /** @description Fleet-wide device stats; activeDay counts devices whose subscription was fetched in the last 24 hours. */
         ManagementOverviewDevices: {

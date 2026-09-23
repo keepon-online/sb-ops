@@ -2,6 +2,12 @@
 
 本文件记录 sb-ops 的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/)。
 
+## [未发布]
+
+### 新增
+
+- **Google 出口判定监控**：周期探测（30 分钟，不跟随重定向的 GET）Google 对本机出口 IP 的地区判定——被判为 CN 区时 `www.google.com` 会 302 到 `google.com.hk`、Gemini 等被地区拦截（该判定全年周期性漂移、通常数周自愈，2026-09 实测 VPS 直连与 WARP 出口均中招）。判定翻转经 `egress_geo_misjudged`（warning）告警自动外发全部通知渠道（飞书卡片等），翻回正常自动恢复；总览页新增「Google 出口判定」卡片展示当前判定、最近检查时间与误判跳转证据。纯进程内状态照 SolusVM 带宽计量先例（无表无迁移，重启首轮即恢复），探测失败粘滞上一个已知判定（防网络抖动误 resolve）。
+
 ## [0.5.7] - 2026-09-22
 
 ### 变更

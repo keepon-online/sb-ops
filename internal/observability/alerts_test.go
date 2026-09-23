@@ -315,6 +315,43 @@ func TestEvaluateVPSBandwidthStalledOnlyAfterSustainedFailure(t *testing.T) {
 	}
 }
 
+func TestEvaluateEgressGeoMisjudgedAlert(t *testing.T) {
+	now := time.Date(2026, 9, 23, 12, 0, 0, 0, time.UTC)
+	service := newAlertTestService(t)
+	service.now = func() time.Time { return now }
+	var status EgressGeoStatus
+	var checked bool
+	service.SetEgressGeoSource(func() (EgressGeoStatus, bool) { return status, checked })
+
+	// 启动后尚无成功检查：不告警。
+	if err := service.Evaluate(context.Background(), nil, false); err != nil {
+		t.Fatalf("Evaluate (unchecked): %v", err)
+	}
+	if alerts := openAlerts(t, service, "egress_geo_misjudged"); len(alerts) != 0 {
+		t.Fatalf("未检测不应告警：%+v", alerts)
+	}
+
+	// 判定为 CN 区：warning 告警。
+	checked = true
+	status = EgressGeoStatus{Misjudged: true, CheckedAt: now.Add(-10 * time.Minute)}
+	if err := service.Evaluate(context.Background(), nil, false); err != nil {
+		t.Fatalf("Evaluate (misjudged): %v", err)
+	}
+	alerts := openAlerts(t, service, "egress_geo_misjudged")
+	if len(alerts) != 1 || alerts[0].Severity != "warning" || !strings.Contains(alerts[0].Message, "google.com.hk") {
+		t.Fatalf("alerts=%+v", alerts)
+	}
+
+	// 判定翻回正常后下一轮自动恢复。
+	status = EgressGeoStatus{CheckedAt: now}
+	if err := service.Evaluate(context.Background(), nil, false); err != nil {
+		t.Fatalf("Evaluate (recovered): %v", err)
+	}
+	if alerts := openAlerts(t, service, "egress_geo_misjudged"); len(alerts) != 0 {
+		t.Fatalf("恢复后应自动解除：%+v", alerts)
+	}
+}
+
 func TestEvaluateUpgradeAvailableAlert(t *testing.T) {
 	now := time.Date(2026, 9, 4, 12, 0, 0, 0, time.UTC)
 	service := newAlertTestService(t)

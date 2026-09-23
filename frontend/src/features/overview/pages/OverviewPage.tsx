@@ -241,6 +241,34 @@ export function OverviewPage() {
           </section>
         ) : null}
 
+        {value?.egressGeo ? (
+          <section className="overview-card">
+            <div className="overview-card-title">
+              <Typography.Title level={4} style={{ margin: 0 }}>Google 出口判定</Typography.Title>
+              <Typography.Text type="secondary">出口 IP 地区判定 · 周期探测</Typography.Text>
+            </div>
+            <Space size={24} wrap align="center">
+              <div>
+                <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>当前判定</Typography.Text>
+                {value.egressGeo.verdict === 'misjudged' ? <Tag color="error">判为 CN 区</Tag> : <Tag color="success">正常</Tag>}
+              </div>
+              <Statistic title="最近检查" value={formatDateTime(value.egressGeo.checkedAt)} valueStyle={{ fontSize: 14, fontFamily: "'JetBrains Mono', ui-monospace, monospace" }} />
+            </Space>
+            {value.egressGeo.verdict === 'misjudged' ? (
+              <Typography.Paragraph type="secondary" style={{ marginTop: 8, marginBottom: 0, fontSize: 12 }}>
+                google.com 将跳转 google.com.hk、Gemini 等会被地区拦截；该判定全年周期性漂移，通常数周自愈，翻回正常时告警自动恢复。
+                {value.egressGeo.redirect ? (
+                  <>跳转目标：<Typography.Text code copyable style={{ fontSize: 12 }}>{value.egressGeo.redirect}</Typography.Text></>
+                ) : null}
+              </Typography.Paragraph>
+            ) : (
+              <Typography.Paragraph type="secondary" style={{ marginTop: 8, marginBottom: 0, fontSize: 12 }}>
+                判为 CN 区时会推送「Google 出口判定异常」告警，翻回正常自动恢复。
+              </Typography.Paragraph>
+            )}
+          </section>
+        ) : null}
+
         <section className="overview-card">
           <div className="overview-card-title">
             <Typography.Title level={4} style={{ margin: 0 }}>流量概览</Typography.Title>

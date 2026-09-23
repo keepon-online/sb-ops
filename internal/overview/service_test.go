@@ -101,3 +101,39 @@ func TestGetIncludesProviderBandwidthWhenAvailable(t *testing.T) {
 		t.Fatalf("无采样时 bandwidth 应为 nil：result=%+v err=%v", result.Bandwidth, err)
 	}
 }
+
+func TestGetIncludesEgressGeoVerdictWhenChecked(t *testing.T) {
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	db.SetMaxOpenConns(1)
+	if err := database.Migrate(context.Background(), db); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	service := NewServiceWithTraffic(db, deployment.NewSyncService(db, deployment.ApplyConfig{}), nil)
+	if result, err := service.Get(t.Context()); err != nil || result.EgressGeo != nil {
+		t.Fatalf("未注入数据源时 egressGeo 应为 nil：result=%+v err=%v", result.EgressGeo, err)
+	}
+
+	checkedAt := time.Date(2026, 9, 23, 12, 0, 0, 0, time.UTC)
+	var status EgressGeo
+	var checked bool
+	service.SetEgressGeoSource(func() (EgressGeo, bool) { return status, checked })
+
+	// 启动后首轮检查成功前回落为 nil。
+	if result, err := service.Get(t.Context()); err != nil || result.EgressGeo != nil {
+		t.Fatalf("未检测时 egressGeo 应为 nil：result=%+v err=%v", result.EgressGeo, err)
+	}
+
+	checked = true
+	status = EgressGeo{Verdict: "misjudged", CheckedAt: checkedAt, Redirect: "https://www.google.com.hk/"}
+	result, err := service.Get(t.Context())
+	if err != nil {
+		t.Fatalf("get overview: %v", err)
+	}
+	if result.EgressGeo == nil || result.EgressGeo.Verdict != "misjudged" || !result.EgressGeo.CheckedAt.Equal(checkedAt) || result.EgressGeo.Redirect == "" {
+		t.Fatalf("egressGeo=%+v", result.EgressGeo)
+	}
+}

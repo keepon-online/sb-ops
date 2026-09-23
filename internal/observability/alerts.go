@@ -63,6 +63,7 @@ type Service struct {
 	bandwidth     func() (BandwidthStatus, bool)
 	upgrade       func() (UpgradeStatus, bool)
 	backup        func() (BackupStatus, bool)
+	egressGeo     func() (EgressGeoStatus, bool)
 }
 
 func NewService(db *sql.DB, notifier Notifier) *Service {
@@ -105,6 +106,19 @@ type BackupStatus struct {
 // SetBackupSource 注入定时备份视图（未注入或返回 ok=false 时不评估）。
 func (s *Service) SetBackupSource(source func() (BackupStatus, bool)) {
 	s.backup = source
+}
+
+// EgressGeoStatus 是 Google 出口判定探测循环的注入视图（egressgeo 轮询
+// state 的换算，本地引用类型同 BandwidthStatus 例）。ok=false 表示启动后
+// 尚无成功检查，不产生候选；探测失败粘滞上一个已知判定（防误 resolve）。
+type EgressGeoStatus struct {
+	Misjudged bool
+	CheckedAt time.Time
+}
+
+// SetEgressGeoSource 注入出口判定视图（未注入或返回 ok=false 时不评估）。
+func (s *Service) SetEgressGeoSource(source func() (EgressGeoStatus, bool)) {
+	s.egressGeo = source
 }
 
 func (s *Service) Evaluate(ctx context.Context, aggregationErr error, trafficStalled bool) error {
@@ -172,6 +186,14 @@ func (s *Service) Evaluate(ctx context.Context, aggregationErr error, trafficSta
 			}
 			values = append(values, candidate{"backup_failed", "warning", "database", "backups",
 				fmt.Sprintf("数据库定时备份失败：%s（最近成功：%s）", status.LastError, lastSuccess)})
+		}
+	}
+	// Google 出口判定：被判为 CN 区时 google.com 跳 google.com.hk、Gemini 等
+	// 被地区拦截。自愈型故障用 warning；判定翻回 ok 候选消失自动恢复。
+	if s.egressGeo != nil {
+		if status, ok := s.egressGeo(); ok && status.Misjudged {
+			values = append(values, candidate{"egress_geo_misjudged", "warning", "control_plane", "egress",
+				"Google 将出口 IP 判定为 CN 区：google.com 将跳转 google.com.hk、Gemini 等会被地区拦截（该判定全年周期性漂移，通常数周自愈）"})
 		}
 	}
 	// 协议端到端拨测失败行驱动告警（行翻绿后下一轮自动恢复）；skipped 行

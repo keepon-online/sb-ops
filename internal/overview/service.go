@@ -42,6 +42,15 @@ type Bandwidth struct {
 	UpdatedAt  time.Time `json:"updatedAt"`
 }
 
+// EgressGeo 是 Google 对本机出口 IP 的地区判定（egressgeo 探测循环的快照）。
+// misjudged 表示当前被判为 CN 区（google.com 跳 google.com.hk、Gemini 等
+// 被地区拦截）。启动后首轮检查成功前为 nil。
+type EgressGeo struct {
+	Verdict   string    `json:"verdict"`
+	CheckedAt time.Time `json:"checkedAt"`
+	Redirect  string    `json:"redirect,omitempty"`
+}
+
 type Result struct {
 	Counts          map[string]int           `json:"counts"`
 	Devices         Devices                  `json:"devices"`
@@ -60,6 +69,7 @@ type Result struct {
 	TopUsers        []controltraffic.Ranking `json:"topUsers"`
 	LastCollectedAt *time.Time               `json:"lastTrafficCollectedAt,omitempty"`
 	Bandwidth       *Bandwidth               `json:"bandwidth,omitempty"`
+	EgressGeo       *EgressGeo               `json:"egressGeo,omitempty"`
 }
 
 type Service struct {
@@ -67,6 +77,7 @@ type Service struct {
 	sync      *deployment.SyncService
 	traffic   *controltraffic.Service
 	bandwidth func() (Bandwidth, bool)
+	egressGeo func() (EgressGeo, bool)
 }
 
 func NewServiceWithTraffic(db *sql.DB, syncer *deployment.SyncService, traffic *controltraffic.Service) *Service {
@@ -77,6 +88,12 @@ func NewServiceWithTraffic(db *sql.DB, syncer *deployment.SyncService, traffic *
 // 由装配层提供），保持 overview 包不依赖 internal/solusvm。
 func (s *Service) SetBandwidthSource(source func() (Bandwidth, bool)) {
 	s.bandwidth = source
+}
+
+// SetEgressGeoSource 注入 Google 出口判定视图（egressgeo 轮询 state 的换算
+// 闭包，由装配层提供），保持 overview 包不依赖 internal/egressgeo。
+func (s *Service) SetEgressGeoSource(source func() (EgressGeo, bool)) {
+	s.egressGeo = source
 }
 
 func (s *Service) Get(ctx context.Context) (Result, error) {
@@ -170,6 +187,11 @@ FROM devices`, dayStart).Scan(&result.Devices.Total, &result.Devices.Auto, &resu
 	if s.bandwidth != nil {
 		if bandwidth, ok := s.bandwidth(); ok {
 			result.Bandwidth = &bandwidth
+		}
+	}
+	if s.egressGeo != nil {
+		if egressGeo, ok := s.egressGeo(); ok {
+			result.EgressGeo = &egressGeo
 		}
 	}
 	result.Tasks = onboardingTasks(result)

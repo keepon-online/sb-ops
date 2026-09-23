@@ -203,6 +203,7 @@ var alertTypeLabels = map[string]string{
 	"vps_bandwidth_stalled": "VPS 月流量计量停滞",
 	"upgrade_available":     "面板有新版本",
 	"backup_failed":         "定时备份失败",
+	"egress_geo_misjudged":  "Google 出口判定异常",
 }
 
 func cardTitle(severity string) (title, template string) {

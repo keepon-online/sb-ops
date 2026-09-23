@@ -2762,6 +2762,8 @@ components:
           description: When the traffic collection loop last completed a successful cycle; absent before the first successful collection.
         bandwidth:
           $ref: '#/components/schemas/ManagementOverviewBandwidth'
+        egressGeo:
+          $ref: '#/components/schemas/ManagementOverviewEgressGeo'
     ManagementOverviewBandwidth:
       type: object
       additionalProperties: false
@@ -2776,6 +2778,21 @@ components:
         totalBytes: {type: integer, format: int64, minimum: 0}
         percent: {type: number, minimum: 0, maximum: 100}
         updatedAt: {type: string, format: date-time}
+    ManagementOverviewEgressGeo:
+      type: object
+      additionalProperties: false
+      required: [verdict, checkedAt]
+      description: >-
+        Google's region verdict for the egress IP, probed every 30 minutes via
+        a redirect-following-free GET to www.google.com. misjudged means Google
+        currently treats the egress IP as CN (google.com redirects to
+        google.com.hk, Gemini region-blocked); the verdict drifts periodically
+        and typically self-heals within weeks. Absent before the first
+        successful probe after startup.
+      properties:
+        verdict: {type: string, enum: [ok, misjudged]}
+        checkedAt: {type: string, format: date-time}
+        redirect: {type: string, description: Redirect target evidencing the misjudgment; present only when verdict is misjudged.}
     ManagementOverviewDevices:
       type: object
       additionalProperties: false

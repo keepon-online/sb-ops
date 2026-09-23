@@ -19,6 +19,7 @@ import (
 	"github.com/keepon-online/sb-ops/internal/config"
 	"github.com/keepon-online/sb-ops/internal/database"
 	deployment "github.com/keepon-online/sb-ops/internal/deployment/singlevps"
+	controlegressgeo "github.com/keepon-online/sb-ops/internal/egressgeo"
 	controlevents "github.com/keepon-online/sb-ops/internal/events"
 	"github.com/keepon-online/sb-ops/internal/httpx"
 	"github.com/keepon-online/sb-ops/internal/identity"
@@ -165,6 +166,26 @@ func newOps(db *sql.DB, sessionTTL time.Duration, apply deployment.ApplyConfig, 
 			UsedBytes: snapshot.Sample.UsedBytes, TotalBytes: snapshot.Sample.TotalBytes,
 			Percent: snapshot.Sample.Percent, UpdatedAt: snapshot.Sample.At,
 		}, true
+	})
+	// Google 出口判定（egressgeo 探测循环）：轮询 state 同时喂给告警评估与
+	// 总览卡片；判定翻转自动经 egress_geo_misjudged 告警外发。
+	egressGeoState := controlegressgeo.NewState()
+	alerts.SetEgressGeoSource(func() (controlobservability.EgressGeoStatus, bool) {
+		snapshot := egressGeoState.Snapshot()
+		if snapshot.Verdict == "" {
+			return controlobservability.EgressGeoStatus{}, false
+		}
+		return controlobservability.EgressGeoStatus{
+			Misjudged: snapshot.Verdict == controlegressgeo.VerdictMisjudged,
+			CheckedAt: snapshot.CheckedAt,
+		}, true
+	})
+	overview.SetEgressGeoSource(func() (controloverview.EgressGeo, bool) {
+		snapshot := egressGeoState.Snapshot()
+		if snapshot.Verdict == "" {
+			return controloverview.EgressGeo{}, false
+		}
+		return controloverview.EgressGeo{Verdict: snapshot.Verdict, CheckedAt: snapshot.CheckedAt, Redirect: snapshot.Redirect}, true
 	})
 	// 协议端到端拨测：内核 running 且配置 applied 才放行（内核故障已有
 	// runtime_sync_failed 告警，拨测此时写失败行只会制造误报）。
@@ -346,6 +367,11 @@ func newOps(db *sql.DB, sessionTTL time.Duration, apply deployment.ApplyConfig, 
 	value.goLoop(background, "solusvm-metering", func(ctx context.Context) {
 		runSolusVMMetering(ctx, solusvmState, configProvider, logger)
 	})
+	// Google 出口判定：启动即首轮，之后固定周期轮询；翻转走
+	// egress_geo_misjudged 告警（warning，翻回正常自动恢复）。
+	value.goLoop(background, "egress-geo", func(ctx context.Context) {
+		runEgressGeoLoop(ctx, egressGeoState, logger)
+	})
 	// 面板新版本自动发现：周期检查 GitHub Release，结果进升级服务缓存与
 	// upgrade_available 告警。
 	value.goLoop(background, "upgrade-check", func(ctx context.Context) {
@@ -447,6 +473,30 @@ func runSolusVMMetering(ctx context.Context, state *controlsolusvm.State, config
 			}
 		}
 		timer.Reset(controlsolusvm.PollInterval)
+	}
+}
+
+// runEgressGeoLoop 周期探测 Google 对出口 IP 的地区判定（不跟随重定向的
+// GET，跳转 google.com.hk 即判 CN 误判）。单次失败只记状态与日志、粘滞上
+// 一个已知判定（防网络抖动误 resolve 告警），不打断节奏；成功不打日志。
+func runEgressGeoLoop(ctx context.Context, state *controlegressgeo.State, logger *logging.Logger) {
+	client := controlegressgeo.NewClient()
+	timer := time.NewTimer(0) // 启动即首轮，重启后状态尽快恢复。
+	defer timer.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-timer.C:
+		}
+		verdict, redirect, err := controlegressgeo.Check(ctx, client, controlegressgeo.CheckURL)
+		if err != nil {
+			state.RecordError(err)
+			logger.Error().Err(err).Msg("Google 出口判定探测失败")
+		} else {
+			state.Record(verdict, redirect)
+		}
+		timer.Reset(controlegressgeo.CheckInterval)
 	}
 }
 
