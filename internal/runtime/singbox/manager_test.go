@@ -6,9 +6,12 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"io"
 	"net"
+	"os"
 	"strings"
 	"testing"
+	"time"
 
 	deploymentcompiler "github.com/keepon-online/sb-ops/internal/deployment/compiler"
 	serviceprotocol "github.com/keepon-online/sb-ops/internal/service/protocol"
@@ -160,5 +163,92 @@ func TestCloseIgnoresWrappedClosedNetworkError(t *testing.T) {
 	manager.instance = &fakeRuntime{closeErr: fmt.Errorf("close v2ray server: %w", net.ErrClosed)}
 	if err := manager.Close(); err != nil {
 		t.Fatalf("Close() error = %v", err)
+	}
+}
+
+// TestApplySeversTrackedClientConnections 钉死热重启的关闭语义：换内核实例时，
+// 旧实例上已建立的客户端连接必须被切断。sing-box 的 ConnectionManager 只在
+// 出站拨号侧登记，客户端 socket 若不被主动关闭会挂在已关闭的旧实例上，后续
+// 每个请求都撞 dns router closed，直到客户端自行重连（线上表现为每次内核
+// 同步让长连接客户端断流数分钟）。
+func TestApplySeversTrackedClientConnections(t *testing.T) {
+	origin, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen origin: %v", err)
+	}
+	defer origin.Close()
+	go func() {
+		for {
+			conn, acceptErr := origin.Accept()
+			if acceptErr != nil {
+				return
+			}
+			go func() {
+				_, _ = io.Copy(io.Discard, conn)
+				_ = conn.Close()
+			}()
+		}
+	}()
+
+	probe, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("reserve inbound port: %v", err)
+	}
+	inboundPort := probe.Addr().(*net.TCPAddr).Port
+	_ = probe.Close()
+
+	config := fmt.Sprintf(`{
+		"log": {"level": "error"},
+		"inbounds": [{"type": "mixed", "tag": "in", "listen": "127.0.0.1", "listen_port": %d}],
+		"outbounds": [{"type": "direct", "tag": "direct"}],
+		"route": {"final": "direct"}
+	}`, inboundPort)
+
+	// 面板恒设 PlatformLogWriter（日志 sink），由此强制创建 trafficcontrol
+	// 管理器——切断逻辑依赖它，测试环境对齐生产装配。
+	manager := New(func(level, message string) {})
+	t.Cleanup(func() { _ = manager.Close() })
+	if err := manager.Apply(context.Background(), []byte(config)); err != nil {
+		t.Fatalf("apply first configuration: %v", err)
+	}
+
+	client, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", inboundPort))
+	if err != nil {
+		t.Fatalf("dial inbound: %v", err)
+	}
+	defer client.Close()
+	originPort := origin.Addr().(*net.TCPAddr).Port
+	connect := fmt.Sprintf("CONNECT 127.0.0.1:%d HTTP/1.1\r\nHost: 127.0.0.1:%d\r\n\r\n", originPort, originPort)
+	if _, err := client.Write([]byte(connect)); err != nil {
+		t.Fatalf("write CONNECT: %v", err)
+	}
+	_ = client.SetReadDeadline(time.Now().Add(5 * time.Second))
+	header := make([]byte, 0, 256)
+	chunk := make([]byte, 128)
+	for !bytes.Contains(header, []byte("\r\n\r\n")) {
+		n, readErr := client.Read(chunk)
+		if readErr != nil {
+			t.Fatalf("read CONNECT reply: %v (%q)", readErr, header)
+		}
+		header = append(header, chunk[:n]...)
+	}
+	if !bytes.Contains(header, []byte("200")) {
+		t.Fatalf("CONNECT 未建立: %q", header)
+	}
+
+	// 重放同一配置触发 close→start 换实例。
+	if err := manager.Apply(context.Background(), []byte(config)); err != nil {
+		t.Fatalf("re-apply configuration: %v", err)
+	}
+	if status := manager.Status(); status.State != "running" {
+		t.Fatalf("Status() = %#v, want running", status)
+	}
+
+	// 旧实例的客户端连接必须已被关闭：读到 EOF/RST，而不是 3 秒后仍超时在读。
+	_ = client.SetReadDeadline(time.Now().Add(3 * time.Second))
+	if _, err := client.Read(chunk); err == nil {
+		t.Fatal("换实例后旧客户端连接仍可读：未被切断")
+	} else if errors.Is(err, os.ErrDeadlineExceeded) {
+		t.Fatalf("旧客户端连接未被关闭（读超时）: %v", err)
 	}
 }

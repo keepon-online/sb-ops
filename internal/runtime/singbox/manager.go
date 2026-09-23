@@ -12,8 +12,10 @@ import (
 	"time"
 
 	box "github.com/sagernet/sing-box"
+	"github.com/sagernet/sing-box/common/trafficcontrol"
 	"github.com/sagernet/sing-box/include"
 	"github.com/sagernet/sing-box/option"
+	"github.com/sagernet/sing/service"
 )
 
 const Mode = "embedded"
@@ -183,8 +185,30 @@ func (m *Manager) startLocked(options option.Options, content []byte) error {
 	return nil
 }
 
+// boxInstance 给 *box.Box 补热重启的关闭语义：先切断全部被跟踪连接再关内核。
+// sing-box 的 ConnectionManager 只在出站拨号侧登记连接，CloseAll 收不到入站
+// 方向的客户端 socket——同进程热重启（close→start 换实例）时这些连接挂在
+// 已关闭的旧实例上继续被服务，后续域名拨号全报 dns router closed，直到客户
+// 端自行重连，表现为每次内核同步让长连接客户端（多路复用的 Clash 系）断流
+// 数分钟。trafficcontrol 管理器（Clash API 连接列表与流量计费共用的跟踪）
+// 对路由连接双向登记，CloseAllConnections 能真正关掉客户端腿。面板恒设
+// PlatformLogWriter，该管理器恒被创建；极端配置下缺失时跳过（退回旧行为）。
+type boxInstance struct {
+	*box.Box
+	ctx context.Context
+}
+
+func (b *boxInstance) Close() error {
+	if manager := service.PtrFromContext[trafficcontrol.Manager](b.ctx); manager != nil {
+		manager.CloseAllConnections()
+	}
+	return b.Box.Close()
+}
+
 func newRuntimeInstance(ctx context.Context, options option.Options, sink LogSink) (runtimeInstance, error) {
-	boxOptions := box.Options{Context: include.Context(ctx), Options: options}
+	// 上下文单独持有：Close 时还要从服务注册表取回 trafficcontrol 管理器。
+	ctx = include.Context(ctx)
+	boxOptions := box.Options{Context: ctx, Options: options}
 	// With a sink, kernel lines are forwarded to the panel logger in panel
 	// format; sing-box's own writer (hardcoded "+0800 2006-01-02 15:04:05"
 	// timestamps on stderr) is pointed at the null device so lines are not
@@ -197,7 +221,11 @@ func newRuntimeInstance(ctx context.Context, options option.Options, sink LogSin
 		}
 		boxOptions.PlatformLogWriter = &kernelLogWriter{sink: sink}
 	}
-	return box.New(boxOptions)
+	instance, err := box.New(boxOptions)
+	if err != nil {
+		return nil, err
+	}
+	return &boxInstance{Box: instance, ctx: ctx}, nil
 }
 
 func parse(ctx context.Context, content []byte) (option.Options, error) {
