@@ -2,11 +2,15 @@
 
 本文件记录 sb-ops 的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/)。
 
-## [未发布]
+## [0.5.8] - 2026-09-23
 
 ### 新增
 
-- **Google 出口判定监控**：周期探测（30 分钟，不跟随重定向的 GET）Google 对本机出口 IP 的地区判定——被判为 CN 区时 `www.google.com` 会 302 到 `google.com.hk`、Gemini 等被地区拦截（该判定全年周期性漂移、通常数周自愈，2026-09 实测 VPS 直连与 WARP 出口均中招）。判定翻转经 `egress_geo_misjudged`（warning）告警自动外发全部通知渠道（飞书卡片等），翻回正常自动恢复；总览页新增「Google 出口判定」卡片展示当前判定、最近检查时间与误判跳转证据。纯进程内状态照 SolusVM 带宽计量先例（无表无迁移，重启首轮即恢复），探测失败粘滞上一个已知判定（防网络抖动误 resolve）。
+- **Google 出口判定监控**：周期探测（30 分钟，不跟随重定向的 GET）Google 对本机出口 IP 的地区判定——被判为 CN 区时 `www.google.com` 会 302 到 `google.com.hk`、Gemini 等被地区拦截（该判定全年周期性漂移、通常数周自愈，2026-09 实测 VPS 直连与 WARP 出口均中招）。判定翻转经 `egress_geo_misjudged`（warning）告警自动外发全部通知渠道（飞书卡片等），翻回正常自动恢复；总览页新增「Google 出口判定」卡片展示当前判定、最近检查时间与误判跳转证据（单行省略、悬停全文、可复制）。纯进程内状态照 SolusVM 带宽计量先例（无表无迁移，重启首轮即恢复），探测失败粘滞上一个已知判定（防网络抖动误 resolve）。
+
+### 变更
+
+- **RackNerd 面板迁移说明（运维注意）**：RackNerd 的 SolusVM 面板 2026-09-22 起由 `nerdvm.racknerd.com` 迁至 `ctrl.racknerd.com/api/client/command.php`——旧端点作废（405）、旧 API key/hash 同步失效，需在新控制台「API」页重新生成并更新 `config.yaml` 的 `solusvm` 段（热重载生效，无需重启）。仓库示例配置与文档已同步该地址。
 
 ## [0.5.7] - 2026-09-22
 
