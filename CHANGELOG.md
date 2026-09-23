@@ -2,10 +2,11 @@
 
 本文件记录 sb-ops 的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/)。
 
-## [未发布]
+## [0.6.0] - 2026-09-24
 
 ### 新增
 
+- **WARP 解锁链路一键换出口**：总览页「WARP 解锁链路」卡片新增「换出口」按钮（二次确认）——经 sudoers 白名单（仅放行 `warp-cli disconnect`/`connect` 两条命令）断开重连 WARP 换取新出口，随后立即滚动复测链路并返回新判定，state 即时驱动告警与卡片，免去 SSH 手工操作。未部署 warp-masque 出站回 404；sudoers 未放行回 409 并附可直接粘贴的配置指引；审计 `system.warp.rotate` 照备份先例直记。完整部署与验收步骤见 `docs/deployment.md`「可选：WARP MASQUE 出站」一节。
 - **WARP MASQUE 解锁链路健康监控**：Google 域名经「官方 cloudflare-warp 客户端（proxy 模式本地 SOCKS5 代理，MASQUE 隧道）+ 面板 warp-masque socks 出站」出站的链路纳入面板可观测体系——每 15 分钟经该代理校验 Cloudflare trace 的 `warp=on` 与出口协议族（MASQUE 由 Cloudflare 内部调度，IPv4-only 主机也可能拿到 IPv6 出口），再以不跟随重定向的 GET 访问 google.com 判定出口地区（**必须 GET**：HEAD 不触发 CN 区 302，曾因此误判）。判定四态 ok / proxy-down / warp-off / misjudged，歧义失败（超时等）粘滞上一已知判定防抖；仅当面板存在 warp-masque 出站才启用，未部署实例完全静默。链路异常推送 `warp_masque_degraded`（warning，带原因，翻回正常自动恢复），总览页新增「WARP 解锁链路」卡片展示状态、出口族与最近检查。照 egressgeo 先例纯进程内 state（无表无迁移，重启首轮即恢复）。
 
 ## [0.5.9] - 2026-09-23
