@@ -1440,6 +1440,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/system/warp/rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rotate the WARP MASQUE exit (disconnect + reconnect via sudo warp-cli, then re-probe immediately)
+         * @description Part of the WARP MASQUE unlock chain maintenance: severs and re-establishes the official cloudflare-warp tunnel so Cloudflare may assign a different exit, then polls the health probe until a definitive verdict. The request blocks until the re-probe settles (typically a few seconds, worst case about a minute). The route is only registered when the rotation is wired in the deployment.
+         */
+        post: operations["rotateSystemWarp"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/system/restore": {
         parameters: {
             query?: never;
@@ -2346,6 +2366,20 @@ export interface components {
             exitFamily?: "ipv4" | "ipv6";
             /** Format: date-time */
             checkedAt: string;
+        };
+        /** @description Fresh WARP MASQUE chain verdict right after a rotation (same probe as the overview warpHealth snapshot; its checkedAt is not part of this response). */
+        ManagementWarpRotateResult: {
+            /** @enum {string} */
+            verdict: "ok" | "proxy-down" | "warp-off" | "misjudged";
+            /** @description Chinese failure reason; present when verdict is not ok. */
+            reason?: string;
+            /** @description Whether the trace reported warp=on. */
+            warpOn?: boolean;
+            /**
+             * @description Address family of the WARP exit; absent when unknown.
+             * @enum {string}
+             */
+            exitFamily?: "ipv4" | "ipv6";
         };
         /** @description Provider-metered (SolusVM client API, billing basis) monthly VPS bandwidth. Covers all NIC traffic including host-side overhead — a different basis than traffic24h (tunnel traffic only). Absent when the solusvm config section is unset or the first poll has not succeeded yet. */
         ManagementOverviewBandwidth: {
@@ -5859,6 +5893,57 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    rotateSystemWarp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Fresh health verdict after rotation */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessEnvelope"] & {
+                        data?: components["schemas"]["ManagementWarpRotateResult"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description No warp-masque outbound configured */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManagementErrorResponse"];
+                };
+            };
+            /** @description sudoers does not allow warp-cli for the panel runtime user */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManagementErrorResponse"];
+                };
+            };
+            /** @description Reconnect failed or the re-probe window expired without a definitive verdict */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManagementErrorResponse"];
+                };
+            };
         };
     };
     restoreSystemFromUploadedBackup: {

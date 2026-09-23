@@ -13,7 +13,7 @@ import {
   ThunderboltOutlined
 } from '@ant-design/icons';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { Alert, Button, Col, Descriptions, Progress, Result, Row, Space, Statistic, Tag, Typography } from 'antd';
+import { Alert, App as AntApp, Button, Col, Descriptions, Popconfirm, Progress, Result, Row, Space, Statistic, Tag, Typography } from 'antd';
 import dayjs from 'dayjs';
 import { useNavigate } from 'react-router-dom';
 import { CERTIFICATE_WARNING_DAYS, CertificateExpiryTag, certificateDaysLeft } from '../../../components/CertificateExpiryTag';
@@ -51,6 +51,7 @@ function StatCard({ icon, label, value, extra }: { icon: React.ReactNode; label:
 
 export function OverviewPage() {
   const navigate = useNavigate();
+  const { message } = AntApp.useApp();
   const overview = useQuery({ queryKey: ['overview'], queryFn: controlPlaneApi.overview, retry: false, refetchInterval: 15000 });
   const traffic24hSeries = useQuery({
     queryKey: ['traffic', 'series-24h-overview'],
@@ -69,6 +70,22 @@ export function OverviewPage() {
   const runProbe = useMutation({
     mutationFn: () => protocolsApi.runProbe(),
     onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ['resources', 'protocols-probe'] }); }
+  });
+  // WARP 解锁链路一键换出口：断开重连后后端立即复测，409 携带 sudoers 配置
+  // 指引（原文透出给管理员）。
+  const warpRotate = useMutation({
+    mutationFn: controlPlaneApi.warpRotate,
+    onSuccess: (result) => {
+      void queryClient.invalidateQueries({ queryKey: ['overview'] });
+      if (result.verdict === 'ok') {
+        message.success('换出口完成，WARP 解锁链路已恢复正常');
+      } else {
+        message.warning(`换出口已执行，出口仍异常（${result.verdict}）`);
+      }
+    },
+    onError: (error) => {
+      message.error(error instanceof ApiError ? error.message : '换出口失败，请稍后重试');
+    }
   });
   // 所有 Hook 必须在任何提前 return 之前调用：overview 轮询中途转 isError
   // 会让重渲染少一个 Hook，React 直接抛「Rendered fewer hooks than expected」。
@@ -299,6 +316,15 @@ export function OverviewPage() {
                 </div>
               ) : null}
               <Statistic title="最近检查" value={formatDateTime(value.warpHealth.checkedAt)} valueStyle={{ fontSize: 14, fontFamily: "'JetBrains Mono', ui-monospace, monospace" }} />
+              <Popconfirm
+                title="确认换出口？"
+                description="将断开并重连 WARP，链路中断数秒，完成后自动复测。"
+                okText="换出口"
+                cancelText="取消"
+                onConfirm={() => warpRotate.mutate()}
+              >
+                <Button size="small" icon={<ThunderboltOutlined />} loading={warpRotate.isPending}>换出口</Button>
+              </Popconfirm>
             </Space>
             {value.warpHealth.verdict !== 'ok' && value.warpHealth.reason ? (
               <Typography.Paragraph type="secondary" style={{ marginTop: 8, marginBottom: 0, fontSize: 12 }}>

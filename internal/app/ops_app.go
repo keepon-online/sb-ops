@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"os/exec"
 	"path/filepath"
 	"runtime/debug"
 	"strconv"
@@ -214,6 +215,19 @@ func newOps(db *sql.DB, sessionTTL time.Duration, apply deployment.ApplyConfig, 
 		}
 		return controloverview.WarpHealth{Verdict: snapshot.Verdict, Reason: snapshot.Reason, ExitFamily: snapshot.ExitFamily, CheckedAt: snapshot.CheckedAt}, true
 	})
+	// 一键换出口：sudo -n 白名单方式执行 warp-cli（只放行 disconnect/connect
+	// 两条命令，sudoers 配置见 docs/deployment.md）；未放行时错误归类
+	// ErrSudoersMissing 由端点转 409 与配置指引。复测滚动调 Check，终态经
+	// state 即时驱动告警与总览。
+	warpRotate := func(ctx context.Context) (controlwarphealth.Result, error) {
+		addr, ok := warpMasqueProxyAddr(ctx, db)
+		if !ok {
+			return controlwarphealth.Result{}, controlwarphealth.ErrWarpNotDeployed
+		}
+		ctx, cancel := context.WithTimeout(ctx, warpRotateTimeout)
+		defer cancel()
+		return controlwarphealth.Rotate(ctx, sudoWarpCli, addr, warpHealthState)
+	}
 	// 协议端到端拨测：内核 running 且配置 applied 才放行（内核故障已有
 	// runtime_sync_failed 告警，拨测此时写失败行只会制造误报）。
 	prober := controlprobe.NewProberWithTargetURLProvider(db, func(ctx context.Context) (bool, string) {
@@ -329,7 +343,7 @@ func newOps(db *sql.DB, sessionTTL time.Duration, apply deployment.ApplyConfig, 
 		Identity: auth, Store: identityStore, Users: users, Protocols: protocols, Certificates: certificates, Policies: policies, SingBox: singBox, Sync: syncer,
 		Overview: overview, AuditLogs: auditLogs, Share: subscriptions, Traffic: traffic, Events: events, Alerts: alerts, Config: configProvider,
 		Argo: argoService, ArgoManager: argoManager, Monitor: monitor, Upgrade: upgradeService, Prober: prober,
-		Backup: backupService,
+		Backup: backupService, WarpRotate: warpRotate,
 	})
 	background, cancel := context.WithCancel(context.Background())
 	value := &OpsApp{
@@ -575,6 +589,31 @@ func warpMasqueProxyAddr(ctx context.Context, database *sql.DB) (string, bool) {
 		return "", false
 	}
 	return net.JoinHostPort(strings.TrimSpace(server), strconv.Itoa(port)), true
+}
+
+// warp-cli 的调用形态：官方客户端装在 /usr/bin/warp-cli，面板运行用户非
+// root，经 sudo -n 白名单执行（sudoers 只放行 disconnect/connect 两条命令，
+// 配置见 docs/deployment.md）。
+const (
+	warpCliPath        = "/usr/bin/warp-cli"
+	warpCliStepTimeout = 12 * time.Second
+	warpRotateTimeout  = 2 * time.Minute
+)
+
+// sudoWarpCli 执行一条 warp-cli 子命令；sudoers 未放行时（sudo -n 拒绝）
+// 归类 ErrSudoersMissing 供端点转 409 与配置指引。
+func sudoWarpCli(ctx context.Context, args ...string) error {
+	ctx, cancel := context.WithTimeout(ctx, warpCliStepTimeout)
+	defer cancel()
+	output, err := exec.CommandContext(ctx, "sudo", append([]string{"-n", warpCliPath}, args...)...).CombinedOutput()
+	if err != nil {
+		text := strings.TrimSpace(string(output))
+		if strings.Contains(text, "a password is required") || strings.Contains(text, "not allowed") {
+			return fmt.Errorf("%w: %s", controlwarphealth.ErrSudoersMissing, text)
+		}
+		return fmt.Errorf("warp-cli %s 失败: %s", strings.Join(args, " "), text)
+	}
+	return nil
 }
 
 // upgradeCheckInitialDelay / upgradeCheckInterval 是新版本自动发现的节奏：

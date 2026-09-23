@@ -8,6 +8,7 @@ package warphealth
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -30,8 +31,19 @@ const (
 	TraceURL          = "https://www.cloudflare.com/cdn-cgi/trace"
 	GoogleURL         = "https://www.google.com/"
 	proxyDialTimeout  = 3 * time.Second
-	probeTimeout      = 15 * time.Second
 	maxBodySize       = 1 << 10
+)
+
+// 单次探测的读超时上限。用 var 仅为测试可调（黑洞隧道用例不必烧满上限）。
+var probeTimeout = 15 * time.Second
+
+// 探测目标可注入：生产恒为上方常量，测试替换为本地夹具地址（避免夹具
+// 流量漏到公网）。TLS 配置同理：生产 nil（默认校验），测试注入跳过
+// httptest 自签证书校验。
+var (
+	activeTraceURL  = TraceURL
+	activeGoogleURL = GoogleURL
+	activeTLSConfig *tls.Config
 )
 
 // 判定终态；state 的 Verdict 空串表示启动后尚无成功检查。
@@ -45,10 +57,10 @@ const (
 // Result 是一次探测的终态。只有四种终态会更新 state；超时等歧义失败由调用方
 // 粘滞上一个已知判定（RecordUnknown），防止网络抖动误 resolve 告警。
 type Result struct {
-	Verdict    string // ok / proxy-down / warp-off / misjudged
-	Reason     string // 非 ok 时的中文原因（告警与总览卡片展示）
-	WarpOn     bool
-	ExitFamily string // ipv4 / ipv6 / ""
+	Verdict    string `json:"verdict"` // ok / proxy-down / warp-off / misjudged
+	Reason     string `json:"reason,omitempty"`
+	WarpOn     bool   `json:"warpOn,omitempty"`
+	ExitFamily string `json:"exitFamily,omitempty"` // ipv4 / ipv6 / ""
 }
 
 // Check 经 proxyAddr 指向的 SOCKS5 代理完整探测一遍链路。返回非 nil error
@@ -69,18 +81,21 @@ func Check(ctx context.Context, proxyAddr string) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
+	if activeTLSConfig != nil {
+		transport.TLSClientConfig = activeTLSConfig.Clone()
+	}
 	client := &http.Client{
 		Transport:     transport,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}
-	warpOn, family, err := fetchTrace(ctx, client, TraceURL)
+	warpOn, family, err := fetchTrace(ctx, client, activeTraceURL)
 	if err != nil {
 		return Result{}, err
 	}
 	if !warpOn {
 		return Result{Verdict: VerdictWarpOff, Reason: "WARP 隧道未生效（trace warp=off，客户端可能已断开）", ExitFamily: family}, nil
 	}
-	verdict, err := checkGoogle(ctx, client, GoogleURL)
+	verdict, err := checkGoogle(ctx, client, activeGoogleURL)
 	if err != nil {
 		return Result{}, err
 	}

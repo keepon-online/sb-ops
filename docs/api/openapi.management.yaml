@@ -1571,6 +1571,26 @@ paths:
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
+  /api/v1/system/warp/rotate:
+    post:
+      tags: [System]
+      operationId: rotateSystemWarp
+      summary: Rotate the WARP MASQUE exit (disconnect + reconnect via sudo warp-cli, then re-probe immediately)
+      description: >-
+        Part of the WARP MASQUE unlock chain maintenance: severs and
+        re-establishes the official cloudflare-warp tunnel so Cloudflare may
+        assign a different exit, then polls the health probe until a definitive
+        verdict. The request blocks until the re-probe settles (typically a few
+        seconds, worst case about a minute). The route is only registered when
+        the rotation is wired in the deployment.
+      security: [{BearerAuth: []}]
+      responses:
+        '200': {description: Fresh health verdict after rotation, content: {application/json: {schema: {allOf: [{$ref: '#/components/schemas/SuccessEnvelope'}, {properties: {data: {$ref: '#/components/schemas/ManagementWarpRotateResult'}}}]}}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {description: No warp-masque outbound configured, content: {application/json: {schema: {$ref: '#/components/schemas/ManagementErrorResponse'}}}}
+        '409': {description: sudoers does not allow warp-cli for the panel runtime user, content: {application/json: {schema: {$ref: '#/components/schemas/ManagementErrorResponse'}}}}
+        '502': {description: Reconnect failed or the re-probe window expired without a definitive verdict, content: {application/json: {schema: {$ref: '#/components/schemas/ManagementErrorResponse'}}}}
   /api/v1/system/restore:
     post:
       tags: [System]
@@ -2794,6 +2814,19 @@ components:
           enum: [ipv4, ipv6]
           description: Address family of the WARP exit; Cloudflare assigns it inside the MASQUE tunnel, so IPv4-only hosts may get an IPv6 exit. Absent when unknown.
         checkedAt: {type: string, format: date-time}
+    ManagementWarpRotateResult:
+      type: object
+      additionalProperties: false
+      required: [verdict]
+      description: >-
+        Fresh WARP MASQUE chain verdict right after a rotation (same probe as
+        the overview warpHealth snapshot; its checkedAt is not part of this
+        response).
+      properties:
+        verdict: {type: string, enum: [ok, proxy-down, warp-off, misjudged]}
+        reason: {type: string, description: Chinese failure reason; present when verdict is not ok.}
+        warpOn: {type: boolean, description: Whether the trace reported warp=on.}
+        exitFamily: {type: string, enum: [ipv4, ipv6], description: Address family of the WARP exit; absent when unknown.}
     ManagementOverviewBandwidth:
       type: object
       additionalProperties: false

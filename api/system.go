@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/keepon-online/sb-ops/internal/httpx"
 	controlupgrade "github.com/keepon-online/sb-ops/internal/service/upgrade"
+	controlwarphealth "github.com/keepon-online/sb-ops/internal/warphealth"
 )
 
 // getUpgradeStatus 返回自升级服务快照；只读、不会失败，无需新增业务码。
@@ -54,5 +55,37 @@ func writeUpgradeError(c *gin.Context, err error) {
 		// 前台错误只剩 GitHub 查询失败；下载/替换失败发生在后台，经
 		// status.phase=failed 与 upgrade.failed 事件暴露。
 		httpx.Error(c, http.StatusBadGateway, httpx.CodeUpgradeCheckFailed, "查询 GitHub 最新版本失败，请稍后重试", nil)
+	}
+}
+
+// rotateWarp 执行 WARP 一键换出口（sudo warp-cli 断开重连 + 立即复测），
+// 照 backup/upgrade 先例 h.audit 直记 + httpx 响应（不接 h.mutate——不涉
+// 内核重编译）。换出口对链路是数秒级中断，由前端二次确认。
+func (h *handler) rotateWarp(c *gin.Context) {
+	if h.WarpRotate == nil {
+		httpx.Error(c, http.StatusServiceUnavailable, httpx.CodeWarpRotateUnavailable, "换出口功能未接线", nil)
+		return
+	}
+	result, err := h.WarpRotate(c.Request.Context())
+	if err != nil {
+		h.audit(c, actionSystemWarpRotate, resourceSystemWarp, "", resultFailure, err)
+		writeWarpRotateError(c, err)
+		return
+	}
+	h.audit(c, actionSystemWarpRotate, resourceSystemWarp, result.Verdict, ResultSuccess)
+	httpx.OK(c, result)
+}
+
+func writeWarpRotateError(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, controlwarphealth.ErrWarpNotDeployed):
+		httpx.Error(c, http.StatusNotFound, httpx.CodeNotFound, "未部署 WARP 解锁链路（缺少 warp-masque 出站）", nil)
+	case errors.Is(err, controlwarphealth.ErrSudoersMissing):
+		// sudoers 白名单只放行 disconnect/connect 两条命令，指引给出配置
+		// 内容（运行用户名按部署实际调整，完整步骤见 docs/deployment.md）。
+		httpx.Error(c, http.StatusConflict, httpx.CodeWarpRotateUnavailable,
+			"sudoers 未放行 warp-cli：请以 root 创建 /etc/sudoers.d/sb-ops-warp（内容一行：sbops ALL=(root) NOPASSWD: /usr/bin/warp-cli disconnect, /usr/bin/warp-cli connect），权限 440。运行用户名按部署实际调整，详见 docs/deployment.md", nil)
+	default:
+		httpx.Error(c, http.StatusBadGateway, httpx.CodeWarpRotateFailed, err.Error(), nil)
 	}
 }

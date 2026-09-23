@@ -1,6 +1,8 @@
 package api
 
 import (
+	"context"
+
 	"github.com/gin-gonic/gin"
 	controlaudit "github.com/keepon-online/sb-ops/internal/audit"
 	"github.com/keepon-online/sb-ops/internal/config"
@@ -21,6 +23,7 @@ import (
 	controlupgrade "github.com/keepon-online/sb-ops/internal/service/upgrade"
 	serviceuser "github.com/keepon-online/sb-ops/internal/service/user"
 	controltraffic "github.com/keepon-online/sb-ops/internal/traffic"
+	controlwarphealth "github.com/keepon-online/sb-ops/internal/warphealth"
 )
 
 const (
@@ -50,6 +53,9 @@ type Dependencies struct {
 	Backup       *servicebackup.Service
 	// Prober 跑协议端到端拨测；测试可缺省（对应端点返回 503）。
 	Prober *controlprobe.Prober
+	// WarpRotate 执行 WARP 一键换出口（sudo warp-cli 断开重连 + 立即复测）；
+	// 缺省时不注册对应端点。
+	WarpRotate func(context.Context) (controlwarphealth.Result, error)
 	// ArgoManager restarts tunnel processes; the supervisor may be absent in
 	// tests, hence the narrow interface.
 	ArgoManager interface{ RestartTunnel(id string) }
@@ -241,6 +247,9 @@ func RegisterRoutes(router *gin.Engine, dependencies Dependencies) {
 		systemBackups.GET("/:name/download", h.downloadBackup)
 		systemBackups.POST("/:name/restore", h.restoreExistingBackup)
 		systemBackups.DELETE("/:name", h.deleteBackup)
+	}
+	if h.WarpRotate != nil {
+		authenticated.POST("/system/warp/rotate", h.rotateWarp)
 	}
 }
 
