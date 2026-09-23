@@ -219,6 +219,38 @@ sudo certbot renew --dry-run
 
 要点：`set_real_ip_from` 只信任 CF 网段，非 CF 来源伪造 `CF-Connecting-IP` 头不会生效（realip 模块只对可信来源采信该头）；配置后 `$remote_addr`、`X-Real-IP`、`X-Forwarded-For` 末端与 access log 全部恢复真实地址，存量设备的污染地址会在下次订阅拉取时自动修正（改名 + `source_ip` 更新）。订阅若专门走独立域名（如 `sub.example.com`），该域名的 server 块同样要配。
 
+### 可选：WARP MASQUE 出站（Google 域名解锁）
+
+机房 IP 段常被 Google 判为受限地区（google.com 跳 google.com.hk、Gemini 地区拦截，该判定全年周期性漂移、数周自愈）。解法：官方 cloudflare-warp 客户端以 **proxy 模式**（仅本机 SOCKS5、无 TUN、不碰系统路由）建立 MASQUE 隧道——出口协议族由 Cloudflare 在隧道内部调度，**IPv4-only 的 VPS 也常被分到干净的 IPv6 出口**；面板侧加一个 socks 出站指向它，Google 域名分流规则即可借道。
+
+```bash
+# 1. 安装官方客户端（Ubuntu 22.04 示例；CODENAME 按 lsb_release -cs 替换）
+curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg | sudo gpg --yes --dearmor -o /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg
+echo "deb [signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ jammy main" | sudo tee /etc/apt/sources.list.d/cloudflare-client.list
+sudo apt-get update && sudo apt-get install -y cloudflare-warp
+
+# 2. 注册并切换为本地代理模式（先切模式再连接，全程不装 TUN 路由）
+sudo warp-cli --accept-tos registration new
+sudo warp-cli --accept-tos mode proxy
+sudo warp-cli --accept-tos proxy port 40000
+sudo warp-cli --accept-tos connect
+sudo warp-cli status
+
+# 3. 验收（四项全过才算通）：trace warp=on + 出口族 + Google 判定
+curl -s --socks5-hostname 127.0.0.1:40000 https://www.cloudflare.com/cdn-cgi/trace | grep -E "^(ip|warp|loc)="
+# Google 判定必须用 GET：HEAD 不触发 CN 区 302，会把误判误报为正常
+curl -s -o /dev/null -w "%{http_code} %{redirect_url}\n" --socks5-hostname 127.0.0.1:40000 https://www.google.com/
+```
+
+面板侧：「服务配置 → 出站」新建 **socks** 类型出站，标签必须是 `warp-masque`（健康监控按此 tag 门控），服务器 `127.0.0.1`、端口 `40000`；再在「路由规则」把 Google 系域名（google.com / google.com.hk / googleapis.com / googleusercontent.com / googlevideo.com / ggpht.com / recaptcha.net）指向它。配好后总览页出现「WARP 解锁链路」卡片（每 15 分钟自动探测，异常推送 `warp_masque_degraded` 告警）；卡片上的「换出口」按钮可远程断开重连换出口——需先放行 sudoers（`sbops` 换成面板实际运行用户）：
+
+```bash
+printf '%s\n' 'sbops ALL=(root) NOPASSWD: /usr/bin/warp-cli disconnect, /usr/bin/warp-cli connect' | sudo tee /etc/sudoers.d/sb-ops-warp
+sudo chmod 440 /etc/sudoers.d/sb-ops-warp
+```
+
+维护：出口判定再漂移时先点「换出口」（或 SSH 执行 `sudo warp-cli disconnect && sudo warp-cli connect`，MASQUE 出口族由 Cloudflare 内部调度、重连可能换到干净出口）；卸载恢复：面板删除出站与规则后 `sudo warp-cli disconnect && sudo apt remove -y cloudflare-warp`。
+
 ## 四、防火墙
 
 ```bash
