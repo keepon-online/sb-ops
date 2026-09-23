@@ -9,4 +9,4 @@
 
 ## 已完成（近期）
 
-- **Google 出口判定监控**（2026-09-23，随下版发布）：`internal/egressgeo` 周期探测 + `egress_geo_misjudged` 告警 + 总览卡片。生产部署本功能后需**删除 VPS 上的临时 cron 监控**（`/etc/cron.d/sb-google-verdict-watch`、`/usr/local/bin/sb-google-verdict-watch`、`/var/lib/sb-ops/google-verdict.state`），避免与面板告警重复推送。
+- **Google 出口判定监控**（2026-09-23，随下版发布）：`internal/egressgeo` 周期探测 + `egress_geo_misjudged` 告警 + 总览卡片。VPS 上的临时 cron 监控三件套（cron.d / 脚本 / state）已于 2026-09-23 提前删除（用户拍板，接受下版部署前的监控空窗）。
