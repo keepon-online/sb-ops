@@ -360,7 +360,7 @@ func newOps(db *sql.DB, sessionTTL time.Duration, apply deployment.ApplyConfig, 
 		Identity: auth, Store: identityStore, Users: users, Protocols: protocols, Certificates: certificates, Policies: policies, SingBox: singBox, Sync: syncer,
 		Overview: overview, AuditLogs: auditLogs, Share: subscriptions, Traffic: traffic, Events: events, Alerts: alerts, Config: configProvider,
 		Argo: argoService, ArgoManager: argoManager, Monitor: monitor, Upgrade: upgradeService, Prober: prober,
-		Backup: backupService, WarpRotate: warpRotate,
+		Backup: backupService, WarpRotate: warpRotate, WarpPrechecker: controlprobe.NewWarpPrechecker(),
 	})
 	background, cancel := context.WithCancel(context.Background())
 	value := &OpsApp{

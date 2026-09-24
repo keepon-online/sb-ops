@@ -2117,7 +2117,7 @@ export interface components {
             reserved?: number[];
             mtu?: number;
         };
-        /** @description 免费注册的 WARP 账户参数（不落库，随出站保存时提交）。 */
+        /** @description 免费注册的 WARP 账户参数（不落库，随出站保存时提交）；附带注册后即时实测的出口体检（预检失败时不阻断注册）。 */
         WarpRegistrationResult: {
             endpoint: string;
             publicKey: string;
@@ -2126,6 +2126,18 @@ export interface components {
             ipv6?: string;
             reserved?: number[];
             mtu?: number;
+            precheck?: components["schemas"]["WarpPrecheckResult"];
+        };
+        /** @description Immediate egress health check for a freshly registered WARP identity, probed through a one-off lightweight client kernel (mixed inbound + the identity's wireguard endpoint). misjudged means Google currently treats this egress as CN (google.com redirects to google.com.hk) — the free wireguard egress is pinned by the tunnel's PoP and re-registering does not change it. unknown means the probe did not complete (see error). Absent when no prechecker is wired. */
+        WarpPrecheckResult: {
+            egressIp?: string;
+            country?: string;
+            org?: string;
+            /** @enum {string} */
+            verdict: "ok" | "misjudged" | "unknown";
+            /** @description Redirect target evidencing the misjudgment; present only when verdict is misjudged. */
+            redirect?: string;
+            error?: string;
         };
         SingBoxCreateOutboundRequest: {
             /**

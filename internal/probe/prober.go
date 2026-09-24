@@ -83,10 +83,15 @@ func NewProberWithTargetURLProvider(db *sql.DB, ready func(ctx context.Context) 
 	// 不接 PlatformLogWriter（会强制启用 cache-file 与 clash-server 服务，
 	// 见 runtime/singbox 的注释）：拨测实例日志关闭，错误经 HTTP 代理层
 	// 报回客户端即可捕获。
-	prober.newBox = func(ctx context.Context, options option.Options) (boxInstance, error) {
-		return box.New(box.Options{Context: include.Context(ctx), Options: options})
-	}
+	prober.newBox = newKernelBox
 	return prober
+}
+
+// newKernelBox 起独立轻量客户端内核（拨测与 WARP 出口预检共用）。不接
+// PlatformLogWriter（会强制启用 cache-file 与 clash-server 服务）：错误经
+// HTTP 代理层报回客户端即可捕获。
+func newKernelBox(ctx context.Context, options option.Options) (boxInstance, error) {
+	return box.New(box.Options{Context: include.Context(ctx), Options: options})
 }
 
 // StoredResults 返回最近一轮落库的拨测结果（读取面，不触发拨测）。

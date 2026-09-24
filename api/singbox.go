@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/keepon-online/sb-ops/internal/httpx"
+	"github.com/keepon-online/sb-ops/internal/probe"
 	servicesingbox "github.com/keepon-online/sb-ops/internal/service/singbox"
 )
 
@@ -205,14 +206,27 @@ func (h *handler) createSingBoxOutbound(c *gin.Context) {
 
 // registerSingBoxWarp provisions a fresh free WARP account and returns the
 // ready-to-save outbound settings; persistence happens through the normal
-// outbound write path, so this endpoint is side-effect free.
+// outbound write path, so this endpoint is side-effect free. 注册后若装配了
+// 出口预检器，附带一次性实测的出口体检结果（预检失败不影响注册）。
 func (h *handler) registerSingBoxWarp(c *gin.Context) {
 	settings, err := h.SingBox.RegisterWarp(c.Request.Context())
 	if err != nil {
 		writeResourceError(c, err)
 		return
 	}
-	httpx.OK(c, settings)
+	response := warpRegistrationResponse{WarpSettings: settings}
+	if h.WarpPrechecker != nil {
+		precheck := h.WarpPrechecker.Check(c.Request.Context(), settings)
+		response.Precheck = &precheck
+	}
+	httpx.OK(c, response)
+}
+
+// warpRegistrationResponse 在注册结果上叠加出口预检：嵌入保持原有扁平字段
+// 契约（endpoint/publicKey/...）不变，旧消费方忽略 precheck 即可。
+type warpRegistrationResponse struct {
+	servicesingbox.WarpSettings
+	Precheck *probe.WarpPrecheckResult `json:"precheck,omitempty"`
 }
 
 func (h *handler) updateSingBoxOutbound(c *gin.Context) {

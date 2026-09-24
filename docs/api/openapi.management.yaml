@@ -2517,7 +2517,7 @@ components:
     WarpRegistrationResult:
       type: object
       additionalProperties: false
-      description: 免费注册的 WARP 账户参数（不落库，随出站保存时提交）。
+      description: 免费注册的 WARP 账户参数（不落库，随出站保存时提交）；附带注册后即时实测的出口体检（预检失败时不阻断注册）。
       required: [endpoint, publicKey, privateKey, ipv4]
       properties:
         endpoint: {type: string}
@@ -2527,6 +2527,26 @@ components:
         ipv6: {type: string}
         reserved: {type: array, minItems: 3, maxItems: 3, items: {type: integer, minimum: 0, maximum: 255}}
         mtu: {type: integer}
+        precheck: {$ref: '#/components/schemas/WarpPrecheckResult'}
+    WarpPrecheckResult:
+      type: object
+      additionalProperties: false
+      required: [verdict]
+      description: >-
+        Immediate egress health check for a freshly registered WARP identity,
+        probed through a one-off lightweight client kernel (mixed inbound + the
+        identity's wireguard endpoint). misjudged means Google currently treats
+        this egress as CN (google.com redirects to google.com.hk) — the free
+        wireguard egress is pinned by the tunnel's PoP and re-registering does
+        not change it. unknown means the probe did not complete (see error).
+        Absent when no prechecker is wired.
+      properties:
+        egressIp: {type: string}
+        country: {type: string}
+        org: {type: string}
+        verdict: {type: string, enum: [ok, misjudged, unknown]}
+        redirect: {type: string, description: Redirect target evidencing the misjudgment; present only when verdict is misjudged.}
+        error: {type: string}
     SingBoxCreateOutboundRequest:
       type: object
       additionalProperties: false

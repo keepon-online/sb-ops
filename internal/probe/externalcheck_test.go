@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	serviceprotocol "github.com/keepon-online/sb-ops/internal/service/protocol"
+	servicesingbox "github.com/keepon-online/sb-ops/internal/service/singbox"
 )
 
 // TestDumpClientConfigsForExternalCheck 供外部 `sing-box check` 核验拨测
@@ -57,5 +58,22 @@ func TestDumpClientConfigsForExternalCheck(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(dir, name+".json"), content, 0o600); err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}
+	}
+
+	// WARP 出口预检的一次性客户端配置（mixed 入站 + wireguard endpoint）。
+	warpConfig, err := buildWarpPrecheckConfig(servicesingbox.WarpSettings{
+		Endpoint: "engage.cloudflareclient.com:2408", PublicKey: "bmXOC+F1FxEMF9dyiK2H5/1SUtzH0JuVo51h2wPfgyo=",
+		PrivateKey: "yGXW0eJFX1ODeZzDeTtw37Xw+vJforkd5NglVAFKX3o=", IPv4: "172.16.0.2/32", IPv6: "2606:4700:110:8e5e:4545:4545:4545:4545/128",
+		Reserved: []int{26, 105, 116},
+	}, 18080)
+	if err != nil {
+		t.Fatal(err)
+	}
+	warpContent, err := json.Marshal(warpConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "warp-precheck.json"), warpContent, 0o600); err != nil {
+		t.Fatal(err)
 	}
 }

@@ -150,7 +150,7 @@ func singBoxOutbounds(outbounds []servicesingbox.Outbound, passwords map[string]
 			if outbound.Warp == nil {
 				continue
 			}
-			endpoint, err := warpEndpoint(outbound.Tag, outbound.Warp)
+			endpoint, err := WarpEndpoint(outbound.Tag, outbound.Warp)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -160,7 +160,9 @@ func singBoxOutbounds(outbounds []servicesingbox.Outbound, passwords map[string]
 	return values, endpoints, nil
 }
 
-func warpEndpoint(tag string, settings *servicesingbox.WarpSettings) (map[string]any, error) {
+// WarpEndpoint 把面板存储的 WARP 设置编译为 sing-box wireguard endpoint
+// （服务端 sb.json 与 WARP 出口预检的一次性客户端共用，保证字段一致）。
+func WarpEndpoint(tag string, settings *servicesingbox.WarpSettings) (map[string]any, error) {
 	host, portText, err := net.SplitHostPort(settings.Endpoint)
 	if err != nil {
 		return nil, fmt.Errorf("出站 %q 的 WARP endpoint 不是 host:port: %w", tag, err)

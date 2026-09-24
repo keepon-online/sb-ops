@@ -65,7 +65,8 @@ import {
   type SingBoxRouteConditions,
   type SingBoxRouteRule,
   type SingBoxRuleSet,
-  type SingBoxValidationResult
+  type SingBoxValidationResult,
+  type WarpPrecheckResult
 } from '../../../services/singbox';
 
 const { Text, Title, Paragraph } = Typography;
@@ -177,6 +178,7 @@ export function SingBoxPage() {
   const [editingRule, setEditingRule] = useState<SingBoxRouteRule | null>(null);
   const [editingRuleSet, setEditingRuleSet] = useState<SingBoxRuleSet | null>(null);
   const [aiOutbound, setAiOutbound] = useState<string | undefined>(undefined);
+  const [warpPrecheck, setWarpPrecheck] = useState<WarpPrecheckResult | null>(null);
   const [dryRunResult, setDryRunResult] = useState<SingBoxDryRunResult | null>(null);
   const [validation, setValidation] = useState<SingBoxValidationResult | null>(null);
 
@@ -222,6 +224,7 @@ export function SingBoxPage() {
   const refreshArgos = () => queryClient.invalidateQueries({ queryKey: ['singbox', 'argos'] });
 
   const outboundOptions = useMemo(() => (outbounds.data?.items || []).map((item) => ({ value: item.tag, label: item.tag })), [outbounds.data]);
+  const aiOutboundIsWarp = useMemo(() => (outbounds.data?.items || []).some((item) => item.tag === aiOutbound && item.type === 'warp'), [outbounds.data, aiOutbound]);
   const ruleSetOptions = useMemo(() => (ruleSets.data?.items || []).map((item) => ({ value: item.tag, label: item.tag })), [ruleSets.data]);
   const vmessProtocols = useMemo(() => (protocols.data?.items || []).filter((item) => item.type === 'vmess' && item.enabled), [protocols.data]);
 
@@ -258,6 +261,7 @@ export function SingBoxPage() {
   const registerWarp = useMutation({
     mutationFn: singBoxApi.registerWarp,
     onSuccess: (value) => {
+      setWarpPrecheck(value.precheck ?? null);
       outboundForm.setFieldsValue({
         type: 'warp',
         warp: {
@@ -353,10 +357,10 @@ export function SingBoxPage() {
   const closeRule = () => { setRuleDrawer(false); setEditingRule(null); ruleForm.resetFields(); };
   const closeRuleSet = () => { setRuleSetDrawer(false); setEditingRuleSet(null); ruleSetForm.resetFields(); };
 
-  const openCreateOutbound = () => { setEditingOutbound(null); outboundForm.setFieldsValue({ type: 'socks', tag: '', server: '', serverPort: 1080, username: '', password: '' }); setOutboundDrawer(true); };
+  const openCreateOutbound = () => { setEditingOutbound(null); setWarpPrecheck(null); outboundForm.setFieldsValue({ type: 'socks', tag: '', server: '', serverPort: 1080, username: '', password: '' }); setOutboundDrawer(true); };
   const openCreateArgo = () => { setEditingArgo(null); argoForm.setFieldsValue({ name: '', enabled: true, mode: 'temporary', fixedDomain: '', preferredAddress: '', protocolId: vmessProtocols[0]?.id || '', token: '' }); setArgoDrawer(true); };
   const openEditArgo = (value: ArgoTunnel) => { setEditingArgo(value); argoForm.setFieldsValue({ name: value.name, enabled: value.enabled, mode: value.mode, fixedDomain: value.fixedDomain || '', preferredAddress: value.preferredAddress || '', protocolId: value.protocolId, token: '' }); setArgoDrawer(true); };
-  const openEditOutbound = (value: SingBoxOutbound) => { setEditingOutbound(value); outboundForm.setFieldsValue({ type: value.type === 'warp' ? 'warp' : 'socks', tag: value.tag, server: value.server || '', serverPort: value.serverPort || 0, username: value.username || '', password: '', ...(value.warp ? { warp: { endpoint: value.warp.endpoint, publicKey: value.warp.publicKey, privateKey: '', ipv4: value.warp.ipv4, ...(value.warp.ipv6 ? { ipv6: value.warp.ipv6 } : {}), ...(value.warp.reserved ? { reserved: value.warp.reserved.join(',') } : {}), ...(value.warp.mtu ? { mtu: value.warp.mtu } : {}) } } : {}) }); setOutboundDrawer(true); };
+  const openEditOutbound = (value: SingBoxOutbound) => { setEditingOutbound(value); setWarpPrecheck(null); outboundForm.setFieldsValue({ type: value.type === 'warp' ? 'warp' : 'socks', tag: value.tag, server: value.server || '', serverPort: value.serverPort || 0, username: value.username || '', password: '', ...(value.warp ? { warp: { endpoint: value.warp.endpoint, publicKey: value.warp.publicKey, privateKey: '', ipv4: value.warp.ipv4, ...(value.warp.ipv6 ? { ipv6: value.warp.ipv6 } : {}), ...(value.warp.reserved ? { reserved: value.warp.reserved.join(',') } : {}), ...(value.warp.mtu ? { mtu: value.warp.mtu } : {}) } } : {}) }); setOutboundDrawer(true); };
   const openCreateRule = () => { const items = rules.data?.items || []; setEditingRule(null); ruleForm.setFieldsValue({ name: '', enabled: true, priority: ((items[items.length - 1]?.priority || 0) + 10), outboundTag: config.data?.defaultOutboundTag || 'direct', domains: [], domainSuffixes: [], ipCidrs: [], ports: [], networks: [], inboundTags: [], geoip: [], geosite: [], ruleSets: [] }); setRuleDrawer(true); };
   const openEditRule = (value: SingBoxRouteRule) => { setEditingRule(value); ruleForm.setFieldsValue({ ...value, ...value.conditions, ports: value.conditions.ports?.map(String) || [] }); setRuleDrawer(true); };
   const openCreateRuleSet = () => { setEditingRuleSet(null); ruleSetForm.setFieldsValue({ tag: '', format: 'binary', url: '', downloadDetour: '' }); setRuleSetDrawer(true); };
@@ -1243,6 +1247,16 @@ export function SingBoxPage() {
                   </Space>
                 </div>
 
+                {aiOutboundIsWarp ? (
+                  <Alert
+                    style={{ marginBottom: 12 }}
+                    showIcon
+                    type="warning"
+                    message="所选出站为免费 WARP (WireGuard)，解锁 Google / Gemini 前请先确认其出口可用"
+                    description="该类出口由隧道落点决定、无法主动轮换；若注册时出口预检显示 Google 判定 CN，Gemini 等域名分流后将不可用——建议改用 warp-masque（MASQUE）出站（部署方式见文档）。"
+                  />
+                ) : null}
+
                 <Table
                   rowKey="id"
                   loading={rules.isLoading || orderRules.isPending}
@@ -1379,6 +1393,21 @@ export function SingBoxPage() {
                       注册免费 WARP
                     </Button>
                   </div>
+                  {warpPrecheck ? (
+                    <Alert
+                      style={{ marginBottom: 16 }}
+                      showIcon
+                      type={warpPrecheck.verdict === 'misjudged' ? 'warning' : warpPrecheck.verdict === 'ok' ? 'success' : 'warning'}
+                      message={
+                        warpPrecheck.verdict === 'misjudged'
+                          ? `出口预检：${warpPrecheck.egressIp || '未知出口'}${[warpPrecheck.country, warpPrecheck.org].filter(Boolean).length ? `（${[warpPrecheck.country, warpPrecheck.org].filter(Boolean).join(' · ')}）` : ''} 被 Google 判定为 CN 区`
+                          : warpPrecheck.verdict === 'ok'
+                            ? `出口预检：${warpPrecheck.egressIp || '未知出口'}${warpPrecheck.country ? `（${warpPrecheck.country}）` : ''} Google 判定正常`
+                            : `出口预检未完成：${warpPrecheck.error || '探测失败'}（不影响保存，可稍后自行验证）`
+                      }
+                      description={warpPrecheck.verdict === 'misjudged' ? '免费 WireGuard 出口由隧道落点决定，重新注册不会更换出口；解锁 Google / Gemini 请改用 warp-masque（MASQUE）出站，见部署文档。' : undefined}
+                    />
+                  ) : null}
                   <Form.Item name={['warp', 'endpoint']} label="对端接入点 (Endpoint)" tooltip="默认 engage.cloudflareclient.com:2408；如果运营商阻断可填优选 IP:端口">
                     <Input placeholder="engage.cloudflareclient.com:2408" style={{ fontFamily: 'JetBrains Mono, monospace' }} />
                   </Form.Item>

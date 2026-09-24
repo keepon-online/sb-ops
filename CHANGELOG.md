@@ -2,6 +2,12 @@
 
 本文件记录 sb-ops 的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/)。
 
+## [未发布]
+
+### 新增
+
+- **WARP 注册出口预检**：面板「注册免费 WARP」返回后，用一次性轻量客户端内核（mixed 入站 + 该身份 wireguard endpoint，与编译器同源构建）即时实测新身份的出口——展示出口 IP / 地区 / 运营商与 **Google 判定**（判 CN 时明确提示「免费 WireGuard 出口由隧道落点决定，重新注册不会更换出口；解锁 Google / Gemini 请改用 warp-masque」）。预检失败不阻断注册（结果带 error 字段）；注册接口本身仍无副作用。另在「一键 AI 解锁」选中 warp (WireGuard) 出站时展示适用性提示，引导改用 MASQUE 出站。
+
 ## [0.6.1] - 2026-09-24
 
 ### 修复

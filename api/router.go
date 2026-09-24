@@ -53,6 +53,9 @@ type Dependencies struct {
 	Backup       *servicebackup.Service
 	// Prober 跑协议端到端拨测；测试可缺省（对应端点返回 503）。
 	Prober *controlprobe.Prober
+	// WarpPrechecker 对新注册的免费 WARP 身份做出口预检（一次性客户端内核
+	// 实测出口 IP 与 Google 判定）；测试可缺省（注册响应不带 precheck 字段）。
+	WarpPrechecker *controlprobe.WarpPrechecker
 	// WarpRotate 执行 WARP 一键换出口（sudo warp-cli 断开重连 + 立即复测）；
 	// 测试可缺省（对应端点返回 503，同 Prober 先例）。
 	WarpRotate func(context.Context) (controlwarphealth.Result, error)
