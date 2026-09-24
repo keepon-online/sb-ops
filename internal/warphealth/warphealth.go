@@ -204,7 +204,7 @@ func checkGoogle(ctx context.Context, client *http.Client, target string) (strin
 		}
 		return VerdictOK, nil
 	default:
-		return "", fmt.Errorf("Google 解锁探测收到意外状态码 %d", resp.StatusCode)
+		return "", fmt.Errorf("解锁探测收到意外状态码 %d（Google）", resp.StatusCode)
 	}
 }
 
