@@ -2,6 +2,12 @@
 
 本文件记录 sb-ops 的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/)。
 
+## [0.6.3] - 2026-09-24
+
+### 变更
+
+- **内嵌 sing-box 内核升级 v1.14.1 → v1.14.2**：上游 36 个提交的实质修复集——域名型 WireGuard peer 首次握手修复（#4539，warp 出站维持字面 IP 不动）、拨号 context 与连接生命周期一族修复（半关闭传播、gRPC half-close）、HTTP 代理早响应 panic、中断 splice 的流量计数、DNS 去重超时等。全量测试绿；服务器全量配置与八个拨测客户端配置经 v1.14.2 `sing-box check` 逐字段核验通过，零配置迁移。
+
 ## [0.6.2] - 2026-09-24
 
 ### 新增
