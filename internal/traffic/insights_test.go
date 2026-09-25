@@ -227,9 +227,10 @@ INSERT INTO devices(id, user_id, name) VALUES ('dev-1', 'user-1', 'iPhone 15'), 
 		uid, did string
 		up, down int64
 	}{
-		{"user-1", "dev-1", 100, 200}, // dev-1: 300
-		{"user-1", "dev-2", 400, 500}, // dev-2: 900
-		{"user-2", "dev-3", 50, 50},   // dev-3: 100
+		{"user-1", "dev-1", 100, 200},            // dev-1: 300
+		{"user-1", "dev-2", 400, 500},            // dev-2: 900
+		{"user-2", "dev-3", 50, 50},              // dev-3: 100
+		{"user-1", "dev-deleted-0001", 700, 700}, // 已删除设备：仅剩流量事实行
 	} {
 		if _, err := db.Exec(`INSERT INTO traffic_hourly(bucket_start,node_id,user_id,protocol_id,device_id,up_bytes,down_bytes,sample_count,updated_at) VALUES(?,'local',?,'',?,?,?,1,?)`,
 			common.UnixTime(hour), s.uid, s.did, s.up, s.down, common.UnixTime(hour)); err != nil {
@@ -245,28 +246,34 @@ INSERT INTO devices(id, user_id, name) VALUES ('dev-1', 'user-1', 'iPhone 15'), 
 	if err != nil {
 		t.Fatalf("Rankings(device): %v", err)
 	}
-	if len(ranks) != 3 {
-		t.Fatalf("len(ranks) = %d, want 3", len(ranks))
+	if len(ranks) != 4 {
+		t.Fatalf("len(ranks) = %d, want 4", len(ranks))
 	}
-	if ranks[0].ID != "dev-2" || ranks[0].TotalBytes != 900 || ranks[0].Name != "MacBook Pro (Alice)" {
-		t.Fatalf("top rank = %#v, want dev-2 / MacBook Pro (Alice) / 900 bytes", ranks[0])
+	if ranks[0].ID != "dev-deleted-0001" || ranks[0].TotalBytes != 1400 || ranks[0].Name != "已删除设备 · dev-dele" {
+		t.Fatalf("top rank = %#v, want dev-deleted-0001 / 已删除设备 · dev-dele / 1400 bytes", ranks[0])
 	}
-	if ranks[1].ID != "dev-1" || ranks[1].TotalBytes != 300 || ranks[1].Name != "iPhone 15 (Alice)" {
-		t.Fatalf("second rank = %#v, want dev-1 / iPhone 15 (Alice) / 300 bytes", ranks[1])
+	if ranks[1].ID != "dev-2" || ranks[1].TotalBytes != 900 || ranks[1].Name != "MacBook Pro (Alice)" {
+		t.Fatalf("second rank = %#v, want dev-2 / MacBook Pro (Alice) / 900 bytes", ranks[1])
+	}
+	if ranks[2].ID != "dev-1" || ranks[2].TotalBytes != 300 || ranks[2].Name != "iPhone 15 (Alice)" {
+		t.Fatalf("third rank = %#v, want dev-1 / iPhone 15 (Alice) / 300 bytes", ranks[2])
 	}
 
-	// 2. Filter by user-1: should only return dev-2 and dev-1
+	// 2. Filter by user-1: should return dev-2, dev-1 and the deleted device row
 	userFilter := filter
 	userFilter.UserID = "user-1"
 	userRanks, err := svc.Rankings(context.Background(), userFilter, "device", 10)
 	if err != nil {
 		t.Fatalf("Rankings(device with userId): %v", err)
 	}
-	if len(userRanks) != 2 {
-		t.Fatalf("len(userRanks) = %d, want 2", len(userRanks))
+	if len(userRanks) != 3 {
+		t.Fatalf("len(userRanks) = %d, want 3", len(userRanks))
 	}
-	if userRanks[0].ID != "dev-2" || userRanks[0].Name != "MacBook Pro" {
-		t.Fatalf("user rank 0 = %#v, want dev-2 / MacBook Pro", userRanks[0])
+	if userRanks[0].ID != "dev-deleted-0001" || userRanks[0].Name != "已删除设备 · dev-dele" {
+		t.Fatalf("user rank 0 = %#v, want dev-deleted-0001 / 已删除设备 · dev-dele", userRanks[0])
+	}
+	if userRanks[1].ID != "dev-2" || userRanks[1].Name != "MacBook Pro" {
+		t.Fatalf("user rank 1 = %#v, want dev-2 / MacBook Pro", userRanks[1])
 	}
 
 	// 3. Series filtered by device-1

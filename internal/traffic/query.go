@@ -170,18 +170,21 @@ func (s *Service) Rankings(ctx context.Context, filter Filter, dimension string,
 	case "user":
 		filter.ProtocolID = ""
 		filter.DeviceID = ""
-		column, nameExpr = "user_id", `COALESCE((SELECT name FROM users WHERE id=traffic_hourly.user_id),'unassigned')`
+		column, nameExpr = "user_id", `COALESCE((SELECT name FROM users WHERE id=traffic_hourly.user_id),'已删除用户')`
 	case "protocol":
 		filter.UserID = ""
 		filter.DeviceID = ""
-		column, nameExpr = "protocol_id", `COALESCE((SELECT name FROM protocols WHERE id=traffic_hourly.protocol_id),'unassigned')`
+		column, nameExpr = "protocol_id", `COALESCE((SELECT name FROM protocols WHERE id=traffic_hourly.protocol_id),'已删除协议')`
 	case "device":
 		filter.ProtocolID = ""
 		column = "device_id"
+		// 已删除的设备不再回显裸 UUID：流量事实行保留（删除设备不删历史
+		// 流量），排行以「已删除设备 · 短ID」标注，避免与当前设备清单混淆。
+		deletedLabel := `'已删除设备 · '||substr(traffic_hourly.device_id,1,8)`
 		if filter.UserID != "" {
-			nameExpr = `COALESCE((SELECT name FROM devices WHERE id=traffic_hourly.device_id), traffic_hourly.device_id)`
+			nameExpr = `COALESCE((SELECT name FROM devices WHERE id=traffic_hourly.device_id), ` + deletedLabel + `)`
 		} else {
-			nameExpr = `COALESCE((SELECT d.name || ' (' || u.name || ')' FROM devices d JOIN users u ON d.user_id=u.id WHERE d.id=traffic_hourly.device_id), (SELECT name FROM devices WHERE id=traffic_hourly.device_id), traffic_hourly.device_id)`
+			nameExpr = `COALESCE((SELECT d.name || ' (' || u.name || ')' FROM devices d JOIN users u ON d.user_id=u.id WHERE d.id=traffic_hourly.device_id), (SELECT name FROM devices WHERE id=traffic_hourly.device_id), ` + deletedLabel + `)`
 		}
 	default:
 		return nil, fmt.Errorf("%w: 维度必须是 user、protocol 或 device", ErrInvalidRequest)
@@ -262,7 +265,7 @@ func (s *Service) ProtocolShares(ctx context.Context, filter Filter) ([]Protocol
 	}
 	where, args := queryWhere(filter)
 	where += ` AND protocol_id != ''`
-	query := `SELECT protocol_id,COALESCE((SELECT name FROM protocols WHERE id=traffic_hourly.protocol_id),'unassigned'),SUM(up_bytes),SUM(down_bytes)
+	query := `SELECT protocol_id,COALESCE((SELECT name FROM protocols WHERE id=traffic_hourly.protocol_id),'已删除协议'),SUM(up_bytes),SUM(down_bytes)
 FROM traffic_hourly` + where + ` GROUP BY protocol_id ORDER BY SUM(up_bytes+down_bytes) DESC`
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
