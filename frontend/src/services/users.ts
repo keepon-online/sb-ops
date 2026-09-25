@@ -53,8 +53,11 @@ export const usersApi = {
     method: 'POST', body: JSON.stringify({ ids, ...input })
   }),
   listDevices: (id: string) => managementRequest<components['schemas']['ResourceDeviceList']>(userPath(id, '/devices')),
-  updateDevice: (id: string, did: string, enabled: boolean) => managementRequest<void>(userPath(id, `/devices/${encodeURIComponent(did)}`), {
-    method: 'PATCH', body: JSON.stringify({ enabled })
+  createDevice: (id: string, name: string) => managementRequest<components['schemas']['ResourceDeviceMutationResponse']>(userPath(id, '/devices'), {
+    method: 'POST', body: JSON.stringify({ name })
+  }),
+  updateDevice: (id: string, did: string, input: components['schemas']['ResourceDeviceUpdateRequest']) => managementRequest<void>(userPath(id, `/devices/${encodeURIComponent(did)}`), {
+    method: 'PATCH', body: JSON.stringify(input)
   }),
   deleteDevice: (id: string, did: string) => managementRequest<void>(userPath(id, `/devices/${encodeURIComponent(did)}`), {
     method: 'DELETE'

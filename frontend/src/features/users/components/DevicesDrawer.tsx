@@ -1,6 +1,6 @@
-import { AndroidOutlined, AppleOutlined, BarChartOutlined, DeleteOutlined, DesktopOutlined, EyeInvisibleOutlined, EyeOutlined, KeyOutlined, LinkOutlined, QrcodeOutlined, ReloadOutlined } from '@ant-design/icons';
+import { AndroidOutlined, AppleOutlined, BarChartOutlined, DeleteOutlined, DesktopOutlined, EyeInvisibleOutlined, EyeOutlined, KeyOutlined, LinkOutlined, PlusOutlined, QrcodeOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { App as AntApp, Button, Descriptions, Drawer, Empty, Modal, Popconfirm, Progress, QRCode, Space, Switch, Tag, Tooltip, Typography } from 'antd';
+import { App as AntApp, Button, Descriptions, Drawer, Empty, Input, Modal, Popconfirm, Progress, QRCode, Space, Switch, Tag, Tooltip, Typography } from 'antd';
 import { useState } from 'react';
 import { ApiError } from '../../../services/http';
 import { queryClient } from '../../../services/queryClient';
@@ -127,6 +127,8 @@ export function DevicesDrawer({ user, onClose }: { user: ResourceUser | null; on
   const [qrDevice, setQrDevice] = useState<string>();
   const [credential, setCredential] = useState<IssuedCredential | null>(null);
   const [maskIpEnabled, setMaskIpEnabled] = useState(true);
+  const [addingDevice, setAddingDevice] = useState(false);
+  const [newDeviceName, setNewDeviceName] = useState('');
 
   const devices = useQuery({
     queryKey: ['resources', 'users', user?.id, 'devices'],
@@ -144,11 +146,27 @@ export function DevicesDrawer({ user, onClose }: { user: ResourceUser | null; on
       description: error instanceof ApiError && error.requestId ? `请求 ID：${error.requestId}` : undefined
     });
   };
-  const afterWrite = () => { void refresh(); }
+  const afterWrite = () => { void refresh(); };
 
+  const create = useMutation({
+    mutationFn: (name: string) => usersApi.createDevice(user!.id, name),
+    onSuccess: (result) => {
+      afterWrite();
+      setAddingDevice(false);
+      setNewDeviceName('');
+      setCredential(result.credential);
+      message.success('设备添加成功');
+    },
+    onError: reportError
+  });
   const toggle = useMutation({
-    mutationFn: (device: ResourceDevice) => usersApi.updateDevice(user!.id, device.id, !device.enabled),
+    mutationFn: (device: ResourceDevice) => usersApi.updateDevice(user!.id, device.id, { enabled: !device.enabled }),
     onSuccess: () => { afterWrite(); message.success('设备状态已更新'); },
+    onError: reportError
+  });
+  const rename = useMutation({
+    mutationFn: ({ device, name }: { device: ResourceDevice; name: string }) => usersApi.updateDevice(user!.id, device.id, { name }),
+    onSuccess: () => { afterWrite(); message.success('设备名称已更新'); },
     onError: reportError
   });
   const rotate = useMutation({
@@ -186,10 +204,45 @@ export function DevicesDrawer({ user, onClose }: { user: ResourceUser | null; on
             <Descriptions.Item label="密码"><Typography.Text code copyable>{credential.password}</Typography.Text></Descriptions.Item>
           </Descriptions>
           <Typography.Text type="secondary" style={{ display: 'block', marginTop: 12 }}>
-            设备凭据已更新。请继续使用上方用户级订阅链接，客户端会按来源自动归入设备。
+            设备专属凭据已签发。请在下方设备列表复制该设备的专属订阅直链导入客户端；上方通用链接无法归入此设备。
           </Typography.Text>
         </>
       ) : null}
+    </Modal>
+    <Modal
+      title="添加设备"
+      width={480}
+      open={addingDevice}
+      destroyOnHidden
+      onCancel={() => setAddingDevice(false)}
+      onOk={() => {
+        const trimmed = newDeviceName.trim();
+        if (!trimmed) {
+          message.error('请输入设备名称');
+          return;
+        }
+        create.mutate(trimmed);
+      }}
+      confirmLoading={create.isPending}
+      okText="添加并签发凭据"
+      cancelText="取消"
+    >
+      <div style={{ marginTop: 8 }}>
+        <Typography.Text type="secondary" style={{ fontSize: 13, display: 'block', marginBottom: 12 }}>
+          手动添加独立设备行。用于多台同款客户端（如多台 Clash Verge）无法通过自动发现拆分的场景。添加后请复制该设备的专属直链导入客户端。
+        </Typography.Text>
+        <Input
+          placeholder="例如：书房 · Verge、电信本"
+          value={newDeviceName}
+          maxLength={64}
+          autoFocus
+          onChange={(e) => setNewDeviceName(e.target.value)}
+          onPressEnter={() => {
+            const trimmed = newDeviceName.trim();
+            if (trimmed) create.mutate(trimmed);
+          }}
+        />
+      </div>
     </Modal>
     <Drawer
       title={`${user.name} 的设备`}
@@ -198,6 +251,15 @@ export function DevicesDrawer({ user, onClose }: { user: ResourceUser | null; on
       destroyOnClose
       onClose={onClose}
       extra={<Space size={8}>
+        <Button
+          size="small"
+          type="primary"
+          icon={<PlusOutlined />}
+          disabled={Boolean(devices.data && devices.data.items.length >= devices.data.maxDevices)}
+          onClick={() => { setNewDeviceName(''); setAddingDevice(true); }}
+        >
+          添加设备
+        </Button>
         <Tooltip title={maskIpEnabled ? '点击查看完整 IP' : '点击脱敏隐藏 IP'}>
           <Button
             size="small"
@@ -255,11 +317,25 @@ export function DevicesDrawer({ user, onClose }: { user: ResourceUser | null; on
             <div className="page-toolbar">
               <Space size={8} wrap>
                 {platformIcon(device.platform || 'unknown')}
-                <Typography.Text strong>{maskDeviceName(device.name, maskIpEnabled)}</Typography.Text>
+                <Typography.Text
+                  strong
+                  editable={{
+                    text: device.name,
+                    tooltip: '点击重命名设备',
+                    onChange: (val) => {
+                      const trimmed = val.trim();
+                      if (trimmed && trimmed !== device.name) {
+                        rename.mutate({ device, name: trimmed });
+                      }
+                    }
+                  }}
+                >
+                  {maskDeviceName(device.name, maskIpEnabled)}
+                </Typography.Text>
                 <Tag>{platformLabels[device.platform] || '未知平台'}</Tag>
                 {device.client ? <Tag color="processing">{device.client}{formatClientVersion(device.clientVersion) ? ` ${formatClientVersion(device.clientVersion)}` : ''}</Tag> : null}
                 {device.enabled ? <Tag color="success">启用</Tag> : <Tag>已停用</Tag>}
-                {device.auto ? <Tooltip title="由订阅链接按客户端类型自动创建，流量自动归入此设备"><Tag color="processing" bordered={false}>自动发现</Tag></Tooltip> : null}
+                {device.auto ? <Tooltip title="由订阅链接按客户端类型自动创建，流量自动归入此设备"><Tag color="processing" bordered={false}>自动发现</Tag></Tooltip> : <Tag color="warning" bordered={false}>手动添加</Tag>}
                 {device.sourceIp ? (
                   <Tooltip title={maskIpEnabled ? '点击查看完整 IP 地址' : '点击脱敏隐藏 IP 地址'}>
                     <Tag
@@ -286,9 +362,46 @@ export function DevicesDrawer({ user, onClose }: { user: ResourceUser | null; on
                 </Popconfirm>
               </Space>
             </div>
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              设备凭据由用户订阅链接自动匹配，设备本身不再单独展示订阅链接。
-            </Typography.Text>
+            <div style={{ background: 'var(--subtle-background, rgba(0, 0, 0, 0.02))', padding: '6px 10px', borderRadius: 4, marginTop: 4 }}>
+              <div className="page-toolbar" style={{ marginBottom: 2 }}>
+                <Space size={4} wrap>
+                  <LinkOutlined style={{ fontSize: 12 }} />
+                  <Typography.Text strong style={{ fontSize: 12 }}>专属订阅直链</Typography.Text>
+                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                    {device.auto ? '（固定绑定此设备）' : '（手动设备请用此直链导入）'}
+                  </Typography.Text>
+                </Space>
+              </div>
+              {subscriptionFormats.map((format) => {
+                const rawDevUrl = subscriptionUrl(device.token || '', format, devices.data?.subscriptionBaseUrl);
+                const displayDevUrl = maskSubscriptionUrl(rawDevUrl, maskIpEnabled);
+                const qrKey = `device-${device.id}-${format}`;
+                return (
+                  <div key={format}>
+                    <Space size={4} wrap>
+                      <Typography.Text copyable={{ text: rawDevUrl }} ellipsis style={{ maxWidth: 360, fontSize: 12 }}>
+                        {displayDevUrl}
+                      </Typography.Text>
+                      <Button
+                        type="text"
+                        size="small"
+                        icon={<QrcodeOutlined />}
+                        aria-label={`设备 ${device.name} ${format} 二维码`}
+                        onClick={() => setQrDevice((current) => current === qrKey ? undefined : qrKey)}
+                      />
+                    </Space>
+                    {qrDevice === qrKey ? (
+                      <Space direction="vertical" align="center" size={4} style={{ width: '100%', padding: '8px 0' }}>
+                        <QRCode value={maskIpEnabled ? maskSubscriptionUrl(rawDevUrl, true) : rawDevUrl} size={130} bordered={false} />
+                        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                          {maskIpEnabled ? '当前为脱敏预览，点击“显示 IP”后二维码才可导入' : '用客户端扫码后导入此设备专属订阅'}
+                        </Typography.Text>
+                      </Space>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         ))}
       </Space>

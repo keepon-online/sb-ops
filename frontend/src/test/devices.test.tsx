@@ -16,6 +16,10 @@ vi.mock('../services/users', () => ({
         { id: 'd2', name: '手机', enabled: false, usedBytes: 1024, token: 'token-two', uuid: 'u2', auto: true, platform: 'android', client: 'Clash Meta Android', clientVersion: 'v2.11.5', lastSeenAt: null, rotatedAt: '2026-08-18T00:00:00Z', createdAt: '2026-08-10T00:00:00Z' }
       ]
     })),
+    createDevice: vi.fn(() => Promise.resolve({
+      device: { id: 'd3', name: '新设备', enabled: true, usedBytes: 0, token: 'token-three', uuid: 'u3', auto: false, platform: 'unknown', client: '', clientVersion: '', rotatedAt: '2026-08-18T00:00:00Z', createdAt: '2026-08-18T00:00:00Z' },
+      credential: { deviceId: 'd3', token: 'token-three', uuid: 'u3', password: 'p3' }
+    })),
     updateDevice: vi.fn(() => Promise.resolve()),
     deleteDevice: vi.fn(() => Promise.resolve()),
     rotateDevice: vi.fn(() => Promise.resolve({ device: {}, credential: { deviceId: 'd1', token: 't9', uuid: 'u9', password: 'p9' } }))
@@ -45,12 +49,12 @@ function renderDrawer() {
 describe('devices drawer', () => {
   afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
-  it('lists devices with usage and state, while keeping one user link', async () => {
+  it('lists devices with usage and state, while keeping one user link and dedicated device links', async () => {
     renderDrawer();
     expect(await screen.findByText('alice 的设备')).toBeInTheDocument();
     expect((await screen.findAllByText('默认设备')).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('用户订阅链接')).toBeInTheDocument();
-    expect(screen.getByText('http://***/subscribe/****************/clash.yaml')).toBeInTheDocument();
+    expect(screen.getAllByText('http://***/subscribe/****************/clash.yaml').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('设备流量统计')).toBeInTheDocument();
     expect(screen.getByText('用户累计 3.0 KB')).toBeInTheDocument();
     expect(screen.getByText('67%')).toBeInTheDocument();
@@ -66,9 +70,8 @@ describe('devices drawer', () => {
     expect(screen.getByText('已用 2.0 KB')).toBeInTheDocument();
     expect(screen.getByText('已用 1.0 KB')).toBeInTheDocument();
     expect(screen.getByText('导入后按客户端与来源网络自动识别，最多 10 台')).toBeInTheDocument();
-    expect(screen.queryByText('http://localhost/subscribe/token-one/clash.yaml')).not.toBeInTheDocument();
-    expect(screen.queryByText('http://localhost/subscribe/token-two/clash.yaml')).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /添加设备/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /添加设备/ })).toBeInTheDocument();
+    expect(screen.getAllByText('专属订阅直链').length).toBe(2);
   });
 
   it('masks IP addresses and subscription URLs correctly with helper functions', () => {
@@ -94,18 +97,20 @@ describe('devices drawer', () => {
     const toggleBtn = screen.getByRole('button', { name: '显示完整 IP' });
     expect(toggleBtn).toBeInTheDocument();
     expect(toggleBtn).toHaveTextContent('显示 IP');
-    expect(screen.getByText('http://***/subscribe/****************/clash.yaml')).toBeInTheDocument();
+    expect(screen.getAllByText('http://***/subscribe/****************/clash.yaml').length).toBeGreaterThanOrEqual(1);
 
     // Click to reveal full IP and subscription link
     fireEvent.click(toggleBtn);
     expect(screen.getByRole('button', { name: '隐藏 IP' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '隐藏 IP' })).toHaveTextContent('隐藏 IP');
     expect(screen.getByText('http://localhost/subscribe/user-link-token/clash.yaml')).toBeInTheDocument();
+    expect(screen.getByText('http://localhost/subscribe/token-one/clash.yaml')).toBeInTheDocument();
+    expect(screen.getByText('http://localhost/subscribe/token-two/clash.yaml')).toBeInTheDocument();
 
     // Click again to hide
     fireEvent.click(screen.getByRole('button', { name: '隐藏 IP' }));
     expect(screen.getByRole('button', { name: '显示完整 IP' })).toBeInTheDocument();
-    expect(screen.getByText('http://***/subscribe/****************/clash.yaml')).toBeInTheDocument();
+    expect(screen.getAllByText('http://***/subscribe/****************/clash.yaml').length).toBeGreaterThanOrEqual(1);
   });
 
   it('uses subscriptionBaseUrl when provided by API', async () => {
