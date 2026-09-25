@@ -526,3 +526,111 @@ func TestBatchProtocolsModes(t *testing.T) {
 		t.Fatal("invalid mode must be rejected")
 	}
 }
+
+func TestManualDeviceAndRename(t *testing.T) {
+	store := newTestStore(t)
+	svc := NewService(store)
+	ctx := t.Context()
+	user, _, err := svc.Create(ctx, CreateInput{Name: "bob", Enabled: true})
+	if err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+
+	// 1. 手动添加设备：ua_key 为空，Auto 为 false，生成独立凭据。
+	dev, cred, err := svc.CreateDevice(ctx, user.ID, "书房 · Verge")
+	if err != nil {
+		t.Fatalf("create device: %v", err)
+	}
+	if dev.Name != "书房 · Verge" || dev.Auto != false || !dev.Enabled || dev.Token == "" || cred.Token == "" {
+		t.Fatalf("invalid created device: %+v, cred: %+v", dev, cred)
+	}
+	if dev.Token != cred.Token || dev.UUID != cred.UUID {
+		t.Fatalf("token mismatch: dev=%q cred=%q", dev.Token, cred.Token)
+	}
+
+	// 2. 空名称校验。
+	if _, _, err := svc.CreateDevice(ctx, user.ID, "   "); err == nil {
+		t.Fatal("empty device name should fail")
+	}
+
+	// 3. 重复名称冲突 UNIQUE(user_id, name)。
+	if _, _, err := svc.CreateDevice(ctx, user.ID, "书房 · Verge"); err != common.ErrDuplicate {
+		t.Fatalf("duplicate device name should return ErrDuplicate, got %v", err)
+	}
+
+	// 4. 重命名设备与改状态。
+	newName := "客厅 · Verge"
+	disabled := false
+	updated, err := svc.UpdateDevice(ctx, user.ID, dev.ID, &newName, &disabled)
+	if err != nil {
+		t.Fatalf("update device: %v", err)
+	}
+	if updated.Name != "客厅 · Verge" || updated.Enabled != false || updated.Auto != false {
+		t.Fatalf("unexpected updated device: %+v", updated)
+	}
+
+	// 5. 校验 FindDeviceByID 能正确反映 Auto=false 与更新后的属性。
+	found, ok, err := svc.FindDeviceByID(ctx, user.ID, dev.ID)
+	if err != nil || !ok {
+		t.Fatalf("find device: ok=%v err=%v", ok, err)
+	}
+	if found.Name != "客厅 · Verge" || found.Enabled != false || found.Auto != false {
+		t.Fatalf("found mismatch: %+v", found)
+	}
+
+	// 6. 达到上限（MaxDevicesPerUser = 10）校验。
+	for i := 2; i <= MaxDevicesPerUser; i++ {
+		_, _, err := svc.CreateDevice(ctx, user.ID, fmt.Sprintf("设备 %d", i))
+		if err != nil {
+			t.Fatalf("create device %d: %v", i, err)
+		}
+	}
+	if _, _, err := svc.CreateDevice(ctx, user.ID, "超出上限设备"); err == nil {
+		t.Fatal("creating device exceeding MaxDevicesPerUser should fail")
+	}
+}
+
+func TestClaimDevicePreservesManualName(t *testing.T) {
+	store := newTestStore(t)
+	svc := NewService(store)
+	ctx := t.Context()
+	user, _, err := svc.Create(ctx, CreateInput{Name: "carol", Enabled: true})
+	if err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+	manual, _, err := svc.CreateDevice(ctx, user.ID, "书房 · Verge")
+	if err != nil {
+		t.Fatalf("create manual device: %v", err)
+	}
+
+	// ETag 锚定把用户级链接的拉取认领到手动行：名称保持，元数据回填。
+	claimed, ok, err := svc.ClaimDevice(ctx, user.ID, manual.ID, "Clash Verge", DeviceMetadata{
+		Platform: "unknown", Client: "Clash Verge", ClientVersion: "2.5.5", SourceIP: "203.0.113.10",
+	})
+	if err != nil || !ok {
+		t.Fatalf("claim manual device: ok=%v err=%v", ok, err)
+	}
+	if claimed.Name != "书房 · Verge" {
+		t.Fatalf("manual device name must be preserved, got %q", claimed.Name)
+	}
+	devices, err := svc.ListDevices(ctx, user.ID)
+	if err != nil || len(devices) != 1 {
+		t.Fatalf("list devices: err=%v count=%d", err, len(devices))
+	}
+	if devices[0].Client != "Clash Verge" || devices[0].ClientVersion != "2.5.5" || devices[0].SourceIP != "203.0.113.10" {
+		t.Fatalf("claim must still backfill metadata: %+v", devices[0])
+	}
+
+	// 对照：自动发现设备被认领时仍按新来源地址自动改名。
+	auto, _, found, err := svc.DeviceForKey(ctx, user.ID, "clashverge", "Clash Verge", DeviceMetadata{SourceIP: "198.51.100.10"})
+	if err != nil || !found {
+		t.Fatalf("auto device: found=%v err=%v", found, err)
+	}
+	roamed, ok, err := svc.ClaimDevice(ctx, user.ID, auto.ID, "Clash Verge", DeviceMetadata{SourceIP: "203.0.113.99"})
+	if err != nil || !ok {
+		t.Fatalf("claim auto device: ok=%v err=%v", ok, err)
+	}
+	if roamed.Name != "Clash Verge · 203.0.113.99" {
+		t.Fatalf("auto device should be renamed on claim, got %q", roamed.Name)
+	}
+}

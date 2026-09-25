@@ -644,8 +644,14 @@ WHERE id=? AND user_id=? AND (source_ip<>? OR last_seen_at IS NULL OR last_seen_
 // IP changed. A name collision under UNIQUE(user_id, name) surfaces as an
 // error the caller may ignore; the metadata update still applies.
 func (s *Store) RenameDevice(ctx context.Context, userID, deviceID, name string) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE devices SET name=? WHERE id=? AND user_id=?`, name, deviceID, userID)
-	return err
+	result, err := s.db.ExecContext(ctx, `UPDATE devices SET name=? WHERE id=? AND user_id=?`, name, deviceID, userID)
+	if err != nil {
+		return common.MapSQLiteError(err)
+	}
+	if changed, _ := result.RowsAffected(); changed == 0 {
+		return common.ErrNotFound
+	}
+	return nil
 }
 
 // UnknownPlatformDeviceRef identifies a device whose platform has not been
@@ -745,7 +751,8 @@ func (s *Store) FindDeviceByUAKey(ctx context.Context, userID, uaKey, sourceIP s
 func (s *Store) FindDeviceByID(ctx context.Context, userID, deviceID string) (Device, bool, error) {
 	var device Device
 	var enabled int
-	err := s.db.QueryRowContext(ctx, `SELECT id,name,enabled FROM devices WHERE id=? AND user_id=?`, deviceID, userID).Scan(&device.ID, &device.Name, &enabled)
+	var uaKey string
+	err := s.db.QueryRowContext(ctx, `SELECT id,name,enabled,ua_key FROM devices WHERE id=? AND user_id=?`, deviceID, userID).Scan(&device.ID, &device.Name, &enabled, &uaKey)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Device{}, false, nil
 	}
@@ -753,7 +760,7 @@ func (s *Store) FindDeviceByID(ctx context.Context, userID, deviceID string) (De
 		return Device{}, false, err
 	}
 	device.Enabled = enabled != 0
-	device.Auto = true
+	device.Auto = uaKey != ""
 	return device, true, nil
 }
 
@@ -772,16 +779,36 @@ WHERE id=? AND user_id=?`, device.TokenHash, device.TokenCiphertext, device.UUID
 	return nil
 }
 
-// SetDeviceEnabled toggles one device.
-func (s *Store) SetDeviceEnabled(ctx context.Context, userID, deviceID string, enabled bool) error {
-	result, err := s.db.ExecContext(ctx, `UPDATE devices SET enabled=? WHERE id=? AND user_id=?`, enabled, deviceID, userID)
+// UpdateDevice applies partial updates (name and/or enabled) to a device.
+func (s *Store) UpdateDevice(ctx context.Context, userID, deviceID string, name *string, enabled *bool) error {
+	var sets []string
+	var args []any
+	if name != nil {
+		sets = append(sets, "name=?")
+		args = append(args, *name)
+	}
+	if enabled != nil {
+		sets = append(sets, "enabled=?")
+		args = append(args, *enabled)
+	}
+	if len(sets) == 0 {
+		return nil
+	}
+	args = append(args, deviceID, userID)
+	query := "UPDATE devices SET " + strings.Join(sets, ",") + " WHERE id=? AND user_id=?"
+	result, err := s.db.ExecContext(ctx, query, args...)
 	if err != nil {
-		return err
+		return common.MapSQLiteError(err)
 	}
 	if changed, _ := result.RowsAffected(); changed == 0 {
 		return common.ErrNotFound
 	}
 	return nil
+}
+
+// SetDeviceEnabled toggles one device.
+func (s *Store) SetDeviceEnabled(ctx context.Context, userID, deviceID string, enabled bool) error {
+	return s.UpdateDevice(ctx, userID, deviceID, nil, &enabled)
 }
 
 // DeleteDevice removes one device; its subscription token dies with the row.

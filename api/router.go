@@ -111,6 +111,7 @@ func RegisterRoutes(router *gin.Engine, dependencies Dependencies) {
 
 		devices := authenticated.Group("/users/:id/devices")
 		devices.GET("", h.listUserDevices)
+		devices.POST("", h.createUserDevice)
 		devices.PATCH("/:did", h.updateUserDevice)
 		devices.DELETE("/:did", h.deleteUserDevice)
 		devices.POST("/:did/credentials/rotate", h.rotateUserDevice)

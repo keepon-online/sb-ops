@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"strings"
 	"time"
 
@@ -252,9 +253,13 @@ func (s *Service) ClaimDevice(ctx context.Context, userID, deviceID, label strin
 			label = label[:idx]
 		}
 	}
-	if name := autoDeviceName(label, metadata.SourceIP); name != existing.Name && normalizeSourceIP(metadata.SourceIP) != "" {
-		if renameErr := s.store.RenameDevice(ctx, userID, existing.ID, name); renameErr == nil {
-			existing.Name = name
+	// 自动改名只适用于自动发现设备；手动行的名称由管理员指定，即便经
+	// ETag 锚定被用户级链接认领也保持原名（元数据照常回填）。
+	if existing.Auto {
+		if name := autoDeviceName(label, metadata.SourceIP); name != existing.Name && normalizeSourceIP(metadata.SourceIP) != "" {
+			if renameErr := s.store.RenameDevice(ctx, userID, existing.ID, name); renameErr == nil {
+				existing.Name = name
+			}
 		}
 	}
 	_ = s.store.UpdateDeviceMetadata(ctx, userID, existing.ID, metadata, 5*time.Minute)
@@ -306,10 +311,74 @@ func (s *Service) UpdateDeviceMetadata(ctx context.Context, userID, deviceID str
 	return s.store.UpdateDeviceMetadata(ctx, userID, deviceID, metadata, 5*time.Minute)
 }
 
+// CreateDevice manually provisions an independent device for the user.
+// Unlike auto-discovered devices, its ua_key is empty so it is never claimed
+// or collapsed by UA fingerprinting.
+func (s *Service) CreateDevice(ctx context.Context, userID, name string) (Device, IssuedCredential, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return Device{}, IssuedCredential{}, &common.ValidationError{Fields: map[string]string{"name": "设备名称不能为空"}}
+	}
+	if _, err := s.store.Get(ctx, userID); err != nil {
+		return Device{}, IssuedCredential{}, err
+	}
+	count, err := s.store.CountDevices(ctx, userID)
+	if err != nil {
+		return Device{}, IssuedCredential{}, err
+	}
+	if count >= MaxDevicesPerUser {
+		return Device{}, IssuedCredential{}, &common.ValidationError{Fields: map[string]string{"name": fmt.Sprintf("设备数量已达上限（最多 %d 台）", MaxDevicesPerUser)}}
+	}
+	now := s.now()
+	issued, stored, err := s.issueDevice(ctx, userID, name, "", now)
+	if err != nil {
+		return Device{}, IssuedCredential{}, err
+	}
+	stored.Platform = "unknown"
+	if err := s.store.insertDevice(ctx, stored); err != nil {
+		return Device{}, IssuedCredential{}, err
+	}
+	device := Device{
+		ID:        stored.ID,
+		Name:      name,
+		Enabled:   true,
+		Auto:      false,
+		Platform:  stored.Platform,
+		UUID:      issued.UUID,
+		Token:     issued.Token,
+		RotatedAt: now,
+		CreatedAt: now,
+	}
+	return device, issued, nil
+}
+
+// UpdateDevice modifies a device's name and/or enabled state.
+func (s *Service) UpdateDevice(ctx context.Context, userID, deviceID string, name *string, enabled *bool) (Device, error) {
+	if name != nil {
+		trimmed := strings.TrimSpace(*name)
+		if trimmed == "" {
+			return Device{}, &common.ValidationError{Fields: map[string]string{"name": "设备名称不能为空"}}
+		}
+		name = &trimmed
+	}
+	if err := s.store.UpdateDevice(ctx, userID, deviceID, name, enabled); err != nil {
+		return Device{}, err
+	}
+	device, ok, err := s.store.FindDeviceByID(ctx, userID, deviceID)
+	if err != nil {
+		return Device{}, err
+	}
+	if !ok {
+		return Device{}, common.ErrNotFound
+	}
+	return device, nil
+}
+
 // SetDeviceEnabled enables/disables one device (disabled devices are dropped
 // from inbounds and their links serve a placeholder).
 func (s *Service) SetDeviceEnabled(ctx context.Context, userID, deviceID string, enabled bool) error {
-	return s.store.SetDeviceEnabled(ctx, userID, deviceID, enabled)
+	_, err := s.UpdateDevice(ctx, userID, deviceID, nil, &enabled)
+	return err
 }
 
 // DeleteDevice removes one device entirely.

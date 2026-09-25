@@ -272,7 +272,8 @@ export interface paths {
         /** List a user's devices with decrypted subscription tokens */
         get: operations["listUserDevices"];
         put?: never;
-        post?: never;
+        /** Manually create an independent device for a user */
+        post: operations["createUserDevice"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1596,8 +1597,14 @@ export interface components {
             /** @description Base URL for subscription links. */
             subscriptionBaseUrl?: string;
         };
+        ResourceCreateDeviceRequest: {
+            /** @description Device name */
+            name: string;
+        };
         ResourceDeviceUpdateRequest: {
-            enabled: boolean;
+            /** @description New device name */
+            name?: string;
+            enabled?: boolean;
         };
         ResourceDeviceMutationResponse: {
             device: components["schemas"]["ResourceDevice"];
@@ -3405,6 +3412,38 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    createUserDevice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Subscription user UUID */
+                id: components["parameters"]["UserId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResourceCreateDeviceRequest"];
+            };
+        };
+        responses: {
+            /** @description Device created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResourceDeviceMutationResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     deleteUserDevice: {
