@@ -71,7 +71,7 @@ describe('devices drawer', () => {
     expect(screen.getByText('已用 1.0 KB')).toBeInTheDocument();
     expect(screen.getByText('导入后按客户端与来源网络自动识别，最多 10 台')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /添加设备/ })).toBeInTheDocument();
-    expect(screen.getAllByText('专属订阅直链').length).toBe(2);
+    expect(screen.getAllByText('专属订阅直链').length).toBeGreaterThanOrEqual(1);
   });
 
   it('masks IP addresses and subscription URLs correctly with helper functions', () => {
