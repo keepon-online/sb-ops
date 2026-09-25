@@ -744,11 +744,11 @@ func TestCompileRendersTCPListenOptionsAndHysteriaOptions(t *testing.T) {
 		inbound := raw.(map[string]any)
 		byTag[inbound["tag"].(string)] = inbound
 	}
-	vless := byTag["vless-vless"]
+	vless := byTag["vless"]
 	if vless == nil || vless["tcp_fast_open"] != true || vless["tcp_keep_alive"] != "15s" || vless["tcp_keep_alive_interval"] != "15s" {
 		t.Fatalf("vless tcp listen options = %#v", vless)
 	}
-	hy2 := byTag["hysteria2-hysteria2"]
+	hy2 := byTag["hysteria2"]
 	if hy2 == nil || hy2["ignore_client_bandwidth"] != true {
 		t.Fatalf("hy2 ignore_client_bandwidth = %#v", hy2)
 	}

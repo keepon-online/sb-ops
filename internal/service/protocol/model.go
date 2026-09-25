@@ -40,7 +40,11 @@ func (p Protocol) InboundTag() string {
 	if slug == "" {
 		slug = p.ID
 	}
-	return string(p.Type) + "-" + slug
+	prefix := string(p.Type)
+	if slug == prefix || strings.HasPrefix(slug, prefix+"-") {
+		return slug
+	}
+	return prefix + "-" + slug
 }
 
 func slugify(value string) string {

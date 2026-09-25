@@ -118,3 +118,51 @@ func TestSchemaForClonesCertificateRequiredWhen(t *testing.T) {
 		}
 	}
 }
+
+func TestProtocolInboundTagDeduplication(t *testing.T) {
+	cases := []struct {
+		name     string
+		proto    Protocol
+		expected string
+	}{
+		{
+			name:     "already prefixed with type and dash",
+			proto:    Protocol{Type: TypeVLESS, Name: "vless-grpc-reality"},
+			expected: "vless-grpc-reality",
+		},
+		{
+			name:     "exact type match",
+			proto:    Protocol{Type: TypeShadowsocks, Name: "shadowsocks"},
+			expected: "shadowsocks",
+		},
+		{
+			name:     "vmess prefixed",
+			proto:    Protocol{Type: TypeVMess, Name: "vmess-ws"},
+			expected: "vmess-ws",
+		},
+		{
+			name:     "no prefix gets type prepended",
+			proto:    Protocol{Type: TypeVLESS, Name: "grpc-reality"},
+			expected: "vless-grpc-reality",
+		},
+		{
+			name:     "hysteria2 short name gets type prepended",
+			proto:    Protocol{Type: TypeHysteria2, Name: "h2"},
+			expected: "hysteria2-h2",
+		},
+		{
+			name:     "empty name falls back to ID with prefix",
+			proto:    Protocol{Type: TypeTrojan, ID: "proto-123"},
+			expected: "trojan-proto-123",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := tc.proto.InboundTag()
+			if got != tc.expected {
+				t.Fatalf("InboundTag() = %q, want %q", got, tc.expected)
+			}
+		})
+	}
+}

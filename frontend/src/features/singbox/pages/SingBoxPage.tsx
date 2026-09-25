@@ -144,6 +144,17 @@ const tabGroups: Array<{ key: string; label: string; tabs: string[] }> = [
   { key: 'config', label: '配置与路由', tabs: ['base', 'dns', 'outbounds', 'routes', 'rulesets', 'argo'] }
 ];
 
+export function formatInboundTag(tag?: string): string {
+  if (!tag) return '';
+  const types = ['vless', 'vmess', 'hysteria2', 'tuic', 'shadowsocks', 'trojan', 'anytls'];
+  for (const t of types) {
+    if (tag === `${t}-${t}`) return t;
+    if (tag.startsWith(`${t}-${t}-`)) return `${t}-${tag.slice(`${t}-${t}-`.length)}`;
+  }
+  return tag;
+}
+
+
 export function SingBoxPage() {
   const { message, notification } = AntApp.useApp();
   const location = useLocation();
@@ -642,25 +653,75 @@ export function SingBoxPage() {
   const connectionColumns: ColumnsType<SingBoxConnection> = [
     {
       title: '目标地址 (Host:Port)',
-      render: (_, value) => (
-        <Typography.Text code style={{ fontSize: 12 }}>
-          {value.host ? `${value.host}${value.port ? `:${value.port}` : ''}` : '-'}
-        </Typography.Text>
-      )
+      width: 240,
+      render: (_, value) => {
+        const text = value.host ? `${value.host}${value.port ? `:${value.port}` : ''}` : '-';
+        return (
+          <Tooltip title={text} placement="topLeft">
+            <Typography.Text
+              code
+              style={{
+                fontSize: 12,
+                maxWidth: 220,
+                display: 'inline-block',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              {text}
+            </Typography.Text>
+          </Tooltip>
+        );
+      }
     },
     {
       title: '链路流向',
-      render: (_, value) => (
-        <Space size={4}>
-          <Tag style={{ margin: 0, fontSize: 11 }}>入: {value.inbound || '未知'}</Tag>
-          <ArrowRightOutlined style={{ fontSize: 10, color: 'var(--text-secondary)' }} />
-          <Tag color="processing" style={{ margin: 0, fontSize: 11 }}>出: {value.outbound || '未知'}</Tag>
-        </Space>
-      )
+      width: 320,
+      render: (_, value) => {
+        const rawInbound = value.inbound || '';
+        const displayInbound = formatInboundTag(rawInbound) || '未知';
+        const outbound = value.outbound || '未知';
+        return (
+          <Space size={4} wrap={false} style={{ maxWidth: 300, display: 'inline-flex', alignItems: 'center' }}>
+            <Tooltip title={rawInbound && rawInbound !== displayInbound ? `入站：${displayInbound} (${rawInbound})` : `入站：${displayInbound}`} placement="topLeft">
+              <Tag
+                style={{
+                  margin: 0,
+                  fontSize: 11,
+                  maxWidth: 135,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                入: {displayInbound}
+              </Tag>
+            </Tooltip>
+            <ArrowRightOutlined style={{ fontSize: 10, color: 'var(--text-secondary)', flexShrink: 0 }} />
+            <Tooltip title={`出站：${outbound}`} placement="topLeft">
+              <Tag
+                color="processing"
+                style={{
+                  margin: 0,
+                  fontSize: 11,
+                  maxWidth: 135,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                出: {outbound}
+              </Tag>
+            </Tooltip>
+          </Space>
+        );
+      }
     },
     {
       title: '命中规则',
       dataIndex: 'rule',
+      width: 220,
       render: (value?: string) => {
         if (!value) return <Text type="secondary">默认出口</Text>;
         // 内核串形如 "domain_suffix=[a b c...] => route(tag)"：出站已在「链路流向」列展示，
@@ -672,8 +733,12 @@ export function SingBoxPage() {
             <Tag
               color="default"
               style={{
-                margin: 0, maxWidth: 240, fontSize: 11,
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                margin: 0,
+                maxWidth: 200,
+                fontSize: 11,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
                 fontFamily: "'JetBrains Mono', ui-monospace, monospace"
               }}
             >
@@ -685,8 +750,9 @@ export function SingBoxPage() {
     },
     {
       title: '流量 (上行 / 下行)',
+      width: 170,
       render: (_, value) => (
-        <Text style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 12 }}>
+        <Text style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 12, whiteSpace: 'nowrap' }}>
           ↑ {formatBytes(value.uploadBytes || 0)} · ↓ {formatBytes(value.downloadBytes || 0)}
         </Text>
       )
@@ -694,7 +760,7 @@ export function SingBoxPage() {
     {
       title: '建立时间',
       dataIndex: 'startedAt',
-      width: 190,
+      width: 180,
       render: (value: string) => value ? (
         <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 13, whiteSpace: 'nowrap' }}>
           {formatDateTime(value)}
@@ -893,7 +959,7 @@ export function SingBoxPage() {
                       style={{ width: 140 }}
                       options={[
                         { value: 'all', label: '全部入站' },
-                        ...inboundList.map((tag) => ({ value: tag, label: `入站: ${tag}` }))
+                        ...inboundList.map((tag) => ({ value: tag, label: `入站: ${formatInboundTag(tag)}` }))
                       ]}
                     />
                     {(connKeyword || connOutboundFilter !== 'all' || connInboundFilter !== 'all') && (
@@ -939,7 +1005,7 @@ export function SingBoxPage() {
                     dataSource={filteredConnections}
                     columns={connectionColumns}
                     pagination={{ pageSize: 20, showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }}
-                    scroll={{ x: 860 }}
+                    scroll={{ x: 1200 }}
                   />
                 ) : (
                   <Alert
