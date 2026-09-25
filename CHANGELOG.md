@@ -2,6 +2,12 @@
 
 本文件记录 sb-ops 的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/)。
 
+## [0.6.7] - 2026-09-25
+
+### 修复
+
+- **入站 tag 去重**：协议名称本身以类型开头时（如「vless-grpc-reality」「shadowsocks」），入站 tag 不再二次拼接类型前缀——此前会产生 `vless-vless`、`shadowsocks-shadowsocks` 这类重复前缀，内核日志与连接页均可见。存量连接页对旧格式 tag 做显示层归一（悬停展示原文）；连接表各列补宽度/省略/悬停，长主机名与规则串不再撑破表格。升级后首次内核同步即切换新 tag；入站行流量按协议 ID 归因，不受改名影响。
+
 ## [0.6.6] - 2026-09-25
 
 ### 变更
