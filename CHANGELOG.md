@@ -2,6 +2,16 @@
 
 本文件记录 sb-ops 的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/)。
 
+## [未发布]
+
+### 变更
+
+- **部署模型调整为 root 运行**：系统管理功能（WARP 客户端安装、warp-cli 直执行）需要真实文件系统与系统命令，systemd 单元去掉 `User=sbops` 与 `NoNewPrivileges`/`ProtectSystem=strict` 加固（会挡住 apt 与 systemctl），保留 `PrivateTmp`；协议端口 ≥1024 的约定不变。单管理员、面板仅监听 127.0.0.1 经 Nginx 暴露的威胁模型下，该权衡与常见单机管理面板一致。部署文档补「从 sbops 用户迁移到 root」步骤；**一键换出口的 sudo -n + sudoers 白名单路径整体退役**（root 下直接执行 warp-cli，409 指引与 `ErrSudoersMissing` 一并移除）。
+
+### 新增
+
+- **WARP 客户端面板纳管**：「系统管理 → WARP 客户端」区块——状态视图（软件包版本 / warp-svc 服务 / 注册 / 连接 / proxy 模式端口 / warp-masque 出站存在性 / 链路判定）+ **一键安装**（后台阶段机：公钥下载 + gpg dearmor + 按发行版代号写 apt 源 + 安装 + 幂等配置序列，进度 Steps 轮询展示）+ **重新配置**（服务自启 / 补注册 / proxy 模式 / 端口 40000 / 连接，幂等修复漂移）+ **创建出站并应用 AI 解锁**（编排既有出站与分流 API，装完两步完成整条 Google 解锁链路，无需 SSH）。执行面为 Go 代码固定命令枚举，不接受任意输入；业务码 4008-4011，审计 `system.warp.install/reconfigure`。
+
 ## [0.6.7] - 2026-09-25
 
 ### 修复

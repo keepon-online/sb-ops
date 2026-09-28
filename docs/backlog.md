@@ -9,6 +9,7 @@
 
 ## 已完成（近期）
 
+- **WARP 客户端面板纳管 + root 部署**（2026-09-25）：系统管理页一键安装/重新配置官方 cloudflare-warp 客户端（阶段机 + 固定命令枚举），换出口去 sudo 化，部署文档 root 化并附迁移步骤。发布后生产需按文档迁移 systemd 单元（root + 去 ProtectSystem）并删除旧 sudoers。
 - **WARP 注册出口预检**（2026-09-24）：注册免费 WARP 身份后即时实测出口 IP 与 Google 判定并随注册响应展示（判 CN 引导改用 warp-masque）；AI 解锁选中 warp (WireGuard) 出站时给适用性提示。免费 wireguard 出站的定位 =「零依赖通用换出口（DC 声誉 / IPv6）」，非 Google 解锁（该场景由 MASQUE 承担）。
 - **WARP 解锁链路一键换出口**（2026-09-24，随下版发布）：`POST /api/v1/system/warp/rotate`（业务码 4006/4007）+ 总览卡片按钮 + sudoers 白名单指引（仅放行 disconnect/connect，`/etc/sudoers.d/sb-ops-warp`，440）+ `system.warp.rotate` 审计；`internal/warphealth.Rotate` 注入 sudo runner（包内不 exec，可测），复测滚动调 Check、终态即时驱动告警与总览；未部署出站 404、sudoers 未放行 409 带配置指引。设计约束：不内嵌 MASQUE 协议实现、面板不做 apt 安装引导、不做全自动换出口（闪断副作用，只做手动按钮）。
 

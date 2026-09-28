@@ -1451,10 +1451,70 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Rotate the WARP MASQUE exit (disconnect + reconnect via sudo warp-cli, then re-probe immediately)
-         * @description Part of the WARP MASQUE unlock chain maintenance: severs and re-establishes the official cloudflare-warp tunnel so Cloudflare may assign a different exit, then polls the health probe until a definitive verdict. The request blocks until the re-probe settles (typically a few seconds, worst case about a minute).
+         * Rotate the WARP MASQUE exit (disconnect + reconnect via warp-cli, then re-probe immediately)
+         * @description Part of the WARP MASQUE unlock chain maintenance: severs and re-establishes the official cloudflare-warp tunnel so Cloudflare may assign a different exit, then polls the health probe until a definitive verdict. The request blocks until the re-probe settles (typically a few seconds, worst case about a minute). The panel runs as root; no sudoers setup is involved.
          */
         post: operations["rotateSystemWarp"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/warp/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * WARP client (cloudflare-warp package) full status view
+         * @description System-side probes (dpkg package presence/version, warp-svc service state, warp-cli registration/connection/mode) combined with panel-side facts (warp-masque outbound existence, latest link verdict) and the installer phase machine. Read-only, no side effects. Individual probe failures surface as false fields rather than errors, so the panel can render on non-root or half-installed hosts.
+         */
+        get: operations["getSystemWarpClientStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/warp/install": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Install the official WARP client in the background (apt repo + package + configure + connect)
+         * @description Kicks off a background phase machine (adding-repo → installing → configuring → done/failed): downloads the Cloudflare apt repo key, dearmors it via gpg, writes the sources entry using the host's release codename, runs apt-get update/install, then applies the idempotent configure sequence (enable warp-svc, register if missing, proxy mode on port 40000, connect). Returns the phase snapshot immediately; progress and failures are observed via the status endpoint. Executed as a fixed command enumeration — the panel must run as root for this to work.
+         */
+        post: operations["installSystemWarpClient"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/warp/reconfigure": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Re-apply the idempotent WARP client configuration sequence
+         * @description Synchronously runs the configure sequence (enable warp-svc, register only when missing, proxy mode on port 40000, connect) and returns the fresh status. Use it to repair a half-configured client (wrong mode, unregistered, disconnected) without reinstalling.
+         */
+        post: operations["reconfigureSystemWarpClient"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2401,6 +2461,38 @@ export interface components {
              * @enum {string}
              */
             exitFamily?: "ipv4" | "ipv6";
+        };
+        /** @description Full status view of the official WARP client (cloudflare-warp package): system-side probes (package/service/registration/connection/mode), panel-side facts (warp-masque outbound existence and the latest link verdict from warphealth), and the installer phase machine. Individual probe failures surface as false fields rather than errors — the panel renders on non-root or half-installed hosts too. */
+        ManagementWarpClientStatus: {
+            installed: boolean;
+            /** @description Package version; present when installed. */
+            version?: string;
+            /** @description warp-svc is active. */
+            serviceActive: boolean;
+            /** @description warp-svc is enabled at boot. */
+            serviceEnabled: boolean;
+            registered: boolean;
+            connected: boolean;
+            /** @description warp-cli mode is WarpProxy (not TUN/Warp). */
+            modeProxy: boolean;
+            /** @description Local SOCKS5 port parsed from settings; 0/absent when not in proxy mode. */
+            proxyPort?: number;
+            /** @description A warp-masque socks outbound exists in the panel. */
+            outboundConfigured: boolean;
+            /**
+             * @description Latest warphealth link verdict; absent before the first successful probe.
+             * @enum {string}
+             */
+            linkVerdict?: "ok" | "proxy-down" | "warp-off" | "misjudged";
+            /** Format: date-time */
+            linkCheckedAt?: string;
+            /**
+             * @description Installer phase machine state.
+             * @enum {string}
+             */
+            phase: "idle" | "adding-repo" | "installing" | "configuring" | "done" | "failed";
+            /** @description Failure reason when phase is failed. */
+            phaseError?: string;
         };
         /** @description Provider-metered (SolusVM client API, billing basis) monthly VPS bandwidth. Covers all NIC traffic including host-side overhead — a different basis than traffic24h (tunnel traffic only). Absent when the solusvm config section is unset or the first poll has not succeeded yet. */
         ManagementOverviewBandwidth: {
@@ -5979,7 +6071,73 @@ export interface operations {
                     "application/json": components["schemas"]["ManagementErrorResponse"];
                 };
             };
-            /** @description sudoers does not allow warp-cli for the panel runtime user */
+            /** @description Reconnect failed or the re-probe window expired without a definitive verdict */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManagementErrorResponse"];
+                };
+            };
+        };
+    };
+    getSystemWarpClientStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current WARP client status */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessEnvelope"] & {
+                        data?: components["schemas"]["ManagementWarpClientStatus"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description Warp client management not wired */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManagementErrorResponse"];
+                };
+            };
+        };
+    };
+    installSystemWarpClient: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Phase snapshot right after starting */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessEnvelope"] & {
+                        data?: components["schemas"]["ManagementWarpClientStatus"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description An install is already in progress */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -5988,8 +6146,68 @@ export interface operations {
                     "application/json": components["schemas"]["ManagementErrorResponse"];
                 };
             };
-            /** @description Reconnect failed or the re-probe window expired without a definitive verdict */
+            /** @description Warp client management not wired */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManagementErrorResponse"];
+                };
+            };
+        };
+    };
+    reconfigureSystemWarpClient: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Fresh status after reconfiguration */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessEnvelope"] & {
+                        data?: components["schemas"]["ManagementWarpClientStatus"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description Client package not installed */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManagementErrorResponse"];
+                };
+            };
+            /** @description An install is in progress */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManagementErrorResponse"];
+                };
+            };
+            /** @description A configure step failed */
             502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManagementErrorResponse"];
+                };
+            };
+            /** @description Warp client management not wired */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

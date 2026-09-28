@@ -4,6 +4,7 @@ import { ApiError, getToken, managementRequest } from './http';
 export type UpgradeStatus = components['schemas']['UpgradeStatus'];
 export type UpgradeRelease = components['schemas']['UpgradeRelease'];
 export type BackupFile = components['schemas']['BackupFile'];
+export type WarpClientStatus = components['schemas']['ManagementWarpClientStatus'];
 
 export const systemApi = {
   upgradeStatus: () => managementRequest<UpgradeStatus>('/api/v1/system/upgrade/status'),
@@ -11,7 +12,10 @@ export const systemApi = {
   upgradeStart: () => managementRequest<UpgradeStatus>('/api/v1/system/upgrade/start', { method: 'POST', body: '{}' }),
   backupList: () => managementRequest<{ items: BackupFile[] }>('/api/v1/system/backups'),
   backupCreate: () => managementRequest<BackupFile>('/api/v1/system/backups', { method: 'POST', body: '{}' }),
-  backupDelete: (name: string) => managementRequest<void>(`/api/v1/system/backups/${encodeURIComponent(name)}`, { method: 'DELETE' })
+  backupDelete: (name: string) => managementRequest<void>(`/api/v1/system/backups/${encodeURIComponent(name)}`, { method: 'DELETE' }),
+  warpClientStatus: () => managementRequest<WarpClientStatus>('/api/v1/system/warp/status'),
+  warpInstall: () => managementRequest<WarpClientStatus>('/api/v1/system/warp/install', { method: 'POST', body: '{}' }),
+  warpReconfigure: () => managementRequest<WarpClientStatus>('/api/v1/system/warp/reconfigure', { method: 'POST', body: '{}' })
 };
 
 // 备份下载是二进制流（信封豁免），managementRequest 只解析 JSON 信封用不上；

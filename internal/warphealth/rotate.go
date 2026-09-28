@@ -10,10 +10,6 @@ import (
 // ErrWarpNotDeployed 标记面板未部署 warp-masque 出站（端点据此回 404）。
 var ErrWarpNotDeployed = errors.New("未部署 warp-masque 出站")
 
-// ErrSudoersMissing 标记 sudoers 未放行 warp-cli（端点据此回 409 与配置
-// 指引）。由装配层的 sudo runner 在识别到 sudo 拒绝文案时包装返回。
-var ErrSudoersMissing = errors.New("sudoers 未放行 warp-cli")
-
 // 换出口的复测轮询节奏。用 var 而非 const 仅为测试可调；对外节奏类常量
 // 仍按仓库约定集中在 const（勿进 config.yaml）。
 var (

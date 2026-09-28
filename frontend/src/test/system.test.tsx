@@ -11,6 +11,9 @@ const backupCreateMock = vi.fn();
 const backupDownloadMock = vi.fn();
 const backupRestoreExistingMock = vi.fn();
 const waitForPanelRestartMock = vi.fn();
+const warpStatusMock = vi.fn();
+const warpInstallMock = vi.fn();
+const warpReconfigureMock = vi.fn();
 
 vi.mock('../services/system', () => ({
   systemApi: {
@@ -21,7 +24,10 @@ vi.mock('../services/system', () => ({
     }),
     backupList: () => backupListMock(),
     backupCreate: () => backupCreateMock(),
-    backupDelete: (name: string) => Promise.resolve(name)
+    backupDelete: (name: string) => Promise.resolve(name),
+    warpClientStatus: () => warpStatusMock(),
+    warpInstall: () => warpInstallMock(),
+    warpReconfigure: () => warpReconfigureMock()
   },
   backupDownload: (name: string) => backupDownloadMock(name),
   backupRestoreUpload: () => Promise.resolve(),
@@ -29,6 +35,13 @@ vi.mock('../services/system', () => ({
   // 恢复受理后页面等面板重启再整体刷新；测试里挂起该 Promise 即可停在
   // 「正在重启」态，避免触碰 jsdom 不支持的 location.reload。
   waitForPanelRestart: () => waitForPanelRestartMock()
+}));
+
+vi.mock('../services/singbox', () => ({
+  singBoxApi: {
+    createOutbound: vi.fn(() => Promise.resolve({ id: 'ob-1' })),
+    applyAITemplate: vi.fn(() => Promise.resolve({ id: 'rule-1' }))
+  }
 }));
 
 function renderSystem() {
@@ -58,6 +71,52 @@ function baseStatus(overrides: Record<string, unknown> = {}) {
     ...overrides
   };
 }
+
+describe('system warp client section', () => {
+  afterEach(() => { cleanup(); vi.clearAllMocks(); });
+
+  function warpStatus(overrides: Record<string, unknown> = {}) {
+    return {
+      installed: true, version: '2026.7.1377.0', serviceActive: true, serviceEnabled: true,
+      registered: true, connected: true, modeProxy: true, proxyPort: 40000,
+      outboundConfigured: true, linkVerdict: 'ok', linkCheckedAt: '2026-09-25T10:00:00Z',
+      phase: 'idle', ...overrides
+    };
+  }
+
+  it('renders the healthy warp client status with link verdict', async () => {
+    warpStatusMock.mockResolvedValue(warpStatus());
+    renderSystem();
+    expect(await screen.findByText(/2026\.7\.1377\.0/)).toBeInTheDocument();
+    expect(screen.getByText('正常')).toBeInTheDocument();
+    expect(screen.getByText('warp-masque 已配置')).toBeInTheDocument();
+    // 健康状态下不出现安装与接线按钮。
+    expect(screen.queryByRole('button', { name: /一键安装 WARP 客户端/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /创建出站并应用 AI 解锁/ })).not.toBeInTheDocument();
+  });
+
+  it('offers install when the client is absent and triggers the mutation', async () => {
+    warpStatusMock.mockResolvedValue(warpStatus({ installed: false, version: undefined, serviceActive: false, serviceEnabled: false, registered: false, connected: false, modeProxy: false, proxyPort: 0, outboundConfigured: false, linkVerdict: undefined, linkCheckedAt: undefined }));
+    renderSystem();
+    fireEvent.click(await screen.findByRole('button', { name: /一键安装 WARP 客户端/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /确 定|确定|OK/i }));
+    await waitFor(() => expect(warpInstallMock).toHaveBeenCalled());
+  });
+
+  it('offers provisioning when installed but the outbound is missing', async () => {
+    warpStatusMock.mockResolvedValue(warpStatus({ outboundConfigured: false, phase: 'done' }));
+    renderSystem();
+    expect(await screen.findByText('客户端已就绪')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /创建出站并应用 AI 解锁/ })).toBeEnabled();
+  });
+
+  it('shows the failure detail when the install phase failed', async () => {
+    warpStatusMock.mockResolvedValue(warpStatus({ installed: false, phase: 'failed', phaseError: '安装 cloudflare-warp 失败: E: 无法锁定 dpkg' }));
+    renderSystem();
+    expect(await screen.findByText('WARP 客户端安装失败')).toBeInTheDocument();
+    expect(screen.getByText(/无法锁定 dpkg/)).toBeInTheDocument();
+  });
+});
 
 describe('system upgrade page', () => {
   afterEach(() => {

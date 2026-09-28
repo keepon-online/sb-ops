@@ -229,10 +229,8 @@ func newOps(db *sql.DB, sessionTTL time.Duration, apply deployment.ApplyConfig, 
 		degraded, reason := warpHealthDegraded(snapshot)
 		return controloverview.WarpHealth{Verdict: snapshot.Verdict, Reason: reason, Degraded: degraded, ExitFamily: snapshot.ExitFamily, CheckedAt: snapshot.CheckedAt}, true
 	})
-	// 一键换出口：sudo -n 白名单方式执行 warp-cli（只放行 disconnect/connect
-	// 两条命令，sudoers 配置见 docs/deployment.md）；未放行时错误归类
-	// ErrSudoersMissing 由端点转 409 与配置指引。复测滚动调 Check，终态经
-	// state 即时驱动告警与总览。
+	// 一键换出口：面板按 root 部署直接执行 warp-cli disconnect/connect，
+	// 复测滚动调 Check，终态经 state 即时驱动告警与总览。
 	warpRotate := func(ctx context.Context) (controlwarphealth.Result, error) {
 		addr, found, err := warpMasqueOutbound(ctx, db)
 		if err != nil {
@@ -243,7 +241,15 @@ func newOps(db *sql.DB, sessionTTL time.Duration, apply deployment.ApplyConfig, 
 		}
 		ctx, cancel := context.WithTimeout(ctx, warpRotateTimeout)
 		defer cancel()
-		return controlwarphealth.Rotate(ctx, sudoWarpCli, addr, warpHealthState)
+		return controlwarphealth.Rotate(ctx, runWarpCli, addr, warpHealthState)
+	}
+	// WARP 客户端纳管：安装/配置/状态（系统侧 Manager + 面板侧联动适配）。
+	warpClient := warpClientAdapter{
+		manager: controlwarphealth.NewManager(controlwarphealth.OSCommandRunner, controlwarphealth.DownloadPublicKey, func(err error) {
+			logger.Error().Err(err).Msg("WARP 客户端安装失败")
+		}),
+		db:    db,
+		state: warpHealthState,
 	}
 	// 协议端到端拨测：内核 running 且配置 applied 才放行（内核故障已有
 	// runtime_sync_failed 告警，拨测此时写失败行只会制造误报）。
@@ -361,6 +367,7 @@ func newOps(db *sql.DB, sessionTTL time.Duration, apply deployment.ApplyConfig, 
 		Overview: overview, AuditLogs: auditLogs, Share: subscriptions, Traffic: traffic, Events: events, Alerts: alerts, Config: configProvider,
 		Argo: argoService, ArgoManager: argoManager, Monitor: monitor, Upgrade: upgradeService, Prober: prober,
 		Backup: backupService, WarpRotate: warpRotate, WarpPrechecker: controlprobe.NewWarpPrechecker(),
+		WarpClient: warpClient,
 	})
 	background, cancel := context.WithCancel(context.Background())
 	value := &OpsApp{
@@ -621,30 +628,48 @@ func warpMasqueOutbound(ctx context.Context, database *sql.DB) (address string, 
 	return net.JoinHostPort(strings.TrimSpace(server), strconv.Itoa(port)), true, nil
 }
 
-// warp-cli 的调用形态：官方客户端装在 /usr/bin/warp-cli，面板运行用户非
-// root，经 sudo -n 白名单执行（sudoers 只放行 disconnect/connect 两条命令，
-// 配置见 docs/deployment.md）。
+// warp-cli 的调用形态：官方客户端装在 /usr/bin/warp-cli，面板按 root 部署
+// 直接执行（协议端口本就 ≥1024 不依赖 root；root 仅为系统管理功能服务，
+// 见 docs/deployment.md）。
 const (
 	warpCliPath        = "/usr/bin/warp-cli"
 	warpCliStepTimeout = 12 * time.Second
 	warpRotateTimeout  = 2 * time.Minute
 )
 
-// sudoWarpCli 执行一条 warp-cli 子命令；sudoers 未放行时（sudo -n 拒绝）
-// 归类 ErrSudoersMissing 供端点转 409 与配置指引。
-func sudoWarpCli(ctx context.Context, args ...string) error {
+// runWarpCli 执行一条 warp-cli 子命令（换出口用）。
+func runWarpCli(ctx context.Context, args ...string) error {
 	ctx, cancel := context.WithTimeout(ctx, warpCliStepTimeout)
 	defer cancel()
-	output, err := exec.CommandContext(ctx, "sudo", append([]string{"-n", warpCliPath}, args...)...).CombinedOutput()
+	output, err := exec.CommandContext(ctx, warpCliPath, args...).CombinedOutput()
 	if err != nil {
-		text := strings.TrimSpace(string(output))
-		if strings.Contains(text, "a password is required") || strings.Contains(text, "not allowed") {
-			return fmt.Errorf("%w: %s", controlwarphealth.ErrSudoersMissing, text)
-		}
-		return fmt.Errorf("warp-cli %s 失败: %s", strings.Join(args, " "), text)
+		return fmt.Errorf("warp-cli %s 失败: %s", strings.Join(args, " "), strings.TrimSpace(string(output)))
 	}
 	return nil
 }
+
+// warpClientAdapter 把 warphealth.Manager 的系统侧状态与面板侧联动
+// （warp-masque 出站存在性、链路判定快照）拼成 API 视图。
+type warpClientAdapter struct {
+	manager *controlwarphealth.Manager
+	db      *sql.DB
+	state   *controlwarphealth.State
+}
+
+func (a warpClientAdapter) Status(ctx context.Context) controlwarphealth.ClientStatus {
+	status := a.manager.Status(ctx)
+	if _, found, err := warpMasqueOutbound(ctx, a.db); err == nil && found {
+		status.OutboundConfigured = true
+	}
+	if snapshot := a.state.Snapshot(); snapshot.Verdict != "" {
+		checkedAt := snapshot.CheckedAt
+		status.LinkVerdict, status.LinkCheckedAt = snapshot.Verdict, &checkedAt
+	}
+	return status
+}
+
+func (a warpClientAdapter) Install(ctx context.Context) error     { return a.manager.Install(ctx) }
+func (a warpClientAdapter) Reconfigure(ctx context.Context) error { return a.manager.Reconfigure(ctx) }
 
 // upgradeCheckInitialDelay / upgradeCheckInterval 是新版本自动发现的节奏：
 // 启动先等升级与同步落定再首查，之后每 6 小时一查（GitHub 匿名限额 60 次/时，

@@ -24,7 +24,8 @@ export const resourceTypeLabels: Record<string, string> = {
   database: '数据库',
   control_plane: '控制面',
   singbox_rule_set: '服务器规则集',
-  argo_tunnel: 'Argo 隧道'
+  argo_tunnel: 'Argo 隧道',
+  warp: 'WARP 解锁链路'
 };
 
 const auditSegmentLabels: Record<string, string> = {
@@ -103,7 +104,10 @@ const auditActionOverrides: Record<string, string> = {
   'system.upgrade.start': '开始面板升级',
   'system.backup.create': '创建数据备份',
   'system.backup.download': '下载数据备份',
-  'system.backup.delete': '删除数据备份'
+  'system.backup.delete': '删除数据备份',
+  'system.warp.rotate': 'WARP 一键换出口',
+  'system.warp.install': '安装 WARP 客户端',
+  'system.warp.reconfigure': '重新配置 WARP 客户端'
 };
 
 export function auditActionLabel(action: string): string {

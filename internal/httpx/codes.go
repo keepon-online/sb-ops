@@ -30,13 +30,17 @@ const (
 	CodeCredentialRotationRequired Code = 3004 // 凭据需先轮换（原 CREDENTIAL_ROTATION_REQUIRED）
 
 	// 4xxx 面板系统操作（升级 / 备份恢复）
-	CodeUpgradeNotConfigured  Code = 4001 // 升级源未配置（config.yaml updates 段缺失）
-	CodeUpgradeCheckFailed    Code = 4002 // 查询 GitHub 最新版本失败
-	CodeUpgradeBusy           Code = 4003 // 已有升级正在进行
-	CodeUpgradeAlreadyLatest  Code = 4004 // 当前已是最新版本
-	CodeBackupInvalid         Code = 4005 // 上传的备份文件校验未通过
-	CodeWarpRotateUnavailable Code = 4006 // 一键换出口不可用（warp-cli 未部署或 sudoers 未放行）
-	CodeWarpRotateFailed      Code = 4007 // 换出口执行失败（重连或复测未通过）
+	CodeUpgradeNotConfigured   Code = 4001 // 升级源未配置（config.yaml updates 段缺失）
+	CodeUpgradeCheckFailed     Code = 4002 // 查询 GitHub 最新版本失败
+	CodeUpgradeBusy            Code = 4003 // 已有升级正在进行
+	CodeUpgradeAlreadyLatest   Code = 4004 // 当前已是最新版本
+	CodeBackupInvalid          Code = 4005 // 上传的备份文件校验未通过
+	CodeWarpRotateUnavailable  Code = 4006 // 一键换出口不可用（未装配或内核内未部署出站）
+	CodeWarpRotateFailed       Code = 4007 // 换出口执行失败（重连或复测未通过）
+	CodeWarpClientUnavailable  Code = 4008 // WARP 客户端管理不可用（未装配）
+	CodeWarpInstallBusy        Code = 4009 // WARP 客户端安装正在进行中
+	CodeWarpClientNotInstalled Code = 4010 // WARP 客户端未安装（重新配置前置校验）
+	CodeWarpReconfigureFailed  Code = 4011 // WARP 客户端配置序列执行失败
 
 	// 5xxx sing-box 运行时
 	CodeRuntimeUnavailable Code = 5001 // 运行时尚未配置（原 SINGBOX_RUNTIME_UNAVAILABLE）

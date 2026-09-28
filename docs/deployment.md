@@ -22,7 +22,7 @@
 - **Nginx 只负责面板**。vless/trojan/vmess 等是自定义 TCP/UDP 协议，Nginx 无法也不需要反代。
 - **Reality 协议（vless/trojan）不需要证书**；hysteria2 / tuic / anytls / trojan(TLS) 需要证书（见「协议证书」）。
 - 面板进程只监听 `127.0.0.1:8030`，公网不可直达。
-- 协议端口均大于 1024 时无需 root / setcap。
+- 面板以 root 运行（系统管理功能所需，见「部署目录与 systemd」）；协议端口仍要求 ≥1024 的约定不变。
 
 ## 前置条件
 
@@ -66,11 +66,14 @@ make release VERSION=v1.0.0        # 产物 dist/release/sb-ops-linux-amd64 + SH
 ## 二、部署目录与 systemd
 
 ```bash
-sudo useradd -r -s /usr/sbin/nologin sbops
 sudo mkdir -p /opt/sb-ops /var/lib/sb-ops
 sudo install -m 0755 sb-ops-linux-amd64 /opt/sb-ops/sb-ops
-sudo chown -R sbops:sbops /var/lib/sb-ops
 ```
+
+> 面板按 **root** 运行：系统管理功能（WARP 客户端一键安装、warp-cli 直执行、
+> iptables 端口跃迁等）需要它。协议入站端口本就要求 ≥1024，root 并非监听所需；
+> 代价是面板漏洞即整机失守——面板仅监听 127.0.0.1、经 Nginx 暴露且单管理员强
+> 认证，这个权衡与常见单机管理面板（1Panel 等）一致。
 
 创建 `/opt/sb-ops/config.yaml`（复制仓库中的 `config.example.yaml` 修改，只列必改项）：
 
@@ -106,16 +109,12 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-User=sbops
-Group=sbops
 WorkingDirectory=/opt/sb-ops
 ExecStart=/opt/sb-ops/sb-ops
 Restart=on-failure
 RestartSec=5
-# 基础加固
-NoNewPrivileges=true
-ProtectSystem=strict
-ReadWritePaths=/var/lib/sb-ops /opt/sb-ops
+# root 运行：WARP 客户端安装等系统管理功能需要真实文件系统与系统命令，
+# 不能用 ProtectSystem=strict / NoNewPrivileges（会挡住 apt 与 systemctl）。
 PrivateTmp=true
 
 [Install]
@@ -127,7 +126,18 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now sb-ops
 ```
 
-> 面板自升级要求 `/opt/sb-ops` 对运行用户可写（升级时会写 `.download` 与 `.bak`）——上面的 `install` 已将二进制属主设为 sbops，目录本身也需保持可写。数据（SQLite、证书、cloudflared 二进制、日志）都在 `data_dir` 下。
+> 面板自升级要求 `/opt/sb-ops` 可写（升级时会写 `.download` 与 `.bak`）；数据（SQLite、证书、cloudflared 二进制、日志）都在 `data_dir` 下。
+
+### 从旧版 sbops 用户部署迁移到 root
+
+```bash
+sudo systemctl edit --full sb-ops   # 删除 User=sbops / Group=sbops / NoNewPrivileges / ProtectSystem / ReadWritePaths 行
+sudo chown -R root:root /opt/sb-ops /var/lib/sb-ops
+sudo systemctl daemon-reload && sudo systemctl restart sb-ops
+sudo rm -f /etc/sudoers.d/sb-ops-warp   # 旧版换出口的 sudoers 白名单一并清理
+```
+
+> 迁移顺序无风险：root 下旧版本的 `sudo -n warp-cli` 路径同样可用（root 免密），先切 unit 再升级面板、或反之均可。
 
 ## 三、Nginx 与面板证书
 
@@ -223,6 +233,10 @@ sudo certbot renew --dry-run
 
 机房 IP 段常被 Google 判为受限地区（google.com 跳 google.com.hk、Gemini 地区拦截，该判定全年周期性漂移、数周自愈）。解法：官方 cloudflare-warp 客户端以 **proxy 模式**（仅本机 SOCKS5、无 TUN、不碰系统路由）建立 MASQUE 隧道——出口协议族由 Cloudflare 在隧道内部调度，**IPv4-only 的 VPS 也常被分到干净的 IPv6 出口**；面板侧加一个 socks 出站指向它，Google 域名分流规则即可借道。
 
+**推荐：面板一键完成**（需按上文以 root 运行）。「系统管理 → WARP 客户端」区块点「一键安装 WARP 客户端」——自动完成 apt 源添加（公钥下载 + gpg dearmor + sources 条目按发行版代号生成）、软件包安装、`warp-svc` 自启、注册、proxy 模式（端口 40000）与连接；装完点「创建出站并应用 AI 解锁」即完成 warp-masque 出站 + OpenAI/Gemini/Claude 分流（也可手动在「服务配置 → 出站」建 socks 出站，标签必须是 `warp-masque`——健康监控按此 tag 门控，服务器 `127.0.0.1`、端口 `40000`——再到「路由规则」把 Google 系域名指向它）。配置漂移时区块内「重新配置」幂等修复。
+
+手工部署（或面板不可用时）等价命令：
+
 ```bash
 # 1. 安装官方客户端（Ubuntu 22.04 示例；CODENAME 按 lsb_release -cs 替换）
 curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg | sudo gpg --yes --dearmor -o /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg
@@ -242,14 +256,7 @@ curl -s --socks5-hostname 127.0.0.1:40000 https://www.cloudflare.com/cdn-cgi/tra
 curl -s -o /dev/null -w "%{http_code} %{redirect_url}\n" --socks5-hostname 127.0.0.1:40000 https://www.google.com/
 ```
 
-面板侧：「服务配置 → 出站」新建 **socks** 类型出站，标签必须是 `warp-masque`（健康监控按此 tag 门控），服务器 `127.0.0.1`、端口 `40000`；再在「路由规则」把 Google 系域名（google.com / google.com.hk / googleapis.com / googleusercontent.com / googlevideo.com / ggpht.com / recaptcha.net）指向它。配好后总览页出现「WARP 解锁链路」卡片（每 15 分钟自动探测，异常推送 `warp_masque_degraded` 告警）；卡片上的「换出口」按钮可远程断开重连换出口——需先放行 sudoers（`sbops` 换成面板实际运行用户）：
-
-```bash
-printf '%s\n' 'sbops ALL=(root) NOPASSWD: /usr/bin/warp-cli disconnect, /usr/bin/warp-cli connect' | sudo tee /etc/sudoers.d/sb-ops-warp
-sudo chmod 440 /etc/sudoers.d/sb-ops-warp
-```
-
-维护：出口判定再漂移时先点「换出口」（或 SSH 执行 `sudo warp-cli disconnect && sudo warp-cli connect`，MASQUE 出口族由 Cloudflare 内部调度、重连可能换到干净出口）；卸载恢复：面板删除出站与规则后 `sudo warp-cli disconnect && sudo apt remove -y cloudflare-warp`。
+配好后总览页出现「WARP 解锁链路」卡片（每 15 分钟自动探测，异常推送 `warp_masque_degraded` 告警）。维护：出口判定再漂移时先点卡片上的「换出口」（面板以 root 直接执行 warp-cli 断开重连，无需 sudoers）；卸载恢复：面板删除出站与规则后 `sudo warp-cli disconnect && sudo apt remove -y cloudflare-warp`。
 
 ## 四、防火墙
 

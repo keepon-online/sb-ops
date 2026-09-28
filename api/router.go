@@ -56,9 +56,16 @@ type Dependencies struct {
 	// WarpPrechecker 对新注册的免费 WARP 身份做出口预检（一次性客户端内核
 	// 实测出口 IP 与 Google 判定）；测试可缺省（注册响应不带 precheck 字段）。
 	WarpPrechecker *controlprobe.WarpPrechecker
-	// WarpRotate 执行 WARP 一键换出口（sudo warp-cli 断开重连 + 立即复测）；
+	// WarpRotate 执行 WARP 一键换出口（warp-cli 断开重连 + 立即复测）；
 	// 测试可缺省（对应端点返回 503，同 Prober 先例）。
 	WarpRotate func(context.Context) (controlwarphealth.Result, error)
+	// WarpClient 管理官方 WARP 客户端（安装阶段机 / 幂等配置 / 状态视图，
+	// 含面板侧 warp-masque 出站联动）；测试可缺省（对应端点返回 503）。
+	WarpClient interface {
+		Status(ctx context.Context) controlwarphealth.ClientStatus
+		Install(ctx context.Context) error
+		Reconfigure(ctx context.Context) error
+	}
 	// ArgoManager restarts tunnel processes; the supervisor may be absent in
 	// tests, hence the narrow interface.
 	ArgoManager interface{ RestartTunnel(id string) }
@@ -253,6 +260,9 @@ func RegisterRoutes(router *gin.Engine, dependencies Dependencies) {
 		systemBackups.DELETE("/:name", h.deleteBackup)
 	}
 	authenticated.POST("/system/warp/rotate", h.rotateWarp)
+	authenticated.GET("/system/warp/status", h.warpClientStatus)
+	authenticated.POST("/system/warp/install", h.installWarpClient)
+	authenticated.POST("/system/warp/reconfigure", h.reconfigureWarpClient)
 }
 
 // registerPublicRoutes 注册无需管理员认证的公开路由。订阅拉取是全项目

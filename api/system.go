@@ -58,8 +58,8 @@ func writeUpgradeError(c *gin.Context, err error) {
 	}
 }
 
-// rotateWarp 执行 WARP 一键换出口（sudo warp-cli 断开重连 + 立即复测），
-// 照 backup/upgrade 先例 h.audit 直记 + httpx 响应（不接 h.mutate——不涉
+// rotateWarp 执行 WARP 一键换出口（warp-cli 断开重连 + 立即复测），照
+// backup/upgrade 先例 h.audit 直记 + httpx 响应（不接 h.mutate——不涉
 // 内核重编译）。换出口对链路是数秒级中断，由前端二次确认。
 func (h *handler) rotateWarp(c *gin.Context) {
 	if h.WarpRotate == nil {
@@ -80,12 +80,61 @@ func writeWarpRotateError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, controlwarphealth.ErrWarpNotDeployed):
 		httpx.Error(c, http.StatusNotFound, httpx.CodeNotFound, "未部署 WARP 解锁链路（缺少 warp-masque 出站）", nil)
-	case errors.Is(err, controlwarphealth.ErrSudoersMissing):
-		// sudoers 白名单只放行 disconnect/connect 两条命令，指引给出配置
-		// 内容（运行用户名按部署实际调整，完整步骤见 docs/deployment.md）。
-		httpx.Error(c, http.StatusConflict, httpx.CodeWarpRotateUnavailable,
-			"sudoers 未放行 warp-cli：请以 root 创建 /etc/sudoers.d/sb-ops-warp（内容一行：sbops ALL=(root) NOPASSWD: /usr/bin/warp-cli disconnect, /usr/bin/warp-cli connect），权限 440。运行用户名按部署实际调整，详见 docs/deployment.md", nil)
 	default:
 		httpx.Error(c, http.StatusBadGateway, httpx.CodeWarpRotateFailed, err.Error(), nil)
+	}
+}
+
+// warpClientStatus 返回 WARP 客户端（官方 cloudflare-warp 包）的完整状态
+// 视图：系统侧（软件包/服务/注册/模式）+ 面板侧联动（出站存在性、链路判定）
+// + 安装阶段机。只读无副作用，不审计。
+func (h *handler) warpClientStatus(c *gin.Context) {
+	if h.WarpClient == nil {
+		httpx.Error(c, http.StatusServiceUnavailable, httpx.CodeWarpClientUnavailable, "WARP 客户端管理未接线", nil)
+		return
+	}
+	httpx.OK(c, h.WarpClient.Status(c.Request.Context()))
+}
+
+// installWarpClient 启动后台安装（添加软件源 → 安装软件包 → 配置并连接），
+// 立即返回当前阶段快照；进度与失败经 status 端点轮询观察。
+func (h *handler) installWarpClient(c *gin.Context) {
+	if h.WarpClient == nil {
+		httpx.Error(c, http.StatusServiceUnavailable, httpx.CodeWarpClientUnavailable, "WARP 客户端管理未接线", nil)
+		return
+	}
+	if err := h.WarpClient.Install(c.Request.Context()); err != nil {
+		h.audit(c, actionSystemWarpInstall, resourceSystemWarp, "", resultFailure, err)
+		writeWarpClientError(c, err)
+		return
+	}
+	h.audit(c, actionSystemWarpInstall, resourceSystemWarp, controlwarphealth.PhaseAddingRepo, ResultSuccess)
+	httpx.OK(c, h.WarpClient.Status(c.Request.Context()))
+}
+
+// reconfigureWarpClient 幂等执行配置序列（服务自启 + 注册 + proxy 模式 +
+// 端口 + 连接），同步返回执行后的最新状态。
+func (h *handler) reconfigureWarpClient(c *gin.Context) {
+	if h.WarpClient == nil {
+		httpx.Error(c, http.StatusServiceUnavailable, httpx.CodeWarpClientUnavailable, "WARP 客户端管理未接线", nil)
+		return
+	}
+	if err := h.WarpClient.Reconfigure(c.Request.Context()); err != nil {
+		h.audit(c, actionSystemWarpReconfigure, resourceSystemWarp, "", resultFailure, err)
+		writeWarpClientError(c, err)
+		return
+	}
+	h.audit(c, actionSystemWarpReconfigure, resourceSystemWarp, "reconfigured", ResultSuccess)
+	httpx.OK(c, h.WarpClient.Status(c.Request.Context()))
+}
+
+func writeWarpClientError(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, controlwarphealth.ErrInstallBusy):
+		httpx.Error(c, http.StatusConflict, httpx.CodeWarpInstallBusy, err.Error(), nil)
+	case errors.Is(err, controlwarphealth.ErrWarpClientNotInstalled):
+		httpx.Error(c, http.StatusNotFound, httpx.CodeWarpClientNotInstalled, err.Error(), nil)
+	default:
+		httpx.Error(c, http.StatusBadGateway, httpx.CodeWarpReconfigureFailed, err.Error(), nil)
 	}
 }

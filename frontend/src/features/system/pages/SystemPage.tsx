@@ -5,7 +5,8 @@ import type { ColumnsType } from 'antd/es/table';
 import { useEffect, useRef, useState } from 'react';
 import { Page } from '../../../components/Page';
 import { ApiError } from '../../../services/http';
-import { backupDownload, backupRestoreExisting, backupRestoreUpload, systemApi, waitForPanelRestart, type BackupFile, type UpgradeStatus } from '../../../services/system';
+import { singBoxApi } from '../../../services/singbox';
+import { backupDownload, backupRestoreExisting, backupRestoreUpload, systemApi, waitForPanelRestart, type BackupFile, type UpgradeStatus, type WarpClientStatus } from '../../../services/system';
 import { formatDateTime } from '../../../util/time';
 
 // 升级流水线的对外阶段 → 展示步骤；checking 瞬时完成不进 Steps。
@@ -32,8 +33,170 @@ function formatBytes(value: number): string {
 export function SystemPage() {
   return <Page title="系统管理">
     <UpgradeSection />
+    <WarpSection />
     <BackupSection />
   </Page>;
+}
+
+// WARP 客户端安装流水线的阶段 → 展示步骤；done/failed 为终态不进 Steps。
+const warpStepIndex: Partial<Record<WarpClientStatus['phase'], number>> = {
+  'adding-repo': 0,
+  installing: 1,
+  configuring: 2
+};
+
+const warpPhaseActive = (phase: WarpClientStatus['phase']) => phase in warpStepIndex;
+
+// 「创建 warp-masque 出站并应用 AI 解锁」的编排常量（后端按 tag 门控健康
+// 监控，端口为部署文档既定约定）。
+const WARP_MASQUE_TAG = 'warp-masque';
+const WARP_MASQUE_PORT = 40000;
+
+const linkVerdictLabels: Record<string, { label: string; color: string }> = {
+  ok: { label: '正常', color: 'success' },
+  misjudged: { label: '判为 CN 区', color: 'error' },
+  'proxy-down': { label: '代理未监听', color: 'error' },
+  'warp-off': { label: '隧道未连通', color: 'error' }
+};
+
+function WarpSection() {
+  const { notification } = AntApp.useApp();
+  const status = useQuery({
+    queryKey: ['system', 'warp'],
+    queryFn: systemApi.warpClientStatus,
+    retry: false,
+    // 安装进行中 2s 轮询进度，闲时停表（照升级区块先例）。
+    refetchInterval: (query) => (warpPhaseActive(query.state.data?.phase ?? 'idle') ? 2000 : false)
+  });
+  const invalidate = () => { void status.refetch(); };
+
+  const install = useMutation({
+    mutationFn: systemApi.warpInstall,
+    onSuccess: () => { invalidate(); },
+    onError: (error) => notification.error({ message: '启动安装失败', description: describeError(error) })
+  });
+  const reconfigure = useMutation({
+    mutationFn: systemApi.warpReconfigure,
+    onSuccess: () => {
+      invalidate();
+      notification.success({ message: 'WARP 客户端已重新配置并连接' });
+    },
+    onError: (error) => notification.error({ message: '重新配置失败', description: describeError(error) })
+  });
+  // 安装完成后的一键接线：创建 warp-masque socks 出站（指向本地 SOCKS5）
+  // 并应用 AI 解锁分流——两步都会触发内核重编译与短暂重启，需强确认。
+  const provision = useMutation({
+    mutationFn: async () => {
+      await singBoxApi.createOutbound({ type: 'socks', tag: WARP_MASQUE_TAG, server: '127.0.0.1', serverPort: WARP_MASQUE_PORT });
+      await singBoxApi.applyAITemplate(WARP_MASQUE_TAG);
+    },
+    onSuccess: () => {
+      invalidate();
+      notification.success({ message: 'warp-masque 出站已创建并应用 AI 解锁分流', description: '链路健康见总览页「WARP 解锁链路」卡片。' });
+    },
+    onError: (error) => notification.error({ message: '创建出站或应用分流失败', description: describeError(error) })
+  });
+
+  const value = status.data;
+  const busy = warpPhaseActive(value?.phase ?? 'idle');
+  const misconfigured = Boolean(value?.installed && (!value.modeProxy || !value.registered || !value.connected || !value.serviceActive));
+
+  return <section className="workspace-section">
+    <Typography.Title level={4} style={{ marginTop: 0 }}>WARP 客户端</Typography.Title>
+    <Typography.Paragraph type="secondary" style={{ marginBottom: 16 }}>
+      官方 cloudflare-warp 客户端（proxy 模式本地 SOCKS5，MASQUE 隧道）是 Google / Gemini 解锁链路的承载；面板可直接安装与维护，无需 SSH。
+    </Typography.Paragraph>
+
+    {value ? (
+      <Descriptions bordered size="small" column={{ xs: 1, sm: 2, lg: 3 }} style={{ marginBottom: 16 }}>
+        <Descriptions.Item label="软件包">
+          {value.installed ? <Tag color="success">{`已安装 ${value.version || ''}`}</Tag> : <Tag>未安装</Tag>}
+        </Descriptions.Item>
+        <Descriptions.Item label="系统服务">
+          {value.serviceActive ? <Tag color="success">运行中</Tag> : <Tag color={value.installed ? 'error' : 'default'}>未运行</Tag>}
+          {value.serviceEnabled ? <Tag>开机自启</Tag> : null}
+        </Descriptions.Item>
+        <Descriptions.Item label="注册 / 连接">
+          <Space size={8}>
+            {value.registered ? <Tag color="success">已注册</Tag> : <Tag>未注册</Tag>}
+            {value.connected ? <Tag color="success">已连接</Tag> : <Tag>未连接</Tag>}
+          </Space>
+        </Descriptions.Item>
+        <Descriptions.Item label="代理模式">
+          {value.modeProxy ? <Tag color="success">{`SOCKS5 · ${value.proxyPort || WARP_MASQUE_PORT}`}</Tag> : <Tag color="warning">非 proxy 模式</Tag>}
+        </Descriptions.Item>
+        <Descriptions.Item label="面板出站">
+          {value.outboundConfigured ? <Tag color="success">warp-masque 已配置</Tag> : <Tag color="warning">未配置</Tag>}
+        </Descriptions.Item>
+        <Descriptions.Item label="链路判定">
+          {value.linkVerdict
+            ? <Tag color={linkVerdictLabels[value.linkVerdict]?.color ?? 'default'}>{linkVerdictLabels[value.linkVerdict]?.label ?? value.linkVerdict}</Tag>
+            : <Tag>未检测</Tag>}
+          {value.linkCheckedAt ? <Typography.Text type="secondary" style={{ fontSize: 12 }}>{formatDateTime(value.linkCheckedAt)}</Typography.Text> : null}
+        </Descriptions.Item>
+      </Descriptions>
+    ) : <Spin style={{ display: 'block', margin: '24px auto' }} />}
+
+    {busy ? (
+      <Steps
+        style={{ maxWidth: 520, marginBottom: 16 }}
+        size="small"
+        current={warpStepIndex[value?.phase ?? 'idle'] ?? 0}
+        items={[{ title: '添加软件源' }, { title: '安装软件包' }, { title: '配置并连接' }]}
+      />
+    ) : null}
+    {value?.phase === 'failed' ? (
+      <Alert
+        type="error"
+        showIcon
+        style={{ marginBottom: 16 }}
+        message="WARP 客户端安装失败"
+        description={<Typography.Paragraph style={{ marginBottom: 0 }} copyable={{ text: value.phaseError }}>{value.phaseError}</Typography.Paragraph>}
+      />
+    ) : null}
+    {value?.phase === 'done' && !value.outboundConfigured ? (
+      <Alert
+        type="success"
+        showIcon
+        style={{ marginBottom: 16 }}
+        message="客户端已就绪"
+        description="下一步：创建 warp-masque 出站并应用 AI 解锁分流（下方按钮）。"
+      />
+    ) : null}
+
+    <Space wrap>
+      {!value?.installed && !busy ? (
+        <Popconfirm
+          title="一键安装 WARP 客户端？"
+          description="将添加 Cloudflare apt 源、安装 cloudflare-warp 并切换 proxy 模式（全程不碰系统路由）。"
+          okButtonProps={{ danger: true }}
+          onConfirm={() => install.mutate()}
+        >
+          <Button type="primary" loading={install.isPending} icon={<CloudUploadOutlined />}>一键安装 WARP 客户端</Button>
+        </Popconfirm>
+      ) : null}
+      {misconfigured && !busy ? (
+        <Popconfirm
+          title="重新配置 WARP 客户端？"
+          description="将幂等地启用服务、补注册（如缺失）、切 proxy 模式并重连。"
+          onConfirm={() => reconfigure.mutate()}
+        >
+          <Button loading={reconfigure.isPending} icon={<RedoOutlined />}>重新配置</Button>
+        </Popconfirm>
+      ) : null}
+      {value?.installed && !value.outboundConfigured && !busy ? (
+        <Popconfirm
+          title="创建 warp-masque 出站并应用 AI 解锁？"
+          description="将创建指向本地 SOCKS5 的出站并把 OpenAI / Gemini / Claude 域名分流到它——会重编译内核并短暂重启代理连接。"
+          okButtonProps={{ danger: true }}
+          onConfirm={() => provision.mutate()}
+        >
+          <Button type="primary" loading={provision.isPending} icon={<SafetyCertificateOutlined />}>创建出站并应用 AI 解锁</Button>
+        </Popconfirm>
+      ) : null}
+      <Button icon={<ReloadOutlined />} onClick={() => status.refetch()}>刷新状态</Button>
+    </Space>
+  </section>;
 }
 
 function UpgradeSection() {

@@ -1597,21 +1597,79 @@ paths:
     post:
       tags: [System]
       operationId: rotateSystemWarp
-      summary: Rotate the WARP MASQUE exit (disconnect + reconnect via sudo warp-cli, then re-probe immediately)
+      summary: Rotate the WARP MASQUE exit (disconnect + reconnect via warp-cli, then re-probe immediately)
       description: >-
         Part of the WARP MASQUE unlock chain maintenance: severs and
         re-establishes the official cloudflare-warp tunnel so Cloudflare may
         assign a different exit, then polls the health probe until a definitive
         verdict. The request blocks until the re-probe settles (typically a few
-        seconds, worst case about a minute).
+        seconds, worst case about a minute). The panel runs as root; no sudoers
+        setup is involved.
       security: [{BearerAuth: []}]
       responses:
         '200': {description: Fresh health verdict after rotation, content: {application/json: {schema: {allOf: [{$ref: '#/components/schemas/SuccessEnvelope'}, {properties: {data: {$ref: '#/components/schemas/ManagementWarpRotateResult'}}}]}}}}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
         '404': {description: No warp-masque outbound configured, content: {application/json: {schema: {$ref: '#/components/schemas/ManagementErrorResponse'}}}}
-        '409': {description: sudoers does not allow warp-cli for the panel runtime user, content: {application/json: {schema: {$ref: '#/components/schemas/ManagementErrorResponse'}}}}
         '502': {description: Reconnect failed or the re-probe window expired without a definitive verdict, content: {application/json: {schema: {$ref: '#/components/schemas/ManagementErrorResponse'}}}}
+  /api/v1/system/warp/status:
+    get:
+      tags: [System]
+      operationId: getSystemWarpClientStatus
+      summary: WARP client (cloudflare-warp package) full status view
+      description: >-
+        System-side probes (dpkg package presence/version, warp-svc service
+        state, warp-cli registration/connection/mode) combined with panel-side
+        facts (warp-masque outbound existence, latest link verdict) and the
+        installer phase machine. Read-only, no side effects. Individual probe
+        failures surface as false fields rather than errors, so the panel can
+        render on non-root or half-installed hosts.
+      security: [{BearerAuth: []}]
+      responses:
+        '200': {description: Current WARP client status, content: {application/json: {schema: {allOf: [{$ref: '#/components/schemas/SuccessEnvelope'}, {properties: {data: {$ref: '#/components/schemas/ManagementWarpClientStatus'}}}]}}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '503': {description: Warp client management not wired, content: {application/json: {schema: {$ref: '#/components/schemas/ManagementErrorResponse'}}}}
+  /api/v1/system/warp/install:
+    post:
+      tags: [System]
+      operationId: installSystemWarpClient
+      summary: Install the official WARP client in the background (apt repo + package + configure + connect)
+      description: >-
+        Kicks off a background phase machine (adding-repo → installing →
+        configuring → done/failed): downloads the Cloudflare apt repo key,
+        dearmors it via gpg, writes the sources entry using the host's release
+        codename, runs apt-get update/install, then applies the idempotent
+        configure sequence (enable warp-svc, register if missing, proxy mode on
+        port 40000, connect). Returns the phase snapshot immediately; progress
+        and failures are observed via the status endpoint. Executed as a fixed
+        command enumeration — the panel must run as root for this to work.
+      security: [{BearerAuth: []}]
+      responses:
+        '200': {description: Phase snapshot right after starting, content: {application/json: {schema: {allOf: [{$ref: '#/components/schemas/SuccessEnvelope'}, {properties: {data: {$ref: '#/components/schemas/ManagementWarpClientStatus'}}}]}}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {description: An install is already in progress, content: {application/json: {schema: {$ref: '#/components/schemas/ManagementErrorResponse'}}}}
+        '503': {description: Warp client management not wired, content: {application/json: {schema: {$ref: '#/components/schemas/ManagementErrorResponse'}}}}
+  /api/v1/system/warp/reconfigure:
+    post:
+      tags: [System]
+      operationId: reconfigureSystemWarpClient
+      summary: Re-apply the idempotent WARP client configuration sequence
+      description: >-
+        Synchronously runs the configure sequence (enable warp-svc, register
+        only when missing, proxy mode on port 40000, connect) and returns the
+        fresh status. Use it to repair a half-configured client (wrong mode,
+        unregistered, disconnected) without reinstalling.
+      security: [{BearerAuth: []}]
+      responses:
+        '200': {description: Fresh status after reconfiguration, content: {application/json: {schema: {allOf: [{$ref: '#/components/schemas/SuccessEnvelope'}, {properties: {data: {$ref: '#/components/schemas/ManagementWarpClientStatus'}}}]}}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {description: Client package not installed, content: {application/json: {schema: {$ref: '#/components/schemas/ManagementErrorResponse'}}}}
+        '409': {description: An install is in progress, content: {application/json: {schema: {$ref: '#/components/schemas/ManagementErrorResponse'}}}}
+        '502': {description: A configure step failed, content: {application/json: {schema: {$ref: '#/components/schemas/ManagementErrorResponse'}}}}
+        '503': {description: Warp client management not wired, content: {application/json: {schema: {$ref: '#/components/schemas/ManagementErrorResponse'}}}}
   /api/v1/system/restore:
     post:
       tags: [System]
@@ -2882,6 +2940,31 @@ components:
         reason: {type: string, description: Chinese failure reason; present when verdict is not ok.}
         warpOn: {type: boolean, description: Whether the trace reported warp=on.}
         exitFamily: {type: string, enum: [ipv4, ipv6], description: Address family of the WARP exit; absent when unknown.}
+    ManagementWarpClientStatus:
+      type: object
+      additionalProperties: false
+      required: [installed, serviceActive, serviceEnabled, registered, connected, modeProxy, outboundConfigured, phase]
+      description: >-
+        Full status view of the official WARP client (cloudflare-warp package):
+        system-side probes (package/service/registration/connection/mode),
+        panel-side facts (warp-masque outbound existence and the latest link
+        verdict from warphealth), and the installer phase machine. Individual
+        probe failures surface as false fields rather than errors — the panel
+        renders on non-root or half-installed hosts too.
+      properties:
+        installed: {type: boolean}
+        version: {type: string, description: Package version; present when installed.}
+        serviceActive: {type: boolean, description: warp-svc is active.}
+        serviceEnabled: {type: boolean, description: warp-svc is enabled at boot.}
+        registered: {type: boolean}
+        connected: {type: boolean}
+        modeProxy: {type: boolean, description: warp-cli mode is WarpProxy (not TUN/Warp).}
+        proxyPort: {type: integer, minimum: 0, maximum: 65535, description: Local SOCKS5 port parsed from settings; 0/absent when not in proxy mode.}
+        outboundConfigured: {type: boolean, description: A warp-masque socks outbound exists in the panel.}
+        linkVerdict: {type: string, enum: [ok, proxy-down, warp-off, misjudged], description: Latest warphealth link verdict; absent before the first successful probe.}
+        linkCheckedAt: {type: string, format: date-time}
+        phase: {type: string, enum: [idle, adding-repo, installing, configuring, done, failed], description: Installer phase machine state.}
+        phaseError: {type: string, description: Failure reason when phase is failed.}
     ManagementOverviewBandwidth:
       type: object
       additionalProperties: false

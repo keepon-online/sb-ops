@@ -130,8 +130,10 @@ const (
 	actionSystemBackupRestore  = "system.backup.restore"
 
 	// WARP 解锁链路
-	resourceSystemWarp     = "warp"
-	actionSystemWarpRotate = "system.warp.rotate"
+	resourceSystemWarp          = "warp"
+	actionSystemWarpRotate      = "system.warp.rotate"
+	actionSystemWarpInstall     = "system.warp.install"
+	actionSystemWarpReconfigure = "system.warp.reconfigure"
 )
 
 // 单例资源的固定 resourceID：singbox_config 是 store 层 id=1 的单行表，
