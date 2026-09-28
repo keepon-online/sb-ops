@@ -128,17 +128,6 @@ sudo systemctl enable --now sb-ops
 
 > 面板自升级要求 `/opt/sb-ops` 可写（升级时会写 `.download` 与 `.bak`）；数据（SQLite、证书、cloudflared 二进制、日志）都在 `data_dir` 下。
 
-### 从旧版 sbops 用户部署迁移到 root
-
-```bash
-sudo systemctl edit --full sb-ops   # 删除 User=sbops / Group=sbops / NoNewPrivileges / ProtectSystem / ReadWritePaths 行
-sudo chown -R root:root /opt/sb-ops /var/lib/sb-ops
-sudo systemctl daemon-reload && sudo systemctl restart sb-ops
-sudo rm -f /etc/sudoers.d/sb-ops-warp   # 旧版换出口的 sudoers 白名单一并清理
-```
-
-> 迁移顺序无风险：root 下旧版本的 `sudo -n warp-cli` 路径同样可用（root 免密），先切 unit 再升级面板、或反之均可。
-
 ## 三、Nginx 与面板证书
 
 ```bash
