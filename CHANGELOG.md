@@ -2,6 +2,12 @@
 
 本文件记录 sb-ops 的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/)。
 
+## [未发布]
+
+### 变更
+
+- **面板自带 TLS 直听，退役 Nginx + certbot**：`server.tls_listen: ":443"` 启用后面板直接以 TLS 对外服务，证书复用既有 ACME DNS-01 机制自动签发（首启阻塞数十秒属预期）与续期（**热载**，续期后新握手即用新材料，无需重启）；可选 `server.redirect_listen: ":80"` 纯 301 跳转。SSE（本就无 WriteTimeout）、订阅 scheme 检测（已有 `Request.TLS` 分支）、上传体积限制（handler 层 `MaxBytesReader`，顺带消除原 Nginx `client_max_body_size 16m` 与 256MB 恢复上传的矛盾）全部面板内闭环。明文 `server.listen`（127.0.0.1:8030）保留为本地 curl / 健康检查 / 回滚通道。**注意**：面板按对端地址做设备指纹与限速，域名应直连 DNS（灰云）而非 Cloudflare 代理；Go 侧不实现 CF realip 网段表（复杂度远超收益）。部署文档第三章重写并附 Nginx 迁移步骤；防火墙章节移除（协议端口本需全网开放、面板仅听回环，ufw 是纯清单负担）。
+
 ## [0.6.8] - 2026-09-28
 
 ### 变更

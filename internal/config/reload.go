@@ -17,6 +17,9 @@ func ClassifyRuntimeConfigChanges(previous, next RuntimeConfig) ReloadSummary {
 	if previous.Server.Listen != next.Server.Listen {
 		summary.RestartRequired = append(summary.RestartRequired, "server.listen")
 	}
+	if previous.Server.TLSListen != next.Server.TLSListen || previous.Server.RedirectListen != next.Server.RedirectListen {
+		summary.RestartRequired = append(summary.RestartRequired, "server.tls_listen")
+	}
 	if previous.Server.DBPath != next.Server.DBPath {
 		summary.RestartRequired = append(summary.RestartRequired, "server.db_path")
 	}

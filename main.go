@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -10,6 +11,7 @@ import (
 	"os/signal"
 	"sync/atomic"
 	"syscall"
+	"time"
 
 	"github.com/keepon-online/sb-ops/internal/app"
 	"github.com/keepon-online/sb-ops/internal/config"
@@ -101,6 +103,39 @@ func run() error {
 		MaxHeaderBytes:    current.Server.MaxHeaderBytes,
 	}
 	servers := []managedServer{{name: "management", server: server, serve: server.ListenAndServe}}
+	// 面板自带 TLS 直听（server.tls_listen）：证书由面板 ACME 自动签发
+	// 续期并热载（经 application.Ops.PanelTLS() 的回调提供）。超时同
+	// management——不设 WriteTimeout，SSE 依赖这一点。
+	if current.Server.TLSListen != "" {
+		tlsConfig := application.Ops.PanelTLS()
+		tlsListener, err := tls.Listen("tcp", current.Server.TLSListen, tlsConfig)
+		if err != nil {
+			return fmt.Errorf("监听面板 TLS 端口 %s 失败: %w", current.Server.TLSListen, err)
+		}
+		tlsServer := &http.Server{
+			Handler:           application.Router,
+			ReadHeaderTimeout: current.Server.ReadHeaderTimeout,
+			ReadTimeout:       current.Server.ReadTimeout,
+			IdleTimeout:       current.Server.IdleTimeout,
+			MaxHeaderBytes:    current.Server.MaxHeaderBytes,
+		}
+		servers = append(servers, managedServer{name: "management-tls", server: tlsServer, serve: func() error { return tlsServer.Serve(tlsListener) }})
+		logger.Info().Str("addr", current.Server.TLSListen).Msg("面板 TLS 直听已开始")
+	}
+	// 80→443 跳转（server.redirect_listen）：纯 301，方便浏览器直达；
+	// ACME 走 DNS-01 不依赖此端口。
+	if current.Server.RedirectListen != "" {
+		redirectTarget := "https://" + current.Deployment.PanelDomain
+		redirectServer := &http.Server{
+			Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				http.Redirect(w, r, redirectTarget+r.RequestURI, http.StatusMovedPermanently)
+			}),
+			ReadHeaderTimeout: current.Server.ReadHeaderTimeout,
+			ReadTimeout:       10 * time.Second,
+			IdleTimeout:       30 * time.Second,
+		}
+		servers = append(servers, managedServer{name: "http-redirect", server: redirectServer, serve: redirectServer.ListenAndServe})
+	}
 
 	results := make(chan serverResult, len(servers))
 	for _, item := range servers {

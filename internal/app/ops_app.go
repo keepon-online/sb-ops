@@ -73,6 +73,9 @@ type OpsApp struct {
 	// currently serves; it distinguishes an idle box from a broken collection
 	// loop in the stall check. Nil behaves as "no observable connections".
 	activeConnections func(ctx context.Context) int
+	// panelTLS 缓存面板自用 TLS 证书（server.tls_listen 启用时非 nil，
+	// 续期后热载）；main 的 443 监听器经 PanelTLS() 取配置。
+	panelTLS *panelTLS
 }
 
 // NewOps wires the single-VPS control plane. Resource changes synchronize the
@@ -103,6 +106,22 @@ func newOps(db *sql.DB, sessionTTL time.Duration, apply deployment.ApplyConfig, 
 	users := serviceuser.NewService(userStore)
 	secrets := secret.NewStore(db)
 	certificates := servicecertificate.NewService(servicecertificate.NewStore(db), secrets)
+	// 面板自带 TLS：启用时启动即确保证书就绪（缺失则 DNS-01 首签，阻塞
+	// 数十秒属预期）并加载进持有器；失败让启动失败（错误信息明确，交由
+	// systemd 重试）。续期由 6h 循环覆盖并热载。
+	var panelTLSHolder *panelTLS
+	if initial := configProvider(); initial.Server.TLSListen != "" {
+		panelCertificate, err := certificates.EnsurePanelCertificate(context.Background(), initial.Deployment.PanelDomain, servicecertificate.AcmeOptions{
+			Email: initial.Acme.Email, Provider: initial.Acme.DNSProvider, APIToken: initial.Acme.APIToken,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("面板 TLS 证书就绪失败: %w", err)
+		}
+		panelTLSHolder = &panelTLS{service: certificates, certificateID: panelCertificate.ID}
+		if err := panelTLSHolder.load(context.Background()); err != nil {
+			return nil, fmt.Errorf("加载面板 TLS 证书失败: %w", err)
+		}
+	}
 	protocolStore := serviceprotocol.NewStore(db, secrets)
 	protocols := serviceprotocol.NewService(protocolStore)
 	policies := servicepolicy.NewService(servicepolicy.NewStore(db))
@@ -372,7 +391,7 @@ func newOps(db *sql.DB, sessionTTL time.Duration, apply deployment.ApplyConfig, 
 	background, cancel := context.WithCancel(context.Background())
 	value := &OpsApp{
 		IdentityStore: identityStore, AuditLogs: auditLogs, Certificates: certificates, Policies: policies, Users: users, Sync: syncer,
-		Traffic: traffic, Events: events, Alerts: alerts,
+		Traffic: traffic, Events: events, Alerts: alerts, panelTLS: panelTLSHolder,
 		Router: router, db: db, cancel: cancel, Health: health, logger: logger, config: configProvider, argo: argoManager,
 		activeConnections: kernelConnections(syncer),
 	}
@@ -941,6 +960,12 @@ func (a *OpsApp) renewCertificates(ctx context.Context) {
 	if a.Sync != nil {
 		if _, err := a.Sync.Reconcile(ctx); err != nil {
 			a.logger.Error().Err(err).Msg("证书续期后重新同步失败")
+		}
+	}
+	// 面板自用证书若在续期之列，热载后新握手即用新材料（无需重启面板）。
+	if a.panelTLS != nil {
+		if err := a.panelTLS.load(ctx); err != nil {
+			a.logger.Error().Err(err).Msg("面板 TLS 证书热载失败")
 		}
 	}
 }

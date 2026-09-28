@@ -142,6 +142,12 @@ type AppServerConfig struct {
 	Listen  string `mapstructure:"listen"`
 	DataDir string `mapstructure:"data_dir"`
 	DBPath  string `mapstructure:"db_path"`
+	// TLSListen 非空时面板自带 TLS 直听（如 ":443"），证书由面板 ACME
+	// （DNS-01）自动签发续期，替代 Nginx 终结 TLS。空 = 仅明文 listen。
+	TLSListen string `mapstructure:"tls_listen"`
+	// RedirectListen 非空时起一个纯 301 端口（如 ":80"）跳到
+	// https://panel_domain，方便浏览器直达；ACME 走 DNS-01 不依赖它。
+	RedirectListen string `mapstructure:"redirect_listen"`
 	// HTTP hardening (M1 §3.3). Zero/empty means use the safe built-in default.
 	// WriteTimeout is intentionally NOT exposed: setting it would terminate SSE
 	// streams (/events) and long polls. Only read/idle sides are tunable.
@@ -198,6 +204,8 @@ func NormalizeRuntimeConfig(cfg RuntimeConfig) RuntimeConfig {
 	defaults := DefaultRuntimeConfig()
 
 	cfg.Server.Listen = strings.TrimSpace(cfg.Server.Listen)
+	cfg.Server.TLSListen = strings.TrimSpace(cfg.Server.TLSListen)
+	cfg.Server.RedirectListen = strings.TrimSpace(cfg.Server.RedirectListen)
 	cfg.Server.DataDir = strings.TrimSpace(cfg.Server.DataDir)
 	cfg.Server.DBPath = strings.TrimSpace(cfg.Server.DBPath)
 	cfg.SingBox.CertificateDir = strings.TrimSpace(cfg.SingBox.CertificateDir)
@@ -291,6 +299,18 @@ func ValidateRuntimeConfig(cfg RuntimeConfig) error {
 	}
 	if strings.TrimSpace(cfg.Server.DataDir) == "" {
 		return fmt.Errorf("必须配置 server.data_dir")
+	}
+	// 面板自带 TLS：证书域名与 ACME 签发凭据是硬前置（不做自签回退）。
+	if cfg.Server.TLSListen != "" {
+		if cfg.Deployment.PanelDomain == "" {
+			return fmt.Errorf("server.tls_listen 非空时必须配置 deployment.panel_domain（面板证书域名）")
+		}
+		if cfg.Acme.Email == "" || cfg.Acme.APIToken == "" {
+			return fmt.Errorf("server.tls_listen 非空时必须配置 acme 段（email/api_token，DNS-01 签发面板证书）")
+		}
+	}
+	if cfg.Server.TLSListen == "" && cfg.Server.RedirectListen != "" {
+		return fmt.Errorf("server.redirect_listen 仅在 server.tls_listen 启用时可用")
 	}
 	switch strings.ToUpper(strings.TrimSpace(cfg.Server.DBSynchronous)) {
 	case "", "NORMAL", "FULL":

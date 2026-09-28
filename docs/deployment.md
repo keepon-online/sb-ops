@@ -1,13 +1,13 @@
-# 生产部署指南（单 VPS · Nginx 反代面板 · 协议直连）
+# 生产部署指南（单 VPS · 面板自带 TLS · 协议直连）
 
-面向单台境外 VPS 的正式部署。面板（管理 UI / API / 订阅）经 Nginx 以 HTTPS 对外；代理协议由内嵌 sing-box 内核直接监听公网端口，不经过 Nginx。
+面向单台境外 VPS 的正式部署。面板（管理 UI / API / 订阅）自带 TLS 直听 443（证书由面板 ACME DNS-01 自动签发续期）；代理协议由内嵌 sing-box 内核直接监听公网端口。
 
 ## 架构总览
 
 ```
 公网
-├── 443/tcp   Nginx (TLS) ──反代──> 127.0.0.1:8030   面板 UI + 管理 API + SSE
-├── 80/tcp    Nginx ──> 301 跳转 443（或 certbot http-01 校验）
+├── 443/tcp   面板进程直接监听（TLS，ACME 自动证书）   面板 UI + 管理 API + SSE + 订阅
+├── 80/tcp    面板进程 ──> 301 跳转 443（可选）
 ├── 8443/tcp  vless-reality    ┐
 ├── 2083/tcp  trojan           │
 ├── 2087/tcp  anytls           ├── 内嵌 sing-box 内核直接监听（端口自定，以面板「协议」页为准）
@@ -19,7 +19,7 @@
 
 要点：
 
-- **Nginx 只负责面板**。vless/trojan/vmess 等是自定义 TCP/UDP 协议，Nginx 无法也不需要反代。
+- **没有反代层**。vless/trojan/vmess 等是自定义 TCP/UDP 协议本就直连；面板 HTTPS 由进程自身终结，SSE/上传/证书全在面板内闭环。
 - **Reality 协议（vless/trojan）不需要证书**；hysteria2 / tuic / anytls / trojan(TLS) 需要证书（见「协议证书」）。
 - 面板进程只监听 `127.0.0.1:8030`，公网不可直达。
 - 面板以 root 运行（系统管理功能所需，见「部署目录与 systemd」）；协议端口仍要求 ≥1024 的约定不变。
@@ -72,14 +72,15 @@ sudo install -m 0755 sb-ops-linux-amd64 /opt/sb-ops/sb-ops
 
 > 面板按 **root** 运行：系统管理功能（WARP 客户端一键安装、warp-cli 直执行、
 > iptables 端口跃迁等）需要它。协议入站端口本就要求 ≥1024，root 并非监听所需；
-> 代价是面板漏洞即整机失守——面板仅监听 127.0.0.1、经 Nginx 暴露且单管理员强
+> 代价是面板漏洞即整机失守——面板经自带 TLS 暴露 443、单管理员强
 > 认证，这个权衡与常见单机管理面板（1Panel 等）一致。
 
 创建 `/opt/sb-ops/config.yaml`（复制仓库中的 `config.example.yaml` 修改，只列必改项）：
 
 ```yaml
 server:
-  listen: "127.0.0.1:8030"        # 只监听本机，由 Nginx 反代
+  listen: "127.0.0.1:8030"        # 明文回环通道（本地 curl / 健康检查）
+  tls_listen: ":443"              # 面板 TLS 直听（详见第三章）
   data_dir: "/var/lib/sb-ops/data"
   db_path: "/var/lib/sb-ops/sb-ops.db"
 
@@ -128,95 +129,39 @@ sudo systemctl enable --now sb-ops
 
 > 面板自升级要求 `/opt/sb-ops` 可写（升级时会写 `.download` 与 `.bak`）；数据（SQLite、证书、cloudflared 二进制、日志）都在 `data_dir` 下。
 
-## 三、Nginx 与面板证书
+## 三、面板自带 TLS（无需 Nginx）
+
+面板直接以 TLS 监听 443，证书由面板自身的 ACME（**DNS-01，域名托管在 Cloudflare**）自动签发与续期（续期热载，无需重启）。`config.yaml`：
+
+```yaml
+server:
+  listen: "127.0.0.1:8030"       # 明文回环通道：本地 curl / 健康检查 / 回滚
+  tls_listen: ":443"              # 面板 TLS 直听（空 = 禁用）
+  redirect_listen: ":80"          # 可选：80 → 443 纯 301 跳转
+
+deployment:
+  panel_domain: "panel.example.com"   # TLS 证书域名（启用 tls_listen 必填）
+
+acme:                                  # 启用 tls_listen 必填（DNS-01 凭据）
+  email: "you@example.com"
+  dns_provider: "cloudflare"
+  api_token: "<token>"
+```
+
+要点：
+
+- 首次启动会阻塞数十秒完成首签（DNS-01 写 TXT + 等传播），属预期；证书存在 `certificates` 表（私钥 AES 加密），不落盘。
+- SSE / 订阅 / 上传限制都在面板自身处理（无 WriteTimeout + handler 层 `MaxBytesReader`），不需要任何反代缓冲调优。
+- **Cloudflare 橙云（代理）与面板直听不配套**：面板按对端地址做设备指纹与限速，经 CF 代理会看到轮换的边缘 IP。面板域名与订阅域名都应**直连 DNS（灰云）**——需要隐藏源站 IP 的场景再评估，个人部署通常不值当（协议端口全开，扫描本就能识别主机）。
+
+### 从 Nginx 反代部署迁移
 
 ```bash
-sudo apt install -y nginx certbot
+sudo systemctl disable --now nginx      # 停用保留安装，作为回滚通道
+# config.yaml 按上文补 server.tls_listen / redirect_listen 后重启面板
+sudo systemctl restart sb-ops
+curl -sI https://panel.example.com/health/ready   # 验证直听生效
 ```
-
-`/etc/nginx/sites-available/sb-ops`：
-
-```nginx
-server {
-    listen 80;
-    listen [::]:80;
-    server_name panel.example.com;
-    return 301 https://$host$request_uri;
-}
-
-server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
-    server_name panel.example.com;
-
-    ssl_certificate     /etc/letsencrypt/live/panel.example.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/panel.example.com/privkey.pem;
-
-    client_max_body_size 16m;
-
-    # SSE 实时事件流：必须关缓冲、拉长超时，否则面板通知卡住
-    location /api/v1/events {
-        proxy_pass http://127.0.0.1:8030;
-        proxy_http_version 1.1;
-        proxy_set_header Connection "";
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_buffering off;
-        proxy_cache off;
-        proxy_read_timeout 3600s;
-        proxy_send_timeout 3600s;
-    }
-
-    location / {
-        proxy_pass http://127.0.0.1:8030;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-}
-```
-
-域名不在 Cloudflare 或想走 http-01 时，可先只配 80 段反代，用 `certbot --nginx -d panel.example.com` 签发并自动改写。域名托管在 Cloudflare 时推荐 DNS-01（不依赖 80 端口可达性）：
-
-```bash
-sudo apt install -y certbot python3-certbot-dns-cloudflare
-sudo install -d -m 0700 /root/.secrets/certbot
-# 写入 /root/.secrets/certbot/cloudflare.ini：
-#   dns_cloudflare_api_token = <token>
-sudo chmod 600 /root/.secrets/certbot/cloudflare.ini
-sudo certbot certonly --dns-cloudflare \
-  --dns-cloudflare-credentials /root/.secrets/certbot/cloudflare.ini \
-  --non-interactive --agree-tos -m you@example.com \
-  -d panel.example.com
-```
-
-启用站点并验证续期（续期后必须 reload Nginx，用 deploy hook 自动化）：
-
-```bash
-sudo ln -s /etc/nginx/sites-available/sb-ops /etc/nginx/sites-enabled/
-sudo nginx -t && sudo systemctl reload nginx
-sudo install -d /etc/letsencrypt/renewal-hooks/deploy
-printf '#!/bin/sh\nsystemctl reload nginx\n' | sudo tee /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh
-sudo chmod +x /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh
-sudo certbot renew --dry-run
-```
-
-### 域名经 Cloudflare 代理（橙云）时必须还原真实来源 IP
-
-面板若挂在 CF 代理后面（订阅域名想借 CF 隐藏源站 IP 时常见），Nginx 看到的客户端地址是**轮换的 CF 边缘节点 IP**，而面板的设备自动发现（UA + 来源 IP 指纹、平台画像前缀归因）、登录限速键、审计 IP 全依赖真实客户端地址——不还原的话设备名后缀与来源地址会变成无意义且不停漂移的 CF 地址，平台画像永远匹配不上，同款多客户端折进同一行设备。在每个经 CF 的 server 块（443）加：
-
-```nginx
-    # 从 CF 专属头还原真实客户端 IP；网段列表见 https://www.cloudflare.com/ips（变更不频繁，定期对齐）
-    real_ip_header CF-Connecting-IP;
-    set_real_ip_from 173.245.48.0/20;
-    # ……其余 CF IPv4/IPv6 网段逐行列出
-```
-
-要点：`set_real_ip_from` 只信任 CF 网段，非 CF 来源伪造 `CF-Connecting-IP` 头不会生效（realip 模块只对可信来源采信该头）；配置后 `$remote_addr`、`X-Real-IP`、`X-Forwarded-For` 末端与 access log 全部恢复真实地址，存量设备的污染地址会在下次订阅拉取时自动修正（改名 + `source_ip` 更新）。订阅若专门走独立域名（如 `sub.example.com`），该域名的 server 块同样要配。
 
 ### 可选：WARP MASQUE 出站（Google 域名解锁）
 
@@ -286,7 +231,7 @@ Reality 协议（vless/trojan）不需要以上任何一种。
 ## 五、上线验证清单
 
 ```bash
-systemctl status sb-ops nginx
+systemctl status sb-ops
 curl -s http://127.0.0.1:8030/health/ready       # 期望 status":"ready"
 sudo journalctl -u sb-ops -n 50 --no-pager       # 无 ERROR
 printf '' | openssl s_client -connect panel.example.com:443 \
@@ -338,7 +283,7 @@ sudo systemctl start sb-ops
 | 现象 | 入口 |
 |---|---|
 | 内核同步失败、面板报「上一份成功配置仍在运行」 | 日志搜 `同步失败`；查 `runtime_state.failure_reason` |
-| 面板通知/实时刷新不动 | Nginx SSE 段配置（`proxy_buffering off`、长超时） |
+| 面板通知/实时刷新不动 | 面板自带 SSE 无需配置；检查 /health/ready 与事件流网络 |
 | 节点测不通 | 先看协议是否分配给用户 → 防火墙端口 → 协议「运行状态」列 → 日志中该入站的认证错误 |
 | 命中分流规则的连接秒断 | 日志搜 `outbound not found`——服务器分流规则引用了不存在的出站 |
 | WARP 出站不可用 | 构建是否带 `with_gvisor`（看构建日志或重新 `make release`） |

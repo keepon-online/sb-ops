@@ -50,7 +50,7 @@ flowchart TB
     end
 
     subgraph Host["VPS 宿主层"]
-        Nginx["Nginx TLS 反代<br/>(:80 / :443 HTTPS)"]
+        PanelTLS["面板自带 TLS 直听<br/>(:443 · ACME 自动证书 · :80 跳转)"]
         ProtoPorts["协议入站端口<br/>(TCP / UDP 直连 · 端口跳跃 REDIRECT)"]
     end
 
@@ -87,11 +87,11 @@ flowchart TB
         AlertSink["告警外发通知<br/>(Telegram Bot · Webhook)"]
     end
 
-    AdminBrowser -->|HTTPS 管理请求| Nginx
-    ClientApp -->|拉取 clash.yaml 订阅| Nginx
-    Nginx -->|反代本地 :8030| WebUI
-    Nginx -->|反代本地 :8030| API
-    Nginx -->|反代本地 :8030| Subscribe
+    AdminBrowser -->|HTTPS 管理请求| PanelTLS
+    ClientApp -->|拉取 clash.yaml 订阅| PanelTLS
+    PanelTLS --> WebUI
+    PanelTLS --> API
+    PanelTLS --> Subscribe
     ClientApp -->|代理流量直连| ProtoPorts
     ProtoPorts --> SingBox
 
@@ -184,7 +184,7 @@ $EDITOR config.yaml
 2. 「用户」页创建用户并**勾选全部需要的协议**——漏勾的协议不会出现在订阅中，且该入站无此用户、连接会被拒；
 3. 复制订阅链接到客户端拉取验证。
 
-本地快速体验允许私网地址：`config.yaml` 中开启 `development.allow_private_address: true`（生产部署不要携带 `development` 段）。正式上公网请按 [生产部署指南](docs/deployment.md) 操作——面板应置于 Nginx 等 TLS 反代之后，协议端口直连。
+本地快速体验允许私网地址：`config.yaml` 中开启 `development.allow_private_address: true`（生产部署不要携带 `development` 段）。正式上公网请按 [生产部署指南](docs/deployment.md) 操作——面板开启自带 TLS 直听（`server.tls_listen`），协议端口直连。
 
 ## 配置参考
 
@@ -192,7 +192,7 @@ $EDITOR config.yaml
 
 ```yaml
 server:
-  listen: "127.0.0.1:8030"        # 管理面板监听地址；生产保持只听本机，经 Nginx 反代
+  listen: "127.0.0.1:8030"        # 明文回环通道；生产另开 server.tls_listen 直听 443
   data_dir: "./data"              # 数据目录：SQLite、证书、运行时产物、日志都在此
   db_path: ""                     # 数据库路径；留空 = <data_dir>/singbox-web.db
   # —— HTTP / SQLite 调优项，一般无需修改 ——
@@ -264,7 +264,7 @@ development:                      # 本地开发专用，生产配置不要出�
 
 - 单管理员设计，无多账号与权限边界，不要当作多租户服务对外提供。
 - 订阅链接即长期凭证：掌握 URL 即获得该用户全部节点凭据，怀疑泄露时在面板轮换；设备凭据可独立停用/轮换。
-- 面板默认只监听 `127.0.0.1`，请按[部署指南](docs/deployment.md)经 Nginx 等 TLS 反代对外，勿明文暴露。
+- 面板默认只监听 `127.0.0.1`；对外请开启 `server.tls_listen` 自带 TLS（见[部署指南](docs/deployment.md)），勿明文暴露。
 
 ## 常见问题
 

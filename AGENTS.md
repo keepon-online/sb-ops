@@ -4,7 +4,7 @@
 
 ## 项目概览
 
-- 单 Go 二进制（根 `main.go` 扁平入口）+ React/antd 前端（`frontend`），内嵌 sing-box 内核；单 VPS 单进程部署（systemd + Nginx 反代方案与已验证实例见 `docs/deployment.md`，仓库内不携带编排文件）。
+- 单 Go 二进制（根 `main.go` 扁平入口）+ React/antd 前端（`frontend`），内嵌 sing-box 内核；单 VPS 单进程 root 部署（systemd；面板自带 TLS 直听 443、ACME DNS-01 自动证书，无反代层——详见 `docs/deployment.md`，仓库内不携带编排文件）。
 - 个人使用、**单管理员**（无 RBAC/多账号，`internal/identity` 只做认证与会话）。
 - 产品语言为中文（面板 UI、资源层校验/错误消息已中文化）。**统一响应信封**：管理 API 的 JSON 响应一律 `{code, message, data, requestId}`（校验失败附加 `fieldErrors`），`code` 是数字业务码——`0` 成功，`1xxx` 通用 / `2xxx` 认证账号 / `3xxx` 资源域 / `4xxx` 面板升级 / `5xxx` sing-box，注册表在 `internal/httpx/codes.go`（数值是契约，只增不改），前端对应表在 `services/http.ts` 的 `ApiCode`；HTTP 状态码保留 REST 语义，信封之外再无业务信息。订阅产物（clash.yaml）、SSE、健康检查、204 无体响应不走信封。请求体绑定统一走 `httpx.BindJSON`（`internal/httpx/bind.go`）：binding tag 校验失败自动附带字段级中文 `fieldErrors`（键为 JSON 字段名，中文模板集中在该文件），新 handler 不要再手写 `ShouldBindJSON`；成功响应用 `httpx.OK`/`httpx.Created`，勿用裸 `httpx.JSON`（保留给健康检查等非信封契约）。
 
@@ -106,7 +106,7 @@ go test -tags=with_quic,with_utls,with_clash_api,with_v2ray_api,with_wireguard,w
 - **协议端到端自测**（不装客户端）：用面板同版本内核跑官方 CLI —— `GOFLAGS=-tags=with_quic,with_utls go run github.com/sagernet/sing-box/cmd/sing-box@v1.14.1 run -c client.json`（本地 mixed 入站 + 目标出站），再 `curl -x http://127.0.0.1:2080 https://www.gstatic.com/generate_204`。**编译器/拨测字段核验**：`SB_CHECK_DUMP=<path> go test -run TestDumpServerConfigForExternalCheck ./internal/deployment/compiler` 与 `SB_PROBE_DUMP=<dir> go test -run TestDumpClientConfigsForExternalCheck ./internal/probe` 导出全量配置后跑 `sing-box check`（未知字段名 check 即拒，是内核升级波次的必经验收）。
 - **本地 WSL 开发**：后端进程需带 `https_proxy`（规则集/ACME 要访问 GitHub）且 `no_proxy` 覆盖本地端口；协议入站端口 <1024 需 root/setcap，本地用 ≥1024；`networkingMode=mirrored` 可解 Windows→WSL 的 UDP（hy2/tuic）转发问题。
 - `traffic_stalled` 告警与「流量采集循环超过阈值未成功完成」错误日志测量的是**采集循环存活**（零流量的一轮查询也算心跳，见 `local_collector.go` 的 `RecordCollection`），并按 Clash API 活跃连接数区分空闲与故障（`ops_app.go` 的 `trafficStallError`）：无活跃连接（含 Clash API 不可观测）按空闲处理，不打错误日志、不告警、不降 readiness；有活跃连接但无采集心跳才是采集链路真的断了，根因看同期的「本地流量采集失败」日志。
-- 诊断技巧：`control_plane_secrets` 表内存有各 AES 主密钥，可本地解密 `protocols.settings_json` 核对参数；面板 API 会脱敏私钥字段。流量/域名审计：内核 INFO 日志逐连接记域名（journalctl 搜 `outbound connection to`）、`inbound connection from` 是来源 IP；订阅拉取来源看 nginx access log 的 `/subscribe` 行（直连 = 客户端真实出口，VPS 自身公网地址 = 经隧道自环）。手工 sqlite3 查询列名写错只向 stderr 报 `no such column`，在多命令脚本里易被误读成「表为空」——先 `.schema` 再查。
+- 诊断技巧：`control_plane_secrets` 表内存有各 AES 主密钥，可本地解密 `protocols.settings_json` 核对参数；面板 API 会脱敏私钥字段。流量/域名审计：内核 INFO 日志逐连接记域名（journalctl 搜 `outbound connection to`）、`inbound connection from` 是来源 IP；订阅拉取来源看设备的 `source_ip` 与 `inbound connection from` 日志（直连 = 客户端真实出口，VPS 自身公网地址 = 经隧道自环；面板直听后无 nginx access log）。手工 sqlite3 查询列名写错只向 stderr 报 `no such column`，在多命令脚本里易被误读成「表为空」——先 `.schema` 再查。
 
 ## 提交约定
 

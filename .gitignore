@@ -25,3 +25,5 @@ graphify-out/
 .superpowers/
 .logs/
 .zcode
+# 本地构建产物（根目录二进制）
+/sb-ops
