@@ -247,18 +247,7 @@ curl -s -o /dev/null -w "%{http_code} %{redirect_url}\n" --socks5-hostname 127.0
 
 配好后总览页出现「WARP 解锁链路」卡片（每 15 分钟自动探测，异常推送 `warp_masque_degraded` 告警）。维护：出口判定再漂移时先点卡片上的「换出口」（面板以 root 直接执行 warp-cli 断开重连，无需 sudoers）；卸载恢复：面板删除出站与规则后 `sudo warp-cli disconnect && sudo apt remove -y cloudflare-warp`。
 
-## 四、防火墙
-
-```bash
-sudo ufw allow 22/tcp
-sudo ufw allow 80,443/tcp          # Nginx
-sudo ufw allow 8443,2083,2087,2096,2443/tcp    # 以面板「协议」页实际端口为准
-sudo ufw allow 1443,3443/udp
-sudo ufw enable
-# 8030 不放行：面板只应经 Nginx 访问
-```
-
-## 五、面板初始化
+## 四、面板初始化
 
 1. 浏览器打开 `https://panel.example.com`，经 `/setup` 创建管理员；
 2. 「协议」页确认/创建协议节点（端口与防火墙放行一致）；
@@ -294,7 +283,7 @@ Reality 协议（vless/trojan）不需要以上任何一种。
   - 从其它部署迁移 Argo 时：先停旧 cloudflared（避免同一 Tunnel 双连接），再在面板建隧道。**不要用 `pkill -f cloudflared` 清理进程**——会连 sb-ops 托管的 cloudflared 一起杀掉；优先在面板禁用隧道，或停旧部署自己的服务。
 - **DNS**：VPS 在境外时无污染问题，服务器分流 DNS 可保持为空（用系统解析器）。
 
-## 六、上线验证清单
+## 五、上线验证清单
 
 ```bash
 systemctl status sb-ops nginx
@@ -310,7 +299,7 @@ printf '' | openssl s_client -connect panel.example.com:443 \
 - Argo 节点（如有）在客户端可见且可连；
 - 访问目标站点并核对日志中出站是否符合预期分流。
 
-## 七、运维
+## 六、运维
 
 ### 升级
 
