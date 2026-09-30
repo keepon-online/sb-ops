@@ -67,6 +67,48 @@ describe('interactive chart axis', () => {
     vi.unstubAllGlobals();
   });
 
+  it('measures container width when transitioning from empty data to populated series', async () => {
+    const observers: { callback: ResizeObserverCallback }[] = [];
+    vi.stubGlobal('ResizeObserver', class {
+      constructor(callback: ResizeObserverCallback) { observers.push({ callback }); }
+      observe() { /* entries dispatched manually in the test */ }
+      unobserve() { /* noop */ }
+      disconnect() { /* noop */ }
+    });
+
+    const { container, rerender } = render(
+      <InteractiveChart
+        height={220}
+        ariaLabel="流量趋势"
+        labels={[]}
+        formatValue={(value) => `${Math.round(value)} B`}
+        series={[]}
+      />
+    );
+
+    expect(observers.length).toBeGreaterThan(0);
+
+    const labels = ['7/1', '7/2', '7/3'];
+    rerender(
+      <InteractiveChart
+        height={220}
+        ariaLabel="流量趋势"
+        labels={labels}
+        formatValue={(value) => `${Math.round(value)} B`}
+        series={[{ name: '下行', color: '#42a56f', values: [10, 20, 30] }]}
+      />
+    );
+
+    const latestObserver = observers[observers.length - 1]!;
+    await act(async () => {
+      latestObserver.callback([{ contentRect: { width: 1400 } } as unknown as ResizeObserverEntry], {} as ResizeObserver);
+    });
+
+    const svg = container.querySelector('svg')!;
+    expect(svg.getAttribute('viewBox')).toBe('0 0 1400 220');
+    vi.unstubAllGlobals();
+  });
+
   it('renders area mode with gradient-filled polygon', () => {
     const { container } = render(
       <InteractiveChart

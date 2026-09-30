@@ -89,7 +89,7 @@ export function InteractiveChart({
 
   if (count === 0) {
     return (
-      <div className="traffic-chart" style={{ position: 'relative', width: '100%', height, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div className="traffic-chart" ref={containerRef} style={{ position: 'relative', width: '100%', height, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={emptyText} />
       </div>
     );
