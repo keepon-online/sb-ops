@@ -287,3 +287,34 @@ INSERT INTO devices(id, user_id, name) VALUES ('dev-1', 'user-1', 'iPhone 15'), 
 		t.Fatalf("series = %#v, want 1 point with 300 bytes", series)
 	}
 }
+
+func TestDeviceLifetimes(t *testing.T) {
+	db := newInsightsDatabase(t)
+	hour := time.Date(2026, 9, 1, 10, 0, 0, 0, time.UTC)
+	insert := func(userID, deviceID string, up, down int64, at time.Time) {
+		t.Helper()
+		if _, err := db.Exec(`INSERT INTO traffic_hourly(bucket_start,node_id,user_id,protocol_id,device_id,up_bytes,down_bytes,sample_count,updated_at) VALUES(?,'local',?,'',?,?,?,1,?)`,
+			common.UnixTime(at), userID, deviceID, up, down, common.UnixTime(at)); err != nil {
+			t.Fatalf("seed traffic_hourly: %v", err)
+		}
+	}
+	insert("user-1", "dev-1", 100, 200, hour)
+	insert("user-1", "dev-1", 300, 300, hour.Add(time.Hour)) // dev-1 合计 900
+	insert("user-1", "dev-deleted", 700, 700, hour)          // 已删设备存量行也计入
+	insert("user-1", "", 999, 999, hour)                     // 入站行（无 device_id）不进结果
+	insert("user-2", "dev-other", 500, 500, hour)            // 其它用户不计入
+
+	lifetimes, err := NewService(db).DeviceLifetimes(context.Background(), "user-1")
+	if err != nil {
+		t.Fatalf("DeviceLifetimes: %v", err)
+	}
+	if len(lifetimes) != 2 {
+		t.Fatalf("len(lifetimes) = %d, want 2: %#v", len(lifetimes), lifetimes)
+	}
+	if lifetimes["dev-1"] != 900 {
+		t.Fatalf("dev-1 lifetime = %d, want 900", lifetimes["dev-1"])
+	}
+	if lifetimes["dev-deleted"] != 1400 {
+		t.Fatalf("dev-deleted lifetime = %d, want 1400", lifetimes["dev-deleted"])
+	}
+}

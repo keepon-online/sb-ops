@@ -253,6 +253,29 @@ func (s *Service) ActiveUsers(ctx context.Context, filter Filter) (ActiveUsersRe
 	return result, err
 }
 
+// DeviceLifetimes 返回一个用户名下每台设备的全周期上下行总量（字节），
+// 直接读事实表——不受额度周期清零影响；已删除设备的存量行也在结果里，
+// 由调用方决定展示方式。
+func (s *Service) DeviceLifetimes(ctx context.Context, userID string) (map[string]int64, error) {
+	rows, err := s.db.QueryContext(ctx, `
+SELECT device_id,SUM(up_bytes+down_bytes) FROM traffic_hourly
+WHERE user_id=? AND device_id<>'' GROUP BY device_id`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	values := map[string]int64{}
+	for rows.Next() {
+		var deviceID string
+		var total int64
+		if err := rows.Scan(&deviceID, &total); err != nil {
+			return nil, err
+		}
+		values[deviceID] = total
+	}
+	return values, rows.Err()
+}
+
 // ProtocolShares returns each protocol's share of inbound-attributed traffic.
 // It reads the per-inbound rows, so a user filter is not applicable (inbound
 // stats carry no user attribution) and is dropped.

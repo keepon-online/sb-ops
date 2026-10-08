@@ -1930,6 +1930,7 @@ components:
         lastSeenAt: {type: [string, 'null'], format: date-time, description: Latest observed subscription request time.}
         rotatedAt: {type: string, format: date-time}
         createdAt: {type: string, format: date-time}
+        lifetimeBytes: {type: integer, format: int64, minimum: 0, description: All-time up+down total from the traffic fact table; unaffected by quota-cycle resets. Zero/absent when aggregation is unavailable.}
     ResourceDeviceList:
       type: object
       additionalProperties: false
@@ -1941,6 +1942,7 @@ components:
         subscriptionToken: {type: string, description: The user-level subscription link token; devices are auto-discovered when clients import it.}
         maxDevices: {type: integer, minimum: 1, description: Maximum number of devices allowed for this user.}
         subscriptionBaseUrl: {type: string, description: Base URL for subscription links.}
+        userLifetimeBytes: {type: [integer, 'null'], format: int64, minimum: 0, description: All-time traffic total across the user's device rows (including deleted devices); null when aggregation is unavailable.}
     ResourceCreateDeviceRequest:
       type: object
       additionalProperties: false

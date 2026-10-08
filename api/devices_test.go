@@ -14,6 +14,7 @@ import (
 	"github.com/keepon-online/sb-ops/internal/httpx"
 	"github.com/keepon-online/sb-ops/internal/identity"
 	serviceuser "github.com/keepon-online/sb-ops/internal/service/user"
+	controltraffic "github.com/keepon-online/sb-ops/internal/traffic"
 )
 
 func TestUserDeviceAPILifecycle(t *testing.T) {
@@ -42,6 +43,7 @@ func TestUserDeviceAPILifecycle(t *testing.T) {
 		Store:     identityStore,
 		Users:     userService,
 		AuditLogs: auditService,
+		Traffic:   controltraffic.NewService(db),
 		Config:    config.DefaultRuntimeConfig,
 	})
 
@@ -92,13 +94,21 @@ func TestUserDeviceAPILifecycle(t *testing.T) {
 		t.Fatalf("patch device: status=%d body=%s", patchDev.Code, patchDev.Body.String())
 	}
 
-	// 7. 查询设备列表，校验名称、Auto 标识及解密的 Token
+	// 7. 查询设备列表，校验名称、Auto 标识、解密的 Token 与历史累计流量
+	if _, err := db.Exec(`INSERT INTO traffic_hourly(bucket_start,node_id,user_id,protocol_id,device_id,up_bytes,down_bytes,sample_count,updated_at)
+VALUES(1700000000,'local',?,'',?,1024,2048,1,1700000000)`, userID, deviceID); err != nil {
+		t.Fatalf("seed traffic_hourly: %v", err)
+	}
 	listDev := performJSON(t, router, http.MethodGet, "/api/v1/users/"+userID+"/devices", "", session.Token)
 	if listDev.Code != http.StatusOK {
 		t.Fatalf("list devices: status=%d body=%s", listDev.Code, listDev.Body.String())
 	}
 	var listResp struct {
-		Items []serviceuser.Device `json:"items"`
+		Items []struct {
+			serviceuser.Device
+			LifetimeBytes int64 `json:"lifetimeBytes"`
+		} `json:"items"`
+		UserLifetimeBytes *int64 `json:"userLifetimeBytes"`
 	}
 	decodeResponse(t, listDev, &listResp)
 	if len(listResp.Items) != 1 {
@@ -107,6 +117,12 @@ func TestUserDeviceAPILifecycle(t *testing.T) {
 	got := listResp.Items[0]
 	if got.Name != "客厅 · Verge" || got.Enabled != false || got.Auto != false || got.Token == "" {
 		t.Fatalf("unexpected device in list: %+v", got)
+	}
+	if got.LifetimeBytes != 3072 {
+		t.Fatalf("device lifetimeBytes = %d, want 3072", got.LifetimeBytes)
+	}
+	if listResp.UserLifetimeBytes == nil || *listResp.UserLifetimeBytes != 3072 {
+		t.Fatalf("userLifetimeBytes = %v, want 3072", listResp.UserLifetimeBytes)
 	}
 
 	// 8. 校验更新审计日志中记录了字段级 diff

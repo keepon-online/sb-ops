@@ -11,9 +11,10 @@ vi.mock('../services/users', () => ({
     listDevices: vi.fn(() => Promise.resolve({
       subscriptionToken: 'user-link-token',
       maxDevices: 10,
+      userLifetimeBytes: 4096,
       items: [
-        { id: 'd1', name: '默认设备', enabled: true, usedBytes: 2048, token: 'token-one', uuid: 'u1', auto: false, platform: 'windows', client: 'Clash Verge', clientVersion: '2.1.3', lastSeenAt: '2026-08-18T00:00:00Z', rotatedAt: '2026-08-18T00:00:00Z', createdAt: '2026-08-01T00:00:00Z' },
-        { id: 'd2', name: '手机', enabled: false, usedBytes: 1024, token: 'token-two', uuid: 'u2', auto: true, platform: 'android', client: 'Clash Meta Android', clientVersion: 'v2.11.5', lastSeenAt: null, rotatedAt: '2026-08-18T00:00:00Z', createdAt: '2026-08-10T00:00:00Z' }
+        { id: 'd1', name: '默认设备', enabled: true, usedBytes: 2048, token: 'token-one', uuid: 'u1', auto: false, platform: 'windows', client: 'Clash Verge', clientVersion: '2.1.3', lastSeenAt: '2026-08-18T00:00:00Z', rotatedAt: '2026-08-18T00:00:00Z', createdAt: '2026-08-01T00:00:00Z', lifetimeBytes: 3072 },
+        { id: 'd2', name: '手机', enabled: false, usedBytes: 1024, token: 'token-two', uuid: 'u2', auto: true, platform: 'android', client: 'Clash Meta Android', clientVersion: 'v2.11.5', lastSeenAt: null, rotatedAt: '2026-08-18T00:00:00Z', createdAt: '2026-08-10T00:00:00Z', lifetimeBytes: 1024 }
       ]
     })),
     createDevice: vi.fn(() => Promise.resolve({
@@ -56,9 +57,11 @@ describe('devices drawer', () => {
     expect(screen.getByText('用户订阅链接')).toBeInTheDocument();
     expect(screen.getAllByText('http://***/subscribe/****************/clash.yaml').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('设备流量统计')).toBeInTheDocument();
-    expect(screen.getByText('用户累计 3.0 KB')).toBeInTheDocument();
-    expect(screen.getByText('67%')).toBeInTheDocument();
-    expect(screen.getByText('33%')).toBeInTheDocument();
+    expect(screen.getByText(/本周期已用 3\.0 KB · 历史累计 4\.0 KB/)).toBeInTheDocument();
+    expect(screen.getByText('周期占比 67%')).toBeInTheDocument();
+    expect(screen.getByText('周期占比 33%')).toBeInTheDocument();
+    expect(screen.getByText('历史 3.0 KB')).toBeInTheDocument();
+    expect(screen.getByText('历史 1.0 KB')).toBeInTheDocument();
     expect(screen.getAllByText('手机').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('已停用')).toBeInTheDocument();
     expect(screen.getByText('Windows')).toBeInTheDocument();

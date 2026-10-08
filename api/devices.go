@@ -23,6 +23,13 @@ type deviceMutationResponse struct {
 	Credential *serviceuser.IssuedCredential `json:"credential,omitempty"`
 }
 
+// deviceListItem 给设备行附带历史累计流量：来自 traffic_hourly 事实表，
+// 不随额度周期清零（与 usedBytes 的本周期计数口径互补）。
+type deviceListItem struct {
+	serviceuser.Device
+	LifetimeBytes int64 `json:"lifetimeBytes"`
+}
+
 func (h *handler) createUserDevice(c *gin.Context) {
 	var request deviceCreateRequest
 	if !httpx.BindJSON(c, &request, "设备信息无效") {
@@ -46,11 +53,30 @@ func (h *handler) listUserDevices(c *gin.Context) {
 		writeResourceError(c, err)
 		return
 	}
+	// 历史累计为展示增强：聚合失败时省略该维度（字段缺省），不影响设备列表。
+	items := make([]deviceListItem, 0, len(devices))
+	for index := range devices {
+		items = append(items, deviceListItem{Device: devices[index]})
+	}
+	var userLifetime *int64
+	if h.Traffic != nil {
+		if lifetimes, lifetimeErr := h.Traffic.DeviceLifetimes(c.Request.Context(), c.Param("id")); lifetimeErr == nil {
+			var total int64
+			for _, value := range lifetimes {
+				total += value
+			}
+			userLifetime = &total
+			for index := range items {
+				items[index].LifetimeBytes = lifetimes[items[index].ID]
+			}
+		}
+	}
 	httpx.OK(c, gin.H{
-		"items":               devices,
+		"items":               items,
 		"subscriptionToken":   token,
 		"maxDevices":          serviceuser.MaxDevicesPerUser,
 		"subscriptionBaseUrl": h.subscriptionBaseURL(c),
+		"userLifetimeBytes":   userLifetime,
 	})
 }
 

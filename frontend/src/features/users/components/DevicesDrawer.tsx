@@ -224,17 +224,19 @@ export function DevicesDrawer({ user, onClose }: { user: ResourceUser | null; on
     {
       title: '流量用量',
       key: 'usage',
-      width: 140,
+      width: 155,
       sorter: (a, b) => (a.usedBytes || 0) - (b.usedBytes || 0),
       render: (_, record) => {
         const percent = totalUsed > 0 ? ((record.usedBytes || 0) / totalUsed) * 100 : 0;
         const percentText = totalUsed > 0 ? (percent >= 1 ? `${percent.toFixed(0)}%` : '<1%') : '0%';
         return (
           <div style={{ opacity: record.enabled ? 1 : 0.55 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
-              <Typography.Text style={{ fontSize: 12 }}>已用 {formatBytes(record.usedBytes || 0)}</Typography.Text>
-              <Typography.Text type="secondary" style={{ fontSize: 11 }}>{percentText}</Typography.Text>
-            </div>
+            <Tooltip title="已用为本额度周期计数（周期到点清零）；占比为该设备占本周期全部用量的份额，非占配额比例">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
+                <Typography.Text style={{ fontSize: 12 }}>已用 {formatBytes(record.usedBytes || 0)}</Typography.Text>
+                <Typography.Text type="secondary" style={{ fontSize: 11 }}>周期占比 {percentText}</Typography.Text>
+              </div>
+            </Tooltip>
             <Progress
               percent={percent}
               size="small"
@@ -242,6 +244,11 @@ export function DevicesDrawer({ user, onClose }: { user: ResourceUser | null; on
               strokeColor="var(--primary-color)"
               style={{ margin: 0 }}
             />
+            {record.lifetimeBytes != null && record.lifetimeBytes > 0 ? (
+              <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+                历史 {formatBytes(record.lifetimeBytes)}
+              </Typography.Text>
+            ) : null}
           </div>
         );
       }
@@ -513,7 +520,10 @@ export function DevicesDrawer({ user, onClose }: { user: ResourceUser | null; on
               ) : null}
             </Space>
             <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              用户累计 {formatBytes(totalUsed)}
+              本周期已用 {formatBytes(totalUsed)}
+              {devices.data?.userLifetimeBytes != null && devices.data.userLifetimeBytes > 0
+                ? ` · 历史累计 ${formatBytes(devices.data.userLifetimeBytes)}`
+                : ''}
             </Typography.Text>
           </div>
           <Table<ResourceDevice>

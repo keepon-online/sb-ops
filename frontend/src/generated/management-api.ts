@@ -1647,6 +1647,11 @@ export interface components {
             rotatedAt: string;
             /** Format: date-time */
             createdAt: string;
+            /**
+             * Format: int64
+             * @description All-time up+down total from the traffic fact table; unaffected by quota-cycle resets. Zero/absent when aggregation is unavailable.
+             */
+            lifetimeBytes?: number;
         };
         ResourceDeviceList: {
             items: components["schemas"]["ResourceDevice"][];
@@ -1656,6 +1661,11 @@ export interface components {
             maxDevices: number;
             /** @description Base URL for subscription links. */
             subscriptionBaseUrl?: string;
+            /**
+             * Format: int64
+             * @description All-time traffic total across the user's device rows (including deleted devices); null when aggregation is unavailable.
+             */
+            userLifetimeBytes?: number | null;
         };
         ResourceCreateDeviceRequest: {
             /** @description Device name */
