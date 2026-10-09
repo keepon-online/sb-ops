@@ -184,7 +184,7 @@ $EDITOR config.yaml
 2. 「用户」页创建用户并**勾选全部需要的协议**——漏勾的协议不会出现在订阅中，且该入站无此用户、连接会被拒；
 3. 复制订阅链接到客户端拉取验证。
 
-本地快速体验允许私网地址：`config.yaml` 中开启 `development.allow_private_address: true`（生产部署不要携带 `development` 段）。正式上公网请按 [生产部署指南](docs/deployment.md) 操作——面板开启自带 TLS 直听（`server.tls_listen`），协议端口直连。
+本地快速体验允许私网地址：`config.yaml` 中开启 `development.allow_private_address: true`（生产部署不要携带 `development` 段）。正式上公网请按 [生产部署指南](docs/deployment.md) 操作——面板开启自带 TLS 直听（`server.tls_listen`），协议端口直连；还没有域名的话见[《域名购买与 DNS 托管》](docs/domain.md)。
 
 ## 配置参考
 
