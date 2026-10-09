@@ -83,14 +83,14 @@ describe('devices drawer', () => {
     expect(maskDeviceName('Clash Verge · 203.0.113.99', true)).toBe('Clash Verge · 203.0.***.***');
     expect(maskDeviceName('Clash Verge · 203.0.113.99', false)).toBe('Clash Verge · 203.0.113.99');
     expect(maskDeviceName('默认设备', true)).toBe('默认设备');
-    expect(maskHost('panel.example.com')).toBe('panel.***.***');
+    expect(maskHost('panel.example.org')).toBe('panel.***.***');
     expect(maskHost('sub.example.com')).toBe('sub.***.***');
     expect(maskHost('example.com')).toBe('***.com');
     expect(maskHost('192.168.1.1')).toBe('192.168.***.***');
-    expect(maskSubscriptionUrl('https://panel.example.com/subscribe/0123456789abcdef0123456789abcdef/clash.yaml', true))
+    expect(maskSubscriptionUrl('https://panel.example.org/subscribe/0123456789abcdef0123456789abcdef/clash.yaml', true))
       .toBe('https://panel.***.***/subscribe/****************/clash.yaml');
-    expect(maskSubscriptionUrl('https://panel.example.com/subscribe/0123456789abcdef0123456789abcdef/clash.yaml', false))
-      .toBe('https://panel.example.com/subscribe/0123456789abcdef0123456789abcdef/clash.yaml');
+    expect(maskSubscriptionUrl('https://panel.example.org/subscribe/0123456789abcdef0123456789abcdef/clash.yaml', false))
+      .toBe('https://panel.example.org/subscribe/0123456789abcdef0123456789abcdef/clash.yaml');
   });
 
   it('masks IP addresses and subscription link by default and toggles between masked and raw', async () => {

@@ -108,12 +108,12 @@ func TestProfilerPassToleratesSnapshotFailure(t *testing.T) {
 func TestNetworkKeyFoldsPrefix(t *testing.T) {
 	cases := []struct{ ip, want string }{
 		{"203.0.113.9", "203.0.113.0/24"},
-		{"203.0.113.117", "203.0.113.0/24"},       // 同 /24 不同址 → 同 key
-		{"198.51.100.7", "198.51.100.0/24"},       // 跨 /24 → 不同 key
-		{"2001:db8:a:b::1", "20010db8000a::/48"}, //
+		{"203.0.113.117", "203.0.113.0/24"}, // 同 /24 不同址 → 同 key
+		{"198.51.100.7", "198.51.100.0/24"}, // 跨 /24 → 不同 key
+		{"2001:db8:a:b::1", "20010db8000a::/48"},
 		{"2001:db8:a:f::2", "20010db8000a::/48"}, // 同 /48 不同址 → 同 key
-		{"2001:db8:ff::1", "20010db8000ff::/48"},  // 跨 /48 → 不同 key
-		{"not-an-ip", "not-an-ip"},                // 解析失败原样返回
+		{"2001:db8:ff::1", "20010db800ff::/48"},  // 跨 /48 → 不同 key
+		{"not-an-ip", "not-an-ip"},               // 解析失败原样返回
 	}
 	for _, tc := range cases {
 		if got := networkKey(tc.ip); got != tc.want {
@@ -127,8 +127,8 @@ func TestNetworkKeyFoldsPrefix(t *testing.T) {
 // 归因；跨前缀不得串画像。
 func TestProfilerPassAttributesByPrefix(t *testing.T) {
 	store := &fakeProfileStore{unknown: []UnknownDeviceRef{
-		{UserID: "u1", DeviceID: "d-v4", SourceIP: "203.0.113.99"},   // 记录的是旧出口
-		{UserID: "u1", DeviceID: "d-v6", SourceIP: "2001:db8:a::1"},  // 同上，IPv6
+		{UserID: "u1", DeviceID: "d-v4", SourceIP: "203.0.113.99"},    // 记录的是旧出口
+		{UserID: "u1", DeviceID: "d-v6", SourceIP: "2001:db8:a::1"},   // 同上，IPv6
 		{UserID: "u1", DeviceID: "d-far", SourceIP: "198.51.100.112"}, // 跨 /24，不得串
 	}}
 	profiler := &DeviceProfiler{
