@@ -9,9 +9,10 @@ import (
 	"time"
 )
 
-// liveInfoBody 是 2026-09 对 RackNerd 面板（迁移前 nerdvm.racknerd.com）真实
-// 调用的完整响应（夹具按真实载荷写，勿照解析器改）：2TB 套餐，bw 四元组字节
-// 单位、顺序 总量,已用,剩余,百分比，剩余=总量-已用 精确闭合。
+// liveInfoBody 按 2026-09 对 RackNerd 面板（迁移前 nerdvm.racknerd.com）真实
+// 调用响应的形状构造（IP 与主机名已换文档保留段；夹具按真实载荷写，勿照解析
+// 器改）：2TB 套餐，bw 四元组字节单位、顺序 总量,已用,剩余,百分比，
+// 剩余=总量-已用 精确闭合。
 const liveInfoBody = "<ipaddr>203.0.113.10</ipaddr><hdd>16106127360,0,16106127360,0</hdd><bw>2147483648000,25292189863,2122191458137,1</bw><mem>0,0,0,0</mem><status>success</status><statusmsg></statusmsg><hostname>racknerd-example</hostname><ipaddress>203.0.113.10</ipaddress><vmstat></vmstat>"
 
 func TestParseInfoLivePayload(t *testing.T) {
