@@ -99,6 +99,7 @@ go test -tags=with_quic,with_utls,with_clash_api,with_v2ray_api,with_wireguard,w
 - `golangci-lint` 用 **v2 配置**（`.golangci.yml`，`run.build-tags` 已配齐六 tags，与 Makefile 一致）；CI 锁 v2.4.0。`~/go/bin/golangci-lint` 若是 v1 会拒绝 v2 配置，装 v2.4.0 对齐验证。
 - **ST1005**：错误消息不能以大写拉丁字母开头——中文消息以 "Clash API…"/"Cloudflare…" 开头会挂，写成中文开头（如「监听地址无效（Clash API）」）。
 - CI 还有 `gofmt -l ./*.go ./api ./internal` 检查；提交前跑一下。
+- **真实标识防回流门禁**（ci 的 `leaks` job）：每次 push 全历史 gitleaks 扫描，命中即红——重写清过的真实标识（面板域名 / VPS IP 与主机名 / 家宽前缀 / 旧订阅 token / LAN 段 / 个人邮箱）出现在**任何提交**（含只在历史、HEAD 已改掉的）都会拦。规则存 repo secret `LEAK_RULES`，正本在维护机 `~/.local/share/sb-ops/leak-rules.toml`——规则字面量即真实标识，**严禁写进仓库、文档或任何公开位置**。写测试夹具/文档一律用 RFC 文档保留段（203.0.113.x / 198.51.100.x / 2001:db8:: / example.com），勿从生产载荷复制。
 
 ## 运维 / 排障 gotchas
 
