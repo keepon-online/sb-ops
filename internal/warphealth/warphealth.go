@@ -36,6 +36,14 @@ const (
 	// 探测失败）：隧道黑洞等歧义失败不改变判定，持续失败超过阈值即视为
 	// 链路 degraded（照 backup_stalled 的 stale 语义），防粘滞掩盖真实故障。
 	StaleAfter = 45 * time.Minute
+	// RecentWindow / RecentFailThreshold 是间歇性失败的判定窗口：最近
+	// RecentWindow 轮探测中失败 ≥ RecentFailThreshold 轮即视为链路
+	// degraded。纯「连续失败」的 StaleAfter 对时通时断的半死形态失明——
+	// 2026-10-21 线上实例：warp-svc 半死（MASQUE 隧道任务反复死、SOCKS
+	// 监听仍在），5.5 小时 15 轮探测失败穿插 6 轮成功，每次成功都刷新
+	// CheckedAt 把 Stale 计时清零，告警从未触发。
+	RecentWindow        = 8
+	RecentFailThreshold = 6
 )
 
 // 单次探测的读超时上限。用 var 仅为测试可调（黑洞隧道用例不必烧满上限）。
@@ -234,19 +242,22 @@ type State struct {
 	checkedAt   time.Time
 	lastAttempt time.Time
 	lastError   string
+	recent      []bool // 最近 RecentWindow 轮探测是否失败（true=失败，右端最新）
 }
 
 func NewState() *State { return &State{} }
 
 // Snapshot 是 State 的值拷贝视图：Verdict 空串表示尚无成功检查。
 type Snapshot struct {
-	Verdict     string
-	Reason      string
-	WarpOn      bool
-	ExitFamily  string
-	CheckedAt   time.Time
-	LastAttempt time.Time
-	LastError   string
+	Verdict       string
+	Reason        string
+	WarpOn        bool
+	ExitFamily    string
+	CheckedAt     time.Time
+	LastAttempt   time.Time
+	LastError     string
+	RecentSamples int // 窗口内已积累的探测轮数（≤ RecentWindow）
+	RecentFails   int // 窗口内失败的轮数
 }
 
 func (s *State) Record(result Result) {
@@ -255,6 +266,7 @@ func (s *State) Record(result Result) {
 	now := time.Now().UTC()
 	s.verdict, s.reason, s.warpOn, s.exitFamily = result.Verdict, result.Reason, result.WarpOn, result.ExitFamily
 	s.checkedAt, s.lastAttempt, s.lastError = now, now, ""
+	s.pushOutcome(false)
 }
 
 // RecordUnknown 记录一次歧义失败：不清掉上一个已知判定（防抖），只更新
@@ -266,6 +278,15 @@ func (s *State) RecordUnknown(err error) {
 	if err != nil {
 		s.lastError = err.Error()
 	}
+	s.pushOutcome(true)
+}
+
+// pushOutcome 记录一轮探测结果并裁剪到最近 RecentWindow 轮。
+func (s *State) pushOutcome(failed bool) {
+	s.recent = append(s.recent, failed)
+	if len(s.recent) > RecentWindow {
+		s.recent = s.recent[len(s.recent)-RecentWindow:]
+	}
 }
 
 // Reset 回到未检测态：门控关闭（warp-masque 出站被删）后不应残留旧判定
@@ -275,19 +296,28 @@ func (s *State) Reset() {
 	defer s.mu.Unlock()
 	s.verdict, s.reason, s.warpOn, s.exitFamily = "", "", false, ""
 	s.checkedAt, s.lastAttempt, s.lastError = time.Time{}, time.Time{}, ""
+	s.recent = nil
 }
 
 func (s *State) Snapshot() Snapshot {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	fails := 0
+	for _, failed := range s.recent {
+		if failed {
+			fails++
+		}
+	}
 	return Snapshot{
-		Verdict:     s.verdict,
-		Reason:      s.reason,
-		WarpOn:      s.warpOn,
-		ExitFamily:  s.exitFamily,
-		CheckedAt:   s.checkedAt,
-		LastAttempt: s.lastAttempt,
-		LastError:   s.lastError,
+		Verdict:       s.verdict,
+		Reason:        s.reason,
+		WarpOn:        s.warpOn,
+		ExitFamily:    s.exitFamily,
+		CheckedAt:     s.checkedAt,
+		LastAttempt:   s.lastAttempt,
+		LastError:     s.lastError,
+		RecentSamples: len(s.recent),
+		RecentFails:   fails,
 	}
 }
 
@@ -300,4 +330,11 @@ func (s Snapshot) Stale(threshold time.Duration) bool {
 		return false
 	}
 	return s.LastAttempt.Sub(s.CheckedAt) > threshold
+}
+
+// Flapping 报告最近探测窗口内失败是否已达阈值：时通时断的半死链路里
+// 间歇成功会不断洗掉 Stale 计时（见 RecentWindow 的线上实例注释），
+// 连续失败语义对此失明，须按窗口失败占比兜底告警。
+func (s Snapshot) Flapping() bool {
+	return s.RecentFails >= RecentFailThreshold
 }

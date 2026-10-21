@@ -217,19 +217,32 @@ func newOps(db *sql.DB, sessionTTL time.Duration, apply deployment.ApplyConfig, 
 	warpHealthState := controlwarphealth.NewState()
 	// degraded = 确定性劣化终态，或歧义失败粘滞超阈值（隧道死亡而 SOCKS
 	// 监听仍在的形态探测永远落在歧义失败里，判定不翻转——照 backup_stalled
-	// 的 stale 语义兜底）。
+	// 的 stale 语义兜底），或窗口内间歇失败占比达标（时通时断的半死形态：
+	// 间歇成功不断刷新 CheckedAt 洗掉 stale 计时，2026-10-21 线上实例
+	// 持续 5.5 小时零告警）。
 	warpHealthDegraded := func(snapshot controlwarphealth.Snapshot) (bool, string) {
+		if snapshot.Verdict == "" {
+			// 尚无成功判定：Stale 需要 CheckedAt 起点、此形态永不触发，
+			// 仅当间歇失败已构成窗口阈值时告警（链路自启动起就没通过）。
+			if snapshot.Flapping() {
+				return true, flapReason(snapshot)
+			}
+			return false, ""
+		}
 		if snapshot.Verdict != controlwarphealth.VerdictOK {
 			return true, snapshot.Reason
 		}
 		if snapshot.Stale(controlwarphealth.StaleAfter) {
 			return true, fmt.Sprintf("链路探测持续失败（最近成功 %s 前）：%s", time.Since(snapshot.CheckedAt).Round(time.Minute), snapshot.LastError)
 		}
+		if snapshot.Flapping() {
+			return true, flapReason(snapshot)
+		}
 		return false, ""
 	}
 	alerts.SetWarpHealthSource(func() (controlobservability.WarpHealthStatus, bool) {
 		snapshot := warpHealthState.Snapshot()
-		if snapshot.Verdict == "" {
+		if snapshot.Verdict == "" && !snapshot.Flapping() {
 			return controlobservability.WarpHealthStatus{}, false
 		}
 		degraded, reason := warpHealthDegraded(snapshot)
@@ -242,11 +255,15 @@ func newOps(db *sql.DB, sessionTTL time.Duration, apply deployment.ApplyConfig, 
 	})
 	overview.SetWarpHealthSource(func() (controloverview.WarpHealth, bool) {
 		snapshot := warpHealthState.Snapshot()
-		if snapshot.Verdict == "" {
+		if snapshot.Verdict == "" && !snapshot.Flapping() {
 			return controloverview.WarpHealth{}, false
 		}
 		degraded, reason := warpHealthDegraded(snapshot)
-		return controloverview.WarpHealth{Verdict: snapshot.Verdict, Reason: reason, Degraded: degraded, ExitFamily: snapshot.ExitFamily, CheckedAt: snapshot.CheckedAt}, true
+		checkedAt := snapshot.CheckedAt
+		if checkedAt.IsZero() {
+			checkedAt = snapshot.LastAttempt // 尚无成功判定时以最近尝试展示
+		}
+		return controloverview.WarpHealth{Verdict: snapshot.Verdict, Reason: reason, Degraded: degraded, ExitFamily: snapshot.ExitFamily, CheckedAt: checkedAt}, true
 	})
 	// 一键换出口：面板按 root 部署直接执行 warp-cli disconnect/connect，
 	// 复测滚动调 Check，终态经 state 即时驱动告警与总览。
@@ -625,6 +642,16 @@ func runWarpHealthLoop(ctx context.Context, state *controlwarphealth.State, data
 		}
 		timer.Reset(controlwarphealth.CheckInterval)
 	}
+}
+
+// flapReason 拼间歇性失败的告警文案；最近一轮恰好成功时 LastError 已被
+// Record 清空，此时只报窗口计数。
+func flapReason(snapshot controlwarphealth.Snapshot) string {
+	reason := fmt.Sprintf("链路探测间歇性失败（最近 %d 轮中 %d 轮失败）", snapshot.RecentSamples, snapshot.RecentFails)
+	if snapshot.LastError != "" {
+		reason += "：" + snapshot.LastError
+	}
+	return reason
 }
 
 // warpMasqueOutbound 返回 warp-masque socks 出站指向的本地代理地址与

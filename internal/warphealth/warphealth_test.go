@@ -296,6 +296,56 @@ func TestSnapshotStale(t *testing.T) {
 	}
 }
 
+func TestStateFlappingWindow(t *testing.T) {
+	// 启动即死的形态：尚无成功判定，窗口失败达标同样要能报（Stale 需要
+	// CheckedAt 起点，此形态永不触发）。
+	dead := NewState()
+	for i := 0; i < RecentFailThreshold; i++ {
+		dead.RecordUnknown(contextDeadlineError())
+	}
+	if snapshot := dead.Snapshot(); !snapshot.Flapping() {
+		t.Fatalf("启动即连续 %d 轮失败应 flap: %+v", RecentFailThreshold, snapshot)
+	}
+
+	// 复现 2026-10-21 线上形态：失败为主、穿插成功——每次成功刷新
+	// CheckedAt 洗掉 Stale 计时，只有窗口失败占比能兜住。
+	state := NewState()
+	state.Record(Result{Verdict: VerdictOK})
+	for i := 0; i < 3; i++ {
+		state.RecordUnknown(contextDeadlineError())
+	}
+	if snapshot := state.Snapshot(); snapshot.Flapping() {
+		t.Fatalf("窗口内 3 轮失败不应 flap: %+v", snapshot)
+	}
+	// 穿插一次成功（洗掉 stale 的元凶）后继续失败到窗口阈值。
+	state.Record(Result{Verdict: VerdictOK})
+	for i := 0; i < 6; i++ {
+		state.RecordUnknown(contextDeadlineError())
+	}
+	snapshot := state.Snapshot()
+	if !snapshot.Flapping() {
+		t.Fatalf("窗口内 %d/%d 轮失败应 flap: %+v", snapshot.RecentFails, snapshot.RecentSamples, snapshot)
+	}
+	if snapshot.RecentSamples > RecentWindow {
+		t.Fatalf("窗口未裁剪到 %d 轮: %+v", RecentWindow, snapshot)
+	}
+	if snapshot.Stale(StaleAfter) {
+		t.Fatal("穿插成功时 stale 不应触发（正是被兜底的盲区前提）")
+	}
+	// 连续成功把失败冲出窗口后 flap 熄灭（告警自动恢复路径）。
+	for i := 0; i < RecentWindow; i++ {
+		state.Record(Result{Verdict: VerdictOK})
+	}
+	if snapshot := state.Snapshot(); snapshot.Flapping() || snapshot.RecentFails != 0 {
+		t.Fatalf("连续成功后不应 flap: %+v", snapshot)
+	}
+	// Reset 清窗口：门控关闭再开启不继承旧失败。
+	state.Reset()
+	if snapshot := state.Snapshot(); snapshot.RecentSamples != 0 || snapshot.RecentFails != 0 || snapshot.Flapping() {
+		t.Fatalf("Reset 应清空窗口: %+v", snapshot)
+	}
+}
+
 func contextDeadlineError() error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
 	defer cancel()

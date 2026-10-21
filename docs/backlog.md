@@ -9,6 +9,7 @@
 
 ## 已完成（近期）
 
+- **WARP 链路告警滑动窗口兜底**（2026-10-21，随下版发布）：`warphealth` state 增加最近 8 轮探测滑动窗口，失败 ≥6 轮即按 degraded 告警——warp-svc 半死的时通时断形态下间歇成功会不断洗掉 stale 计时（当日线上实例 5.5h 零告警），且「尚无成功判定」的启动即死形态此前完全不评估，同受窗口兜底。运维注记：warp-svc 半死时 `warp-cli` IPC 一并超时，面板「换出口」会失败，须 `systemctl restart warp-svc`。
 - **部署简化批次**（2026-09-28）：①面板自带 TLS 直听（ACME 自动证书 + 续期热载），Nginx/certbot 退役；②ufw 移除。发布后生产需按 deployment.md 迁移（停 Nginx、config 加 tls_listen/redirect_listen、重启验证）；建议同步把订阅域名橙云降灰云（设备归因恢复真实 IP）。
 - **WARP 客户端面板纳管 + root 部署**（2026-09-25）：系统管理页一键安装/重新配置官方 cloudflare-warp 客户端（阶段机 + 固定命令枚举），换出口去 sudo 化，部署文档 root 化并附迁移步骤。发布后生产需按文档迁移 systemd 单元（root + 去 ProtectSystem）并删除旧 sudoers。
 - **WARP 注册出口预检**（2026-09-24）：注册免费 WARP 身份后即时实测出口 IP 与 Google 判定并随注册响应展示（判 CN 引导改用 warp-masque）；AI 解锁选中 warp (WireGuard) 出站时给适用性提示。免费 wireguard 出站的定位 =「零依赖通用换出口（DC 声誉 / IPv6）」，非 Google 解锁（该场景由 MASQUE 承担）。
