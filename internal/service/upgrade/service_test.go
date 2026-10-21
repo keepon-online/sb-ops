@@ -98,7 +98,7 @@ func (f *fakeGitHub) setBinary(t *testing.T, tag string, content []byte, withDig
 		release.Assets[0].Digest = "sha256:" + hex.EncodeToString(digest[:])
 	} else {
 		release.Assets = append(release.Assets, releaseAsset{ID: 2, Name: "SHA256SUMS"})
-		f.bodies[2] = []byte(fmt.Sprintf("%s  %s\n", hex.EncodeToString(digest[:]), assetName))
+		f.bodies[2] = fmt.Appendf(nil, "%s  %s\n", hex.EncodeToString(digest[:]), assetName)
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()

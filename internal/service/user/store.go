@@ -1047,10 +1047,7 @@ func distributeDeviceTrafficByDelta(ctx context.Context, tx *sql.Tx, userID stri
 		if deviceDelta == 0 {
 			deviceDelta = delta
 		}
-		newUsed := d.used + deviceDelta
-		if newUsed < 0 {
-			newUsed = 0
-		}
+		newUsed := max(d.used+deviceDelta, 0)
 		if _, err := tx.ExecContext(ctx, `UPDATE devices SET used_bytes=? WHERE id=?`, newUsed, d.id); err != nil {
 			return err
 		}

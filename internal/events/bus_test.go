@@ -31,7 +31,7 @@ func TestRetentionPrunesOnlyStaleEvents(t *testing.T) {
 	if err != nil {
 		t.Fatalf("prepare: %v", err)
 	}
-	for i := 0; i < 10002; i++ {
+	for i := range 10002 {
 		if _, err := statement.Exec(old); err != nil {
 			t.Fatalf("seed stale event %d: %v", i, err)
 		}

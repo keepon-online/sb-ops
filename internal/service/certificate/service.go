@@ -12,6 +12,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/hex"
 	"encoding/pem"
+	"maps"
 	"math/big"
 	"net"
 	"net/netip"
@@ -183,9 +184,7 @@ func (s *Service) prepare(ctx context.Context, input WriteInput) (Certificate, [
 		source = SourceManual
 	}
 	certificate, signer, parseFields := parseMaterial(input.CertificatePEM, input.PrivateKeyPEM)
-	for key, value := range parseFields {
-		fields[key] = value
-	}
+	maps.Copy(fields, parseFields)
 	if len(fields) > 0 {
 		return Certificate{Name: name, Source: source, Domain: strings.TrimSpace(input.Domain)}, nil, fields
 	}

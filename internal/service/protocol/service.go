@@ -1,6 +1,7 @@
 package protocol
 
 import (
+	"maps"
 	"slices"
 
 	"context"
@@ -191,9 +192,7 @@ func (s *Service) prepare(ctx context.Context, input WriteInput, current *Protoc
 		fields["listenPort"] = "must be between 1 and 65535"
 	}
 	settings := cloneMap(schema.Values)
-	for key, value := range input.Settings {
-		settings[key] = value
-	}
+	maps.Copy(settings, input.Settings)
 	if current != nil {
 		for _, field := range schema.Fields {
 			if field.Secret && (stringValue(settings[field.Name]) == "" || stringValue(settings[field.Name]) == maskedSecret) {

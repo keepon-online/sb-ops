@@ -91,8 +91,7 @@ func marshalErrorDetails(err error) string {
 		Message string            `json:"message,omitempty"`
 		Fields  map[string]string `json:"fields,omitempty"`
 	}
-	var fe *common.ValidationError
-	if errors.As(err, &fe) {
+	if fe, ok := errors.AsType[*common.ValidationError](err); ok {
 		b, _ := json.Marshal(fieldError{Message: err.Error(), Fields: fe.Fields})
 		return string(b)
 	}

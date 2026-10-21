@@ -509,9 +509,7 @@ const loopRestartBackoff = 5 * time.Second
 // 循环正常返回视为退出（各循环仅在 ctx 取消时返回）；此时同样带退避重启，
 // 循环自身 bug 导致的提前退出不至于静默死亡。
 func (a *OpsApp) goLoop(ctx context.Context, name string, loop func(context.Context)) {
-	a.wg.Add(1)
-	go func() {
-		defer a.wg.Done()
+	a.wg.Go(func() {
 		for {
 			func() {
 				defer func() {
@@ -527,7 +525,7 @@ func (a *OpsApp) goLoop(ctx context.Context, name string, loop func(context.Cont
 			case <-time.After(loopRestartBackoff):
 			}
 		}
-	}()
+	})
 }
 
 // runProtocolProbeLoop 周期拨测循环。内核未就绪的跳过属常态（同步窗口、

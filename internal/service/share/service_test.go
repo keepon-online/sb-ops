@@ -437,7 +437,7 @@ func TestAutoDiscoveryCapFallsBackToExistingArtifact(t *testing.T) {
 	if _, err := share.ArtifactByToken(t.Context(), token, "clash.yaml", "clash-verge/2.1.3"); err != nil {
 		t.Fatalf("seed auto device: %v", err)
 	}
-	for i := 0; i < serviceuser.MaxDevicesPerUser-1; i++ {
+	for i := range serviceuser.MaxDevicesPerUser - 1 {
 		if _, created, found, err := users.DeviceForKey(t.Context(), userID, fmt.Sprintf("manual-%d", i), fmt.Sprintf("Client %d", i), serviceuser.DeviceMetadata{SourceIP: fmt.Sprintf("198.51.100.%d", i+1)}); err != nil || !created || !found {
 			t.Fatalf("fill devices: created=%v found=%v err=%v", created, found, err)
 		}

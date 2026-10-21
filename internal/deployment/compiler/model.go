@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/netip"
 	"regexp"
+	"slices"
 	"strings"
 
 	serviceargo "github.com/keepon-online/sb-ops/internal/service/argo"
@@ -262,12 +263,7 @@ func (i Input) validateSingBoxConfig() error {
 }
 
 func validLogLevel(value string) bool {
-	for _, level := range []string{"trace", "debug", "info", "warn", "error", "fatal", "panic"} {
-		if value == level {
-			return true
-		}
-	}
-	return false
+	return slices.Contains([]string{"trace", "debug", "info", "warn", "error", "fatal", "panic"}, value)
 }
 
 func validListenAddress(value string) bool {

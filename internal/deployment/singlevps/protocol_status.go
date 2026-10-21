@@ -248,14 +248,14 @@ func defaultPortHopSnapshot(ctx context.Context) (string, error) {
 // "iptables -t nat -S PREROUTING" dump.
 func parsePortHopRules(output string) []portHopRuleSpec {
 	rules := []portHopRuleSpec{}
-	for _, line := range strings.Split(output, "\n") {
+	for line := range strings.SplitSeq(output, "\n") {
 		line = strings.TrimSpace(line)
 		if !strings.Contains(line, "sb-port-hop-") {
 			continue
 		}
 		spec := portHopRuleSpec{}
 		fields := strings.Fields(line)
-		for i := 0; i < len(fields); i++ {
+		for i := range fields {
 			if i+1 >= len(fields) {
 				break
 			}

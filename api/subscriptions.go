@@ -66,7 +66,7 @@ func unavailableProfile(reason string) []byte {
 	// Defense in depth: the node name is quoted YAML — strip quote-breaking
 	// and line-breaking characters even though current reasons are fixed text.
 	reason = strings.NewReplacer(`"`, "", "\n", " ", "\r", " ").Replace(reason)
-	return []byte(fmt.Sprintf(`port: 7890
+	return fmt.Appendf(nil, `port: 7890
 socks-port: 7891
 allow-lan: false
 mode: rule
@@ -83,7 +83,7 @@ proxy-groups:
       - "❌ %s"
 rules:
   - MATCH,节点选择
-`, reason, reason))
+`, reason, reason)
 }
 
 // subscriptionBaseURL 返回对外分发订阅链接所使用的根地址。

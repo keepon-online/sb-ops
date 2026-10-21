@@ -181,8 +181,8 @@ func (m *remoteRuleSetMatcher) load(ctx context.Context, name string, source Rul
 // publishes both formats side-by-side under the same path.
 func listURLFor(source RuleSetSource) (string, bool) {
 	for _, ext := range []string{".mrs", ".yaml"} {
-		if strings.HasSuffix(source.URL, ext) {
-			return strings.TrimSuffix(source.URL, ext) + ".list", true
+		if before, ok := strings.CutSuffix(source.URL, ext); ok {
+			return before + ".list", true
 		}
 	}
 	return "", false
@@ -231,9 +231,9 @@ func parseList(data []byte, expires time.Time) *compiledRuleSet {
 		}
 		// Classical .list lines look like "TYPE,value[,policy]"; geosite .list
 		// lines are bare domains/CIDRs. Distinguish by the leading token.
-		if comma := strings.IndexByte(line, ','); comma >= 0 {
-			typ := strings.ToUpper(strings.TrimSpace(line[:comma]))
-			val := strings.TrimSpace(line[comma+1:])
+		if before, after, ok := strings.Cut(line, ","); ok {
+			typ := strings.ToUpper(strings.TrimSpace(before))
+			val := strings.TrimSpace(after)
 			if extra := strings.IndexByte(val, ','); extra >= 0 {
 				val = strings.TrimSpace(val[:extra])
 			}

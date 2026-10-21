@@ -237,7 +237,7 @@ func TestHistoryRingLimit(t *testing.T) {
 	current := time.Date(2026, 8, 17, 12, 0, 0, 0, time.UTC)
 	fake := newFakeSource()
 	service := newTestService(func() time.Time { return current }, fake)
-	for i := 0; i < historyLimit+10; i++ {
+	for i := range historyLimit + 10 {
 		if err := service.Sample(t.Context()); err != nil {
 			t.Fatalf("第 %d 次采样失败：%v", i, err)
 		}

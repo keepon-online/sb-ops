@@ -264,7 +264,7 @@ func (s *Service) expectedDigest(ctx context.Context, repo, token string, raw gi
 
 // digestFromSums 解析 sha256sum 产物行「<hex>  <name>」。
 func digestFromSums(data []byte, assetName string) string {
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		fields := strings.Fields(line)
 		if len(fields) == 2 && fields[1] == assetName {
 			return fields[0]

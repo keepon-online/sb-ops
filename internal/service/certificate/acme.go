@@ -15,6 +15,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -196,7 +197,7 @@ func (s *Service) completeDNS01(ctx context.Context, client *acme.Client, dns *c
 // but Let's Encrypt queries authoritative resolvers that may have stale
 // cache, so we retry for up to 60 seconds.
 func waitDNSPropagation(ctx context.Context, fqdn, expected string) error {
-	for i := 0; i < 30; i++ {
+	for range 30 {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -206,10 +207,8 @@ func waitDNSPropagation(ctx context.Context, fqdn, expected string) error {
 		if err != nil {
 			continue
 		}
-		for _, record := range records {
-			if record == expected {
-				return nil
-			}
+		if slices.Contains(records, expected) {
+			return nil
 		}
 	}
 	return fmt.Errorf("超时：DNS 记录未在 60 秒内传播")
@@ -342,8 +341,8 @@ func relativeName(fqdn, zoneName string) string {
 	if fqdn == zoneName {
 		return fqdn
 	}
-	if strings.HasSuffix(fqdn, "."+zoneName) {
-		return strings.TrimSuffix(fqdn, "."+zoneName)
+	if before, ok := strings.CutSuffix(fqdn, "."+zoneName); ok {
+		return before
 	}
 	return fqdn
 }

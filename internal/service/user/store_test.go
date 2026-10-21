@@ -123,7 +123,7 @@ func TestAutoDiscoveryDeviceCap(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	for i := 0; i < MaxDevicesPerUser; i++ {
+	for i := range MaxDevicesPerUser {
 		_, createdNew, found, err := svc.DeviceForKey(ctx, created.ID, fmt.Sprintf("client-%d", i), fmt.Sprintf("Client %d", i), DeviceMetadata{SourceIP: fmt.Sprintf("198.51.100.%d", i+1)})
 		if err != nil || !createdNew || !found {
 			t.Fatalf("discover device %d: created=%v found=%v err=%v", i, createdNew, found, err)

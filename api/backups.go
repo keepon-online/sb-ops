@@ -80,8 +80,7 @@ func (h *handler) restoreUploadedBackup(c *gin.Context) {
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxRestoreUploadBytes)
 	file, err := c.FormFile("file")
 	if err != nil {
-		var tooLarge *http.MaxBytesError
-		if errors.As(err, &tooLarge) {
+		if _, ok := errors.AsType[*http.MaxBytesError](err); ok {
 			httpx.Error(c, http.StatusRequestEntityTooLarge, httpx.CodeValidationFailed, "备份文件超过 256MB 上限", nil)
 			return
 		}

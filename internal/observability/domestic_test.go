@@ -39,7 +39,7 @@ func TestDomesticNotifierPostsAllConfiguredChannels(t *testing.T) {
 		t.Fatalf("Notify: %v", err)
 	}
 	seen := map[string]bool{}
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		body := <-requests
 		path, _ := body["path"].(string)
 		seen[path] = true
@@ -138,7 +138,7 @@ func TestDomesticNotifierFallsBackToTextOnEmptyPayload(t *testing.T) {
 	if err := notifier.Notify(context.Background(), Notification{Payload: json.RawMessage(`{}`)}); err != nil {
 		t.Fatalf("Notify: %v", err)
 	}
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		payload := <-body
 		if payload["msg_type"] == "interactive" || payload["msgtype"] == "markdown" {
 			t.Fatalf("空载荷不应发送卡片: %v", payload)
@@ -168,7 +168,7 @@ func TestDomesticNotifierRendersDailyReportCards(t *testing.T) {
 		t.Fatalf("Notify: %v", err)
 	}
 	seen := map[string]bool{}
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		payload := <-requests
 		path, _ := payload["path"].(string)
 		seen[path] = true

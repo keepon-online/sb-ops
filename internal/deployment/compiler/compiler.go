@@ -303,8 +303,8 @@ func dnsServerFromAddress(tag, address, detour string) (map[string]any, bool, er
 		return value, false, nil
 	}
 	scheme, rest := "udp", trimmed
-	if idx := strings.Index(trimmed, "://"); idx >= 0 {
-		scheme, rest = trimmed[:idx], trimmed[idx+3:]
+	if before, after, ok := strings.Cut(trimmed, "://"); ok {
+		scheme, rest = before, after
 	}
 	if scheme == "dhcp" {
 		value["type"] = "dhcp"

@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -290,12 +291,7 @@ func TestClashRulesPinPanelAddressDirect(t *testing.T) {
 }
 
 func containsRule(rules []string, want string) bool {
-	for _, rule := range rules {
-		if rule == want {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(rules, want)
 }
 
 func TestClashRulesUseAssignedPolicy(t *testing.T) {

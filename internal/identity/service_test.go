@@ -81,7 +81,7 @@ func TestLoginRejectsExpiredDisabledAndRateLimitedAccounts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for attempt := 0; attempt < 5; attempt++ {
+	for attempt := range 5 {
 		_, err := service.Login(t.Context(), "admin", "wrong-password", LoginMeta{ClientIP: "192.0.2.10"})
 		if !errors.Is(err, ErrInvalidCredentials) {
 			t.Fatalf("attempt %d err=%v", attempt+1, err)

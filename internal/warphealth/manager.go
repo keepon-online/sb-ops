@@ -301,7 +301,7 @@ func parseDPkgStatus(output string) (installed bool, version string) {
 // parseConnected 解析 warp-cli status 输出（实测形态：`Status update:
 // Connected` / `Network: healthy`）。按行尾匹配，避免 Disconnected 误命中。
 func parseConnected(output string) bool {
-	for _, line := range strings.Split(output, "\n") {
+	for line := range strings.SplitSeq(output, "\n") {
 		line = strings.TrimSpace(line)
 		if strings.HasSuffix(line, "Connected") {
 			return true
@@ -315,7 +315,7 @@ var proxyPortPattern = regexp.MustCompile(`port (\d+)`)
 // parseProxyMode 解析 warp-cli settings 的 Mode 行（实测形态：
 // `(user set)\tMode: WarpProxy on port 40000`）。
 func parseProxyMode(output string) (modeProxy bool, port int) {
-	for _, line := range strings.Split(output, "\n") {
+	for line := range strings.SplitSeq(output, "\n") {
 		if !strings.Contains(line, "Mode:") {
 			continue
 		}
@@ -336,7 +336,7 @@ func osReleaseCodename() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("读取系统版本信息失败: %w", err)
 	}
-	for _, line := range strings.Split(string(content), "\n") {
+	for line := range strings.SplitSeq(string(content), "\n") {
 		value, found := strings.CutPrefix(strings.TrimSpace(line), "VERSION_CODENAME=")
 		if !found {
 			continue

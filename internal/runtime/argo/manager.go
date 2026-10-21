@@ -10,6 +10,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"os"
 	"os/exec"
@@ -87,9 +88,7 @@ func (m *Manager) Start() {
 	}
 	m.cancel = cancel
 	m.mu.Unlock()
-	m.wg.Add(1)
-	go func() {
-		defer m.wg.Done()
+	m.wg.Go(func() {
 		ticker := time.NewTicker(reconcileInterval)
 		defer ticker.Stop()
 		m.safeReconcile(ctx)
@@ -102,7 +101,7 @@ func (m *Manager) Start() {
 				m.safeReconcile(ctx)
 			}
 		}
-	}()
+	})
 }
 
 // safeReconcile 带 panic 自愈地跑一轮对账：reconcile 触达 cloudflared 下载
@@ -189,9 +188,7 @@ func (m *Manager) reconcile(ctx context.Context) {
 		}
 	}
 	running := make(map[string]*tunnelProcess, len(m.running))
-	for id, proc := range m.running {
-		running[id] = proc
-	}
+	maps.Copy(running, m.running)
 	m.mu.Unlock()
 	for _, id := range toStop {
 		m.RestartTunnel(id) // stop path: removing from running stops it for good until re-enabled

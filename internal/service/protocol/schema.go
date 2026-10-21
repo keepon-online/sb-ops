@@ -1,5 +1,7 @@
 package protocol
 
+import "maps"
+
 import "slices"
 
 var schemas = map[Type]Schema{
@@ -119,8 +121,6 @@ func SchemaFor(value Type) (Schema, bool) {
 
 func cloneMap(source map[string]any) map[string]any {
 	result := make(map[string]any, len(source))
-	for key, value := range source {
-		result[key] = value
-	}
+	maps.Copy(result, source)
 	return result
 }

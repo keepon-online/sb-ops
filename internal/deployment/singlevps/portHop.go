@@ -54,7 +54,7 @@ func reconcilePortHop(ctx context.Context, protocols []serviceprotocol.Protocol)
 		}
 		return fmt.Errorf("读取 iptables 规则失败: %w", err)
 	}
-	for _, line := range strings.Split(string(out), "\n") {
+	for line := range strings.SplitSeq(string(out), "\n") {
 		line = strings.TrimSpace(line)
 		if !strings.Contains(line, "sb-port-hop-") {
 			continue

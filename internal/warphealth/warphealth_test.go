@@ -300,7 +300,7 @@ func TestStateFlappingWindow(t *testing.T) {
 	// 启动即死的形态：尚无成功判定，窗口失败达标同样要能报（Stale 需要
 	// CheckedAt 起点，此形态永不触发）。
 	dead := NewState()
-	for i := 0; i < RecentFailThreshold; i++ {
+	for range RecentFailThreshold {
 		dead.RecordUnknown(contextDeadlineError())
 	}
 	if snapshot := dead.Snapshot(); !snapshot.Flapping() {
@@ -311,7 +311,7 @@ func TestStateFlappingWindow(t *testing.T) {
 	// CheckedAt 洗掉 Stale 计时，只有窗口失败占比能兜住。
 	state := NewState()
 	state.Record(Result{Verdict: VerdictOK})
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		state.RecordUnknown(contextDeadlineError())
 	}
 	if snapshot := state.Snapshot(); snapshot.Flapping() {
@@ -319,7 +319,7 @@ func TestStateFlappingWindow(t *testing.T) {
 	}
 	// 穿插一次成功（洗掉 stale 的元凶）后继续失败到窗口阈值。
 	state.Record(Result{Verdict: VerdictOK})
-	for i := 0; i < 6; i++ {
+	for range 6 {
 		state.RecordUnknown(contextDeadlineError())
 	}
 	snapshot := state.Snapshot()
@@ -333,7 +333,7 @@ func TestStateFlappingWindow(t *testing.T) {
 		t.Fatal("穿插成功时 stale 不应触发（正是被兜底的盲区前提）")
 	}
 	// 连续成功把失败冲出窗口后 flap 熄灭（告警自动恢复路径）。
-	for i := 0; i < RecentWindow; i++ {
+	for range RecentWindow {
 		state.Record(Result{Verdict: VerdictOK})
 	}
 	if snapshot := state.Snapshot(); snapshot.Flapping() || snapshot.RecentFails != 0 {

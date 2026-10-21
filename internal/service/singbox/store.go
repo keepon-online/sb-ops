@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"slices"
 	"time"
 
 	"github.com/keepon-online/sb-ops/internal/service/common"
@@ -463,10 +464,8 @@ func (s *Store) RuleSetReferenced(ctx context.Context, tag string) (bool, error)
 		return false, err
 	}
 	for _, rule := range rules {
-		for _, ruleSetTag := range rule.Conditions.RuleSets {
-			if ruleSetTag == tag {
-				return true, nil
-			}
+		if slices.Contains(rule.Conditions.RuleSets, tag) {
+			return true, nil
 		}
 	}
 	return false, nil

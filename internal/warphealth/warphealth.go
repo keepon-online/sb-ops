@@ -165,7 +165,7 @@ func fetchTrace(ctx context.Context, client *http.Client, target string) (warpOn
 
 func parseTraceFields(body string) map[string]string {
 	fields := map[string]string{}
-	for _, line := range strings.Split(body, "\n") {
+	for line := range strings.SplitSeq(body, "\n") {
 		if key, value, found := strings.Cut(strings.TrimSpace(line), "="); found && key != "" {
 			fields[key] = value
 		}

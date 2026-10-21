@@ -137,7 +137,7 @@ func TestV2rayCollectorPrunesVanishedDimensions(t *testing.T) {
 
 	// Two consecutive absences keep the dimension (transient gap); a
 	// reappearance in between resets the absence counter.
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		stats = nil
 		if samples, pruned, err := collector.collect(context.Background()); err != nil || len(samples) != 1 || len(pruned.DeviceIDs) != 0 {
 			t.Fatalf("absence %d: %v samples=%+v pruned=%+v", i, err, samples, pruned)
@@ -151,7 +151,7 @@ func TestV2rayCollectorPrunesVanishedDimensions(t *testing.T) {
 	// Three consecutive absences prune the dimension and report it so the
 	// cursors can be dropped.
 	stats = nil
-	for i := 0; i < pruneAbsenceThreshold-1; i++ {
+	for i := range pruneAbsenceThreshold - 1 {
 		if _, pruned, err := collector.collect(context.Background()); err != nil || len(pruned.DeviceIDs) != 0 {
 			t.Fatalf("absence %d: %v pruned=%+v", i, err, pruned)
 		}

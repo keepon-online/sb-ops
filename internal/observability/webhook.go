@@ -106,8 +106,7 @@ func (n *WebhookNotifier) do(request *http.Request) error {
 // 违反「机器人 URL 与密钥不入日志」的仓库不变量。渠道名已在包装文本
 // 里，剥掉 URL 不影响排障。
 func sanitizeTransportError(err error) error {
-	var urlErr *url.Error
-	if errors.As(err, &urlErr) {
+	if urlErr, ok := errors.AsType[*url.Error](err); ok {
 		return urlErr.Err
 	}
 	return err

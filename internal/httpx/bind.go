@@ -34,7 +34,7 @@ func init() {
 		// Violations key by JSON tag so clients receive wire-format names
 		// instead of Go field names.
 		engine.RegisterTagNameFunc(func(field reflect.StructField) string {
-			name := strings.SplitN(field.Tag.Get("json"), ",", 2)[0]
+			name, _, _ := strings.Cut(field.Tag.Get("json"), ",")
 			if name == "" || name == "-" {
 				return field.Name
 			}
@@ -59,8 +59,7 @@ func BindJSON(c *gin.Context, target any, message string) bool {
 	if err == nil {
 		return true
 	}
-	var maxErr *http.MaxBytesError
-	if errors.As(err, &maxErr) {
+	if _, ok := errors.AsType[*http.MaxBytesError](err); ok {
 		Error(c, http.StatusRequestEntityTooLarge, CodeValidationFailed, "请求体过大", nil)
 		return false
 	}

@@ -93,7 +93,7 @@ func TestCreatePrunesOldest(t *testing.T) {
 	service.now = func() time.Time { now = now.Add(time.Second); return now }
 
 	first := "sb-ops-backup-20260905-000001.db"
-	for i := 0; i < maxBackups+1; i++ {
+	for i := range maxBackups + 1 {
 		if _, err := service.Create(context.Background()); err != nil {
 			t.Fatalf("第 %d 份备份失败: %v", i+1, err)
 		}
