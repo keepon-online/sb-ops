@@ -2,7 +2,7 @@
 
 本文件记录 sb-ops 的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/)。
 
-## [未发布]
+## [0.7.1] - 2026-10-21
 
 ### 修复
 
