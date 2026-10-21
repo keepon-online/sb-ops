@@ -14,15 +14,15 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
-          go-version: '1.25.x'
+          go-version: '1.27.x'
       - run: make test
       - run: make vet
       - run: go build -tags=with_quic,with_utls,with_clash_api,with_v2ray_api,with_wireguard,with_gvisor -ldflags=-checklinkname=0 .
       - uses: golangci/golangci-lint-action@v9
         with:
           # golangci-lint v2 binary 需要 action v7+ 才能识别（v6 会拒绝 v2 版本号）。
-          # 项目用 v2 是因为 go 1.25 模块需要 v2 构建的 binary。
-          version: v2.4.0
+          # 项目用 v2 是因为 go 1.27 模块需要 built with Go 1.27+ 的 binary（v2.4.0 曾拒绝 go 1.27.0 模块）。
+          version: v2.15.0
           args: --timeout=5m
           # 禁用跨 run 的内部分析缓存（~/.cache/golangci-lint 的恢复/保存）：
           # 该缓存有已知 bug——「cache and facts」污染会让 staticcheck SA5011 在

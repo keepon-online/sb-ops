@@ -1,6 +1,6 @@
 module github.com/keepon-online/sb-ops
 
-go 1.25.5
+go 1.27.0
 
 require (
 	github.com/fsnotify/fsnotify v1.10.1
