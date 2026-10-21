@@ -2,6 +2,12 @@
 
 本文件记录 sb-ops 的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/)。
 
+## [未发布]
+
+### 变更
+
+- **内嵌 sing-box 内核升级 v1.14.2 → v1.14.3**：上游 2026-10-09 发布的修复版，与本项目直接相关的修复包括协议入站输入校验（input validation，公网暴露面的安全卫生）、连接关闭路径的 interrupt group 持锁修复（与面板热重启 CloseAllConnections 路径同域）、UDP fragmentation / 零 UDP 校验和修复（hy2/tuic 受益）、cache/usage 文件加载失败防覆盖（主实例启用 cache-file）。验收按内核升级波次惯例：`SB_CHECK_DUMP`/`SB_PROBE_DUMP` 导出全量服务端与 8 份协议客户端配置，官方 CLI `sing-box check`（v1.14.3，check 严格拒绝未知字段）全部通过；配套 sagernet 系列依赖（sing-tun/sing-vmess/wireguard-go 等）随 go.mod 同步升级。
+
 ## [0.7.1] - 2026-10-21
 
 ### 修复
