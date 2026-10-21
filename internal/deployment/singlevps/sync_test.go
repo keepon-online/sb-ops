@@ -58,7 +58,7 @@ func TestRecordFailurePreservesAppliedState(t *testing.T) {
 		t.Fatalf("query failed state: %v", err)
 	}
 	if failedDigest != "current" || failedApplied != appliedAt.Unix() || failedReason == "" {
-		t.Fatalf("failed state digest=%q applied=%q failure=%q", failedDigest, failedApplied, failedReason)
+		t.Fatalf("failed state digest=%q applied=%d failure=%q", failedDigest, failedApplied, failedReason)
 	}
 	if err := saveApplied(t.Context(), db, SyncResult{ConfigDigest: "recovered", ArtifactCount: 1, AppliedAt: appliedAt.Add(2 * time.Minute)}, []deploymentcompiler.Subscription{{UserID: "user-a", DeviceID: "device-a", Content: []byte("recovered")}}); err != nil {
 		t.Fatalf("save recovered state: %v", err)
