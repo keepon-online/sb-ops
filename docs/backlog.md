@@ -9,6 +9,7 @@
 
 ## 已完成（近期）
 
+- **订阅 DNS 段自足化（TUN 兼容加固）**（2026-10-27，随下版发布）：Clash Verge Rev 2.5.4+ 的「DNS 覆写」开关会被检测到订阅自带 dns 段时自动关闭/重置（上游 #7986/#8122/#8207），而此前订阅 DNS 段不自足——缺 `default-nameserver`（域名 DoH 无法引导解析，TUN 下系统 DNS 又被内核接管形成死锁）、缺 `fake-ip-filter`（mDNS/NTP/内网管理页被分配 fake-ip 落进代理）、`nameserver-policy` 用逗号组合 key（新内核不保证逐条解析）。现 `clashDNS()` 补齐明文引导上游（223.5.5.5/119.29.29.29，同时用于 `proxy-server-nameserver`）、标准 fake-ip 排除清单、policy key 拆为独立条目；客户端覆写开关任何状态下 TUN 均可用。
 - **WARP 链路告警滑动窗口兜底**（2026-10-21，随下版发布）：`warphealth` state 增加最近 8 轮探测滑动窗口，失败 ≥6 轮即按 degraded 告警——warp-svc 半死的时通时断形态下间歇成功会不断洗掉 stale 计时（当日线上实例 5.5h 零告警），且「尚无成功判定」的启动即死形态此前完全不评估，同受窗口兜底。运维注记：warp-svc 半死时 `warp-cli` IPC 一并超时，面板「换出口」会失败，须 `systemctl restart warp-svc`。
 - **部署简化批次**（2026-09-28）：①面板自带 TLS 直听（ACME 自动证书 + 续期热载），Nginx/certbot 退役；②ufw 移除。发布后生产需按 deployment.md 迁移（停 Nginx、config 加 tls_listen/redirect_listen、重启验证）；建议同步把订阅域名橙云降灰云（设备归因恢复真实 IP）。
 - **WARP 客户端面板纳管 + root 部署**（2026-09-25）：系统管理页一键安装/重新配置官方 cloudflare-warp 客户端（阶段机 + 固定命令枚举），换出口去 sudo 化，部署文档 root 化并附迁移步骤。发布后生产需按文档迁移 systemd 单元（root + 去 ProtectSystem）并删除旧 sudoers。

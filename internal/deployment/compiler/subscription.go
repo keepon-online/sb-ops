@@ -221,19 +221,39 @@ const (
 )
 
 func clashDNS() map[string]any {
+	// 明文 IP 上游专供引导：域名形式的 DoH（doh.pub / dns.alidns.com）自己也
+	// 需要先解析出 IP 才能连上。TUN 模式下系统 DNS 被内核接管，没有这组明文
+	// 服务器就形成死锁——DNS 覆写被客户端关掉时订阅必须自足（Clash Verge
+	// Rev 2.5.4+ 的 DNS 覆写开关自动重置导致 TUN 全断，见上游 #7986/#8122）。
+	bootstrapResolvers := []string{"223.5.5.5", "119.29.29.29"}
 	chinaResolvers := []string{"https://120.53.53.53/dns-query", "https://223.5.5.5/dns-query"}
 	// 非中国域名用国内可达的公共 DoH（DNSPod/AliDNS），避免 cloudflare/google
 	// 这类在境内被墙的解析器导致所有非 CN 域名解析失败。
 	foreignResolvers := []string{"https://doh.pub/dns-query", "https://dns.alidns.com/dns-query"}
 	return map[string]any{
 		"enable": true, "enhanced-mode": "fake-ip", "ipv6": true,
-		"nameserver": chinaResolvers,
+		"default-nameserver": bootstrapResolvers,
+		"nameserver":         chinaResolvers,
+		// 逗号分隔列表（"geosite:cn,private"）不保证被逐条解析，拆成独立 key。
 		"nameserver-policy": map[string]any{
-			"geosite:cn,private":      chinaResolvers,
+			"geosite:cn":              chinaResolvers,
+			"geosite:private":         chinaResolvers,
 			"geosite:geolocation-!cn": foreignResolvers,
 		},
-		"proxy-server-nameserver": chinaResolvers,
+		"proxy-server-nameserver": bootstrapResolvers,
 		"respect-rules":           true,
+		// TUN 下 mDNS/内网管理页/NTP 等被分配 fake-ip 后落进代理，表现为内网
+		// 设备失联、系统时间同步失败；标准排除清单照 mihomo 文档惯例。
+		"fake-ip-filter": []string{
+			"+.lan", "+.local", "+.home.arpa", "+.localdomain",
+			"time.*.com", "time.*.gov", "time.*.edu.cn", "time.*.apple.com",
+			"time1.*.com", "time2.*.com", "time3.*.com", "time4.*.com",
+			"ntp.*.com", "ntp1.*.com", "ntp2.*.com", "ntp3.*.com", "ntp4.*.com",
+			"pool.ntp.org", "time.asia.apple.com",
+			"localhost.ptlogin2.qq.com", "localhost.sec.qq.com",
+			"msftconnecttest.com", "+.msftconnecttest.com", "msftncsi.com", "+.msftncsi.com",
+			"stun.*.*", "stun.*.*.*",
+		},
 	}
 }
 

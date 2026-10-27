@@ -170,6 +170,40 @@ func TestCompileClashSubscriptionIncludesCommonRules(t *testing.T) {
 	if dns["enhanced-mode"] != "fake-ip" || dns["respect-rules"] != true || !reflect.DeepEqual(dns["nameserver"], []any{"https://120.53.53.53/dns-query", "https://223.5.5.5/dns-query"}) {
 		t.Fatalf("dns = %#v", dns)
 	}
+	// DNS 段必须自足：明文引导服务器让域名 DoH 在 TUN 下可解析（客户端 DNS
+	// 覆写关闭时订阅是唯一事实来源），fake-ip-filter 保护内网/NTP 不进代理。
+	if !reflect.DeepEqual(dns["default-nameserver"], []any{"223.5.5.5", "119.29.29.29"}) {
+		t.Fatalf("default-nameserver = %#v", dns["default-nameserver"])
+	}
+	bootstrap := dns["proxy-server-nameserver"]
+	if !reflect.DeepEqual(bootstrap, []any{"223.5.5.5", "119.29.29.29"}) {
+		t.Fatalf("proxy-server-nameserver = %#v", bootstrap)
+	}
+	policy, ok := dns["nameserver-policy"].(map[string]any)
+	if !ok {
+		t.Fatalf("nameserver-policy = %#v", dns["nameserver-policy"])
+	}
+	for _, key := range []string{"geosite:cn", "geosite:private", "geosite:geolocation-!cn"} {
+		if _, ok := policy[key]; !ok {
+			t.Fatalf("nameserver-policy missing key %q: %#v", key, policy)
+		}
+	}
+	if _, combined := policy["geosite:cn,private"]; combined {
+		t.Fatalf("nameserver-policy must not use combined keys: %#v", policy)
+	}
+	filter, ok := dns["fake-ip-filter"].([]any)
+	if !ok || len(filter) == 0 {
+		t.Fatalf("fake-ip-filter = %#v", dns["fake-ip-filter"])
+	}
+	filterSet := make(map[any]bool, len(filter))
+	for _, entry := range filter {
+		filterSet[entry] = true
+	}
+	for _, want := range []string{"+.lan", "+.local", "+.home.arpa", "msftconnecttest.com"} {
+		if !filterSet[want] {
+			t.Fatalf("fake-ip-filter missing %q: %#v", want, filter)
+		}
+	}
 	providers := subscription["rule-providers"].(map[string]any)
 	if len(providers) != 39 {
 		t.Fatalf("rule providers = %#v, want 39 providers", providers)
