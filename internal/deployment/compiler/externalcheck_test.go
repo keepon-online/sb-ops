@@ -9,16 +9,13 @@ import (
 	serviceuser "github.com/keepon-online/sb-ops/internal/service/user"
 )
 
-// TestDumpServerConfigForExternalCheck 供外部 `sing-box check` 字段核验：
-// SB_CHECK_DUMP=<path> go test -run TestDumpServerConfigForExternalCheck ./internal/deployment/compiler
-// 产出覆盖全协议入站、WARP endpoint、路由规则/规则集、typed DNS 与 experimental 段。
-func TestDumpServerConfigForExternalCheck(t *testing.T) {
-	dump := os.Getenv("SB_CHECK_DUMP")
-	if dump == "" {
-		t.Skip("set SB_CHECK_DUMP=<path> to dump the server config")
-	}
+// externalCheckInput 是外部核验（sing-box check / mihomo -t）共用的全协议
+// fixture：7 种协议入站全开 + WARP endpoint + 路由规则/规则集 + typed DNS。
+// 保持在两个 dump 测试间单一事实来源——协议字段核验与订阅方言核验必须看
+// 到同一份 Input。
+func externalCheckInput() Input {
 	protocols := []serviceprotocol.Protocol{
-		{ID: "vless", Name: "VLESS", Type: serviceprotocol.TypeVLESS, Enabled: true, Listen: "::", ListenPort: 2443, Settings: map[string]any{"tlsMode": "reality", "serverName": "www.apple.com", "realityPrivateKey": "yik4VXbFQIL0HzBC2YaTHM0681f4f__GmIqCNY35Cd0", "realityPublicKey": "public", "shortId": "01234567"}},
+		{ID: "vless", Name: "VLESS", Type: serviceprotocol.TypeVLESS, Enabled: true, Listen: "::", ListenPort: 2443, Settings: map[string]any{"tlsMode": "reality", "serverName": "www.apple.com", "realityPrivateKey": "yik4VXbFQIL0HzBC2YaTHM0681f4f__GmIqCNY35Cd0", "realityPublicKey": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8", "shortId": "01234567"}},
 		{ID: "vmess", Name: "VMess WS", Type: serviceprotocol.TypeVMess, Enabled: true, Listen: "::", ListenPort: 2445, Settings: map[string]any{"transport": "ws", "wsPath": "/vm", "wsMaxEarlyData": 2048, "wsEarlyDataHeaderName": "Sec-WebSocket-Protocol"}},
 		{ID: "hy2", Name: "Hysteria2", Type: serviceprotocol.TypeHysteria2, Enabled: true, Listen: "::", ListenPort: 2446, Settings: map[string]any{"serverName": "www.bing.com", "upMbps": 100, "downMbps": 100}},
 		{ID: "tuic", Name: "TUIC", Type: serviceprotocol.TypeTUIC, Enabled: true, Listen: "::", ListenPort: 2447, Settings: map[string]any{"serverName": "www.bing.com", "congestionControl": "bbr"}},
@@ -29,7 +26,7 @@ func TestDumpServerConfigForExternalCheck(t *testing.T) {
 	user := serviceuser.ArtifactUser{ID: "user", Name: "checker", Enabled: true}
 	device := testDevice("user", "checker-password")
 	assignments := map[string]map[string]bool{"user": {"vless": true, "vmess": true, "hy2": true, "tuic": true, "anytls": true, "ss": true, "trojan": true}}
-	result, err := Compile(Input{
+	return Input{
 		PublicAddress: "203.0.113.10", TLSCertPath: "/tmp/sb-check/fullchain.pem", TLSKeyPath: "/tmp/sb-check/privkey.pem",
 		Protocols: protocols, Users: []serviceuser.ArtifactUser{user}, Devices: []serviceuser.ArtifactDevice{device}, UserProtocols: assignments,
 		SingBoxConfig: servicesingbox.Config{
@@ -53,11 +50,39 @@ func TestDumpServerConfigForExternalCheck(t *testing.T) {
 		},
 		RuleSets:      []servicesingbox.RuleSet{{Tag: "ads", Format: "binary", URL: "https://example.com/ads.srs", DownloadDetour: "direct"}},
 		CacheFilePath: "/tmp/sb-check/cache.db",
-	})
+	}
+}
+
+// TestDumpServerConfigForExternalCheck 供外部 `sing-box check` 字段核验：
+// SB_CHECK_DUMP=<path> go test -run TestDumpServerConfigForExternalCheck ./internal/deployment/compiler
+// 产出覆盖全协议入站、WARP endpoint、路由规则/规则集、typed DNS 与 experimental 段。
+func TestDumpServerConfigForExternalCheck(t *testing.T) {
+	dump := os.Getenv("SB_CHECK_DUMP")
+	if dump == "" {
+		t.Skip("set SB_CHECK_DUMP=<path> to dump the server config")
+	}
+	result, err := Compile(externalCheckInput())
 	if err != nil {
 		t.Fatalf("compile: %v", err)
 	}
 	if err := os.WriteFile(dump, result.ServerConfig, 0o600); err != nil {
+		t.Fatalf("write dump: %v", err)
+	}
+}
+
+// TestDumpClashSubscriptionForExternalCheck 供外部 `mihomo -t` 订阅方言核验：
+// SB_SUB_DUMP=<path> go test -run TestDumpClashSubscriptionForExternalCheck ./internal/deployment/compiler
+// 产出全 7 协议节点的 clash.yaml（CI 的 subscription-dialect job 消费同一命令）。
+func TestDumpClashSubscriptionForExternalCheck(t *testing.T) {
+	dump := os.Getenv("SB_SUB_DUMP")
+	if dump == "" {
+		t.Skip("set SB_SUB_DUMP=<path> to dump the clash subscription")
+	}
+	result, err := Compile(externalCheckInput())
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	if err := os.WriteFile(dump, subscriptionFor(result, "user"), 0o600); err != nil {
 		t.Fatalf("write dump: %v", err)
 	}
 }

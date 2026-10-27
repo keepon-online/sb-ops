@@ -50,6 +50,36 @@ jobs:
       - run: npm test -- --run
       - run: npm run build
 
+  subscription-dialect:
+    # 订阅方言门禁：生成的 clash.yaml 过一遍真实 mihomo 内核的 `mihomo -t`
+    # （深度校验——协议字段加密格式、RULE-SET 悬空引用都会拒载；首次实弹
+    # 即捕获 defaultClashRules 的 cn-domains 悬空引用与 fixture 占位公钥）。
+    # 这是 SB_CHECK_DUMP/sing-box check 在订阅侧的对应物，把「mihomo 内核
+    # 方言变化导致订阅非法」从用户报障提前到 CI 红灯。实测行为（2026-10，
+    # mihomo v1.19.33）：`-t` 会因 dns.nameserver-policy 的 geosite: key 自动
+    # 下载 GeoSite.dat（GH runner 秒级）；不拉取 rule-provider（39 个规则集
+    # 纯引用校验、零下载）。mihomo 升级波次时同步更新下方 MIHOMO_VERSION
+    # （compatible 构建 = GOAMD64=v1，runner 老 CPU 也稳）。
+    runs-on: ubuntu-latest
+    env:
+      MIHOMO_VERSION: v1.19.33
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.27.x'
+      - run: |
+          curl -sSL "https://github.com/MetaCubeX/mihomo/releases/download/${MIHOMO_VERSION}/mihomo-linux-amd64-compatible-${MIHOMO_VERSION}.gz" \
+            | gunzip > mihomo
+          chmod +x mihomo
+          ./mihomo -v
+      - run: |
+          SB_SUB_DUMP="$PWD/clash.yaml" go test \
+            -tags=with_quic,with_utls,with_clash_api,with_v2ray_api,with_wireguard,with_gvisor \
+            -run TestDumpClashSubscriptionForExternalCheck ./internal/deployment/compiler
+      - run: ./mihomo -t -d "$PWD/.mihomo-home" -f clash.yaml
+        timeout-minutes: 5
+
   leaks:
     # 真实标识防回流门禁：全历史 gitleaks 扫描。只改快照不清历史的「假脱敏」
     # 提交在此必红（重写清过的值又出现在任何提交的 diff 里即命中）。规则存

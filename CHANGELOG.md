@@ -6,6 +6,12 @@
 
 ### 修复
 
+- **默认订阅规则的悬空 `RULE-SET,cn-domains` 引用**：`defaultClashRules` 引用的 `cn-domains` 规则集既不在 `ClashRuleSetSources` 的 39 个 provider 里、上游 MetaCubeX `cn-domains.mrs` 也已 404——凡未配置订阅分流策略的默认订阅，mihomo 解析配置时直接报 `rule set not found` **整份拒载**（配置了自定义策略的用户走不到默认规则故未暴露；由新增的 mihomo `-t` 订阅门禁首次实弹捕获）。删除该悬空行，国内域名判定由 `geolocation-cn` + `cn` IP 规则覆盖。
+
+### 新增
+
+- **订阅方言 CI 门禁（`subscription-dialect` job）**：生成的 clash.yaml 在 CI 里过真实 mihomo 内核的 `mihomo -t` 深度校验——协议字段加密格式（如 REALITY 公钥 base64/x25519 长度）、RULE-SET 悬空引用均拒载，把「mihomo 内核方言变化导致订阅非法」从用户报障提前到 CI 红灯；是 `SB_CHECK_DUMP` + `sing-box check` 验收模式在订阅侧的对应物。配套 `SB_SUB_DUMP` dump 测试（全 7 协议订阅，与 SB_CHECK_DUMP 共用同一份 fixture）；mihomo 钉版 v1.19.33（compatible 构建），升级波次时随 `MIHOMO_VERSION` 同步。
+
 - **订阅 DNS 段自足化，修客户端关 DNS 覆写后 TUN 全断**：Clash Verge Rev 2.5.4+ 会在检测到订阅自带 `dns:` 段时把「DNS 覆写」自动关闭（且 2.5.7 前重启后保持不住，上游 #7986/#8122/#8207），此后内核 DNS 完全由订阅接管。而订阅 DNS 段此前不自足：缺 `default-nameserver`——`doh.pub`/`dns.alidns.com` 是域名形式的 DoH，自身也需先解析才能连上，TUN 下系统 DNS 已被内核接管、无明文引导即死锁，表现为全机域名解析超时（`can't resolve ip: context deadline exceeded`）；缺 `fake-ip-filter`——TUN 下的 mDNS/NTP/内网管理页被分配 fake-ip 后落进代理；`nameserver-policy` 用逗号组合 key（`geosite:cn,private`），新内核不保证逐条解析。现 `clashDNS()` 补齐明文引导上游（223.5.5.5/119.29.29.29，同时用于 `proxy-server-nameserver`）、标准 fake-ip 排除清单、policy key 拆为独立条目。客户端「DNS 覆写」开关任意状态下 TUN 均可正常工作（此前只有覆写开启时才侥幸可用）。
 
 ## [0.7.2] - 2026-10-21
