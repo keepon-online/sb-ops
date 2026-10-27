@@ -433,7 +433,6 @@ func defaultClashRules() []string {
 		"RULE-SET,khanacademy," + clashEducationGroup,
 		"RULE-SET,category-scholar-!cn," + clashEducationGroup,
 		"RULE-SET,geolocation-cn," + clashChinaGroup,
-		"RULE-SET,cn-domains," + clashChinaGroup,
 		"RULE-SET,cn," + clashChinaGroup + ",no-resolve",
 		"RULE-SET,proxy," + clashServiceGroup,
 		"MATCH," + clashFinalGroup,
