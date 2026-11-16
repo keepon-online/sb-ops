@@ -9,6 +9,7 @@
 
 ## 已完成（近期）
 
+- **换出口适配新版 warp-cli TOS 门禁**（2026-11-16，随下版发布）：cloudflare-warp 2026.8.2115.0 起未接受 TOS 的 `warp-cli` 调用一律本地拒绝（`Please accept the WARP Terms of Service…`，检查发生在 IPC 之前），换出口路径的 `runWarpCli`（ops_app.go）没带 `--accept-tos` 导致面板换出口必失败——纳管 configure 序列（manager.go）当时已带、唯独此处漏。统一前置 flag 修复；同日生产 warp-svc 崩溃循环（10-21 半死同形态二次复发）由 restart 恢复，64db878 滑动窗口兜底实证正确触发 `warp_masque_degraded`。
 - **订阅方言 CI 门禁 + 默认规则悬空引用修复**（2026-10-27，随下版发布）：CI 新增 `subscription-dialect` job——`SB_SUB_DUMP` 导出全 7 协议 clash.yaml 后跑 `mihomo -t`（钉版 v1.19.33 compatible）深度校验，是 `SB_CHECK_DUMP` + `sing-box check` 在订阅侧的对应物；mihomo 升级波次时随 `MIHOMO_VERSION` 同步。门禁首次实弹即捕获 `defaultClashRules` 的 `RULE-SET,cn-domains` 悬空引用（provider 表无此名、上游 .mrs 已 404，未配订阅分流策略的默认订阅会被 mihomo 整份拒载）——已删悬空行。
 - **订阅 DNS 段自足化（TUN 兼容加固）**（2026-10-27，随下版发布）：Clash Verge Rev 2.5.4+ 的「DNS 覆写」开关会被检测到订阅自带 dns 段时自动关闭/重置（上游 #7986/#8122/#8207），而此前订阅 DNS 段不自足——缺 `default-nameserver`（域名 DoH 无法引导解析，TUN 下系统 DNS 又被内核接管形成死锁）、缺 `fake-ip-filter`（mDNS/NTP/内网管理页被分配 fake-ip 落进代理）、`nameserver-policy` 用逗号组合 key（新内核不保证逐条解析）。现 `clashDNS()` 补齐明文引导上游（223.5.5.5/119.29.29.29，同时用于 `proxy-server-nameserver`）、标准 fake-ip 排除清单、policy key 拆为独立条目；客户端覆写开关任何状态下 TUN 均可用。
 - **WARP 链路告警滑动窗口兜底**（2026-10-21，随下版发布）：`warphealth` state 增加最近 8 轮探测滑动窗口，失败 ≥6 轮即按 degraded 告警——warp-svc 半死的时通时断形态下间歇成功会不断洗掉 stale 计时（当日线上实例 5.5h 零告警），且「尚无成功判定」的启动即死形态此前完全不评估，同受窗口兜底。运维注记：warp-svc 半死时 `warp-cli` IPC 一并超时，面板「换出口」会失败，须 `systemctl restart warp-svc`。
