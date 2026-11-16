@@ -190,7 +190,34 @@ curl -s --socks5-hostname 127.0.0.1:40000 https://www.cloudflare.com/cdn-cgi/tra
 curl -s -o /dev/null -w "%{http_code} %{redirect_url}\n" --socks5-hostname 127.0.0.1:40000 https://www.google.com/
 ```
 
-配好后总览页出现「WARP 解锁链路」卡片（每 15 分钟自动探测，异常推送 `warp_masque_degraded` 告警）。维护：出口判定再漂移时先点卡片上的「换出口」（面板以 root 直接执行 warp-cli 断开重连，无需 sudoers）；卸载恢复：面板删除出站与规则后 `sudo warp-cli disconnect && sudo apt remove -y cloudflare-warp`。
+配好后总览页出现「WARP 解锁链路」卡片（每 15 分钟自动探测，异常推送 `warp_masque_degraded` 告警）。维护：出口判定再漂移时先点卡片上的「换出口」（面板以 root 直接执行 warp-cli 断开重连，无需 sudoers）；warp-svc 半死形态（warp-cli IPC 超时、SOCKS 无响应、systemd 仍报 active——cloudflare-warp Linux 客户端已知缺陷，跨版本存在）下换出口注定失败，点「重启服务」（面板执行 `systemctl restart warp-svc`，两次生产实例均以此恢复）；卸载恢复：面板删除出站与规则后 `sudo warp-cli disconnect && sudo apt remove -y cloudflare-warp`。
+
+**可选：warp-svc 预防性周重启 timer**（对症缓解半死缺陷，升级无解时的保值手段——上游 apt 源全线只有当前版本且无修复说明）。周日 05:00 本地时区执行，避开每日 04:00 数据库备份：
+
+```bash
+sudo tee /etc/systemd/system/warp-svc-preventive-restart.service <<'EOF'
+[Unit]
+Description=Preventive weekly restart of warp-svc (cloudflare-warp daemon half-dead bug mitigation)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/systemctl restart warp-svc
+EOF
+sudo tee /etc/systemd/system/warp-svc-preventive-restart.timer <<'EOF'
+[Unit]
+Description=Weekly preventive restart of warp-svc (Sunday 05:00 local time, avoids daily backup at 04:00)
+
+[Timer]
+OnCalendar=Sun *-*-* 05:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+sudo systemctl daemon-reload && sudo systemctl enable --now warp-svc-preventive-restart.timer
+```
+
+重启窗口内 WARP 链路闪断数秒，warphealth 单轮探测失败不会触发告警（窗口占比与 stale 阈值均不会命中）。
 
 ## 四、面板初始化
 

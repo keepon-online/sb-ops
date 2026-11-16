@@ -279,6 +279,20 @@ func newOps(db *sql.DB, sessionTTL time.Duration, apply deployment.ApplyConfig, 
 		defer cancel()
 		return controlwarphealth.Rotate(ctx, runWarpCli, addr, warpHealthState)
 	}
+	// warp-svc 服务重启（换出口的兜底动作：warp-svc 半死时 warp-cli IPC 一并
+	// 超时，换出口注定失败，真正恢复手段是重启服务——两次线上实例先例）。
+	warpRestartService := func(ctx context.Context) (controlwarphealth.Result, error) {
+		addr, found, err := warpMasqueOutbound(ctx, db)
+		if err != nil {
+			return controlwarphealth.Result{}, fmt.Errorf("读取 warp-masque 出站失败: %w", err)
+		}
+		if !found {
+			return controlwarphealth.Result{}, controlwarphealth.ErrWarpNotDeployed
+		}
+		ctx, cancel := context.WithTimeout(ctx, warpRestartTimeout)
+		defer cancel()
+		return controlwarphealth.RestartService(ctx, runWarpSvcRestart, addr, warpHealthState)
+	}
 	// WARP 客户端纳管：安装/配置/状态（系统侧 Manager + 面板侧联动适配）。
 	warpClient := warpClientAdapter{
 		manager: controlwarphealth.NewManager(controlwarphealth.OSCommandRunner, controlwarphealth.DownloadPublicKey, func(err error) {
@@ -402,7 +416,7 @@ func newOps(db *sql.DB, sessionTTL time.Duration, apply deployment.ApplyConfig, 
 		Identity: auth, Store: identityStore, Users: users, Protocols: protocols, Certificates: certificates, Policies: policies, SingBox: singBox, Sync: syncer,
 		Overview: overview, AuditLogs: auditLogs, Share: subscriptions, Traffic: traffic, Events: events, Alerts: alerts, Config: configProvider,
 		Argo: argoService, ArgoManager: argoManager, Monitor: monitor, Upgrade: upgradeService, Prober: prober,
-		Backup: backupService, WarpRotate: warpRotate, WarpPrechecker: controlprobe.NewWarpPrechecker(),
+		Backup: backupService, WarpRotate: warpRotate, WarpRestartService: warpRestartService, WarpPrechecker: controlprobe.NewWarpPrechecker(),
 		WarpClient: warpClient,
 	})
 	background, cancel := context.WithCancel(context.Background())
@@ -679,6 +693,12 @@ const (
 	warpCliPath        = "/usr/bin/warp-cli"
 	warpCliStepTimeout = 12 * time.Second
 	warpRotateTimeout  = 2 * time.Minute
+	// warp-svc 重启：systemctl 的 stop 阶段可能等半死进程退出（systemd
+	// TimeoutStopSec 默认 90s），步超时给足；总预算另含宽限复测窗口。
+	systemctlPath      = "/usr/bin/systemctl"
+	warpSvcUnit        = "warp-svc"
+	warpSvcStepTimeout = 2 * time.Minute
+	warpRestartTimeout = 5 * time.Minute
 )
 
 // runWarpCli 执行一条 warp-cli 子命令（换出口用）。cloudflare-warp
@@ -692,6 +712,18 @@ func runWarpCli(ctx context.Context, args ...string) error {
 	output, err := exec.CommandContext(ctx, warpCliPath, args...).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("warp-cli %s 失败: %s", strings.Join(args, " "), strings.TrimSpace(string(output)))
+	}
+	return nil
+}
+
+// runWarpSvcRestart 重启 warp-svc 系统服务（面板「重启 WARP 服务」用，
+// warp-svc 半死的对症恢复动作）。
+func runWarpSvcRestart(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, warpSvcStepTimeout)
+	defer cancel()
+	output, err := exec.CommandContext(ctx, systemctlPath, "restart", warpSvcUnit).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("systemctl restart %s 失败: %s", warpSvcUnit, strings.TrimSpace(string(output)))
 	}
 	return nil
 }

@@ -9,6 +9,7 @@ import {
   ReloadOutlined,
   SafetyCertificateOutlined,
   SettingOutlined,
+  SyncOutlined,
   TeamOutlined,
   ThunderboltOutlined
 } from '@ant-design/icons';
@@ -85,6 +86,22 @@ export function OverviewPage() {
     },
     onError: (error) => {
       message.error(error instanceof ApiError ? error.message : '换出口失败，请稍后重试');
+    }
+  });
+  // WARP 服务重启：warp-svc 半死形态（warp-cli IPC 与 SOCKS 一并失效）下
+  // 换出口注定失败的对症恢复动作，重启后同样滚动复测。
+  const warpRestart = useMutation({
+    mutationFn: controlPlaneApi.warpRestartService,
+    onSuccess: (result) => {
+      void queryClient.invalidateQueries({ queryKey: ['overview'] });
+      if (result.verdict === 'ok') {
+        message.success('WARP 服务重启完成，解锁链路已恢复');
+      } else {
+        message.warning(`WARP 服务已重启，链路仍异常（${result.verdict}）`);
+      }
+    },
+    onError: (error) => {
+      message.error(error instanceof ApiError ? error.message : '重启 WARP 服务失败，请稍后重试');
     }
   });
   // 所有 Hook 必须在任何提前 return 之前调用：overview 轮询中途转 isError
@@ -325,6 +342,15 @@ export function OverviewPage() {
               >
                 <Button size="small" icon={<ThunderboltOutlined />} loading={warpRotate.isPending}>换出口</Button>
               </Popconfirm>
+              <Popconfirm
+                title="确认重启 WARP 服务？"
+                description="将重启 warp-svc 系统服务（换出口无效时的兜底恢复），链路中断数秒到数十秒，完成后自动复测。"
+                okText="重启服务"
+                cancelText="取消"
+                onConfirm={() => warpRestart.mutate()}
+              >
+                <Button size="small" icon={<SyncOutlined />} loading={warpRestart.isPending}>重启服务</Button>
+              </Popconfirm>
             </Space>
             {value.warpHealth.degraded && value.warpHealth.reason ? (
               <Typography.Paragraph type="secondary" style={{ marginTop: 8, marginBottom: 0, fontSize: 12 }}>
@@ -332,7 +358,7 @@ export function OverviewPage() {
               </Typography.Paragraph>
             ) : (
               <Typography.Paragraph type="secondary" style={{ marginTop: 8, marginBottom: 0, fontSize: 12 }}>
-                异常时推送「WARP 解锁链路异常」告警，翻回正常自动恢复；出口判定漂移可在 VPS 执行 warp-cli disconnect &amp;&amp; warp-cli connect 换出口。
+                异常时推送「WARP 解锁链路异常」告警，翻回正常自动恢复；出口判定漂移点「换出口」，换出口无效（warp-svc 半死）点「重启服务」。
               </Typography.Paragraph>
             )}
           </section>

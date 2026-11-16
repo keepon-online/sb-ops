@@ -59,6 +59,9 @@ type Dependencies struct {
 	// WarpRotate 执行 WARP 一键换出口（warp-cli 断开重连 + 立即复测）；
 	// 测试可缺省（对应端点返回 503，同 Prober 先例）。
 	WarpRotate func(context.Context) (controlwarphealth.Result, error)
+	// WarpRestartService 重启 warp-svc 系统服务（半死形态的对症恢复动作）；
+	// 测试可缺省（对应端点返回 503，同 WarpRotate 先例）。
+	WarpRestartService func(context.Context) (controlwarphealth.Result, error)
 	// WarpClient 管理官方 WARP 客户端（安装阶段机 / 幂等配置 / 状态视图，
 	// 含面板侧 warp-masque 出站联动）；测试可缺省（对应端点返回 503）。
 	WarpClient interface {
@@ -260,6 +263,7 @@ func RegisterRoutes(router *gin.Engine, dependencies Dependencies) {
 		systemBackups.DELETE("/:name", h.deleteBackup)
 	}
 	authenticated.POST("/system/warp/rotate", h.rotateWarp)
+	authenticated.POST("/system/warp/restart", h.restartWarpService)
 	authenticated.GET("/system/warp/status", h.warpClientStatus)
 	authenticated.POST("/system/warp/install", h.installWarpClient)
 	authenticated.POST("/system/warp/reconfigure", h.reconfigureWarpClient)

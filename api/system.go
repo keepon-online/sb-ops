@@ -77,11 +77,39 @@ func (h *handler) rotateWarp(c *gin.Context) {
 }
 
 func writeWarpRotateError(c *gin.Context, err error) {
+	writeWarpActionError(c, err, httpx.CodeWarpRotateFailed)
+}
+
+// restartWarpService 重启 warp-svc 系统服务（半死形态的对症恢复动作：warp-cli
+// IPC 与 SOCKS 一并失效时换出口注定失败），照 rotate 先例 h.audit 直记 +
+// httpx 响应。重启对链路是数秒级中断，由前端二次确认。
+func (h *handler) restartWarpService(c *gin.Context) {
+	if h.WarpRestartService == nil {
+		httpx.Error(c, http.StatusServiceUnavailable, httpx.CodeWarpRestartUnavailable, "WARP 服务重启未接线", nil)
+		return
+	}
+	result, err := h.WarpRestartService(c.Request.Context())
+	if err != nil {
+		h.audit(c, actionSystemWarpRestart, resourceSystemWarp, "", resultFailure, err)
+		writeWarpRestartError(c, err)
+		return
+	}
+	h.audit(c, actionSystemWarpRestart, resourceSystemWarp, result.Verdict, ResultSuccess)
+	httpx.OK(c, result)
+}
+
+func writeWarpRestartError(c *gin.Context, err error) {
+	writeWarpActionError(c, err, httpx.CodeWarpRestartFailed)
+}
+
+// writeWarpActionError 是换出口/服务重启共用的错误映射：未部署出站 404，
+// 其余（执行或复测失败）502 携带业务码。
+func writeWarpActionError(c *gin.Context, err error, failedCode httpx.Code) {
 	switch {
 	case errors.Is(err, controlwarphealth.ErrWarpNotDeployed):
 		httpx.Error(c, http.StatusNotFound, httpx.CodeNotFound, "未部署 WARP 解锁链路（缺少 warp-masque 出站）", nil)
 	default:
-		httpx.Error(c, http.StatusBadGateway, httpx.CodeWarpRotateFailed, err.Error(), nil)
+		httpx.Error(c, http.StatusBadGateway, failedCode, err.Error(), nil)
 	}
 }
 

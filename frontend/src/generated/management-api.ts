@@ -1461,6 +1461,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/system/warp/restart": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restart the warp-svc systemd service (recovery for the half-dead daemon), then re-probe until a verdict
+         * @description Recovery action for the known warp-svc half-dead / crash-loop states (warp-cli IPC times out and the SOCKS listener dies while systemd still reports the unit active): rotation via warp-cli cannot succeed there, restarting the service is the only remedy (two production incidents, 2026-10-21 and 2026-11-16). Runs `systemctl restart warp-svc` as root, then polls the health probe within a grace window. The request blocks until the probe settles (typically under 20 seconds; stopping a wedged process may take up to systemd's shutdown timeout).
+         */
+        post: operations["restartSystemWarpService"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/system/warp/status": {
         parameters: {
             query?: never;
@@ -6083,6 +6103,57 @@ export interface operations {
             };
             /** @description Reconnect failed or the re-probe window expired without a definitive verdict */
             502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManagementErrorResponse"];
+                };
+            };
+        };
+    };
+    restartSystemWarpService: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Fresh health verdict after the restart */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessEnvelope"] & {
+                        data?: components["schemas"]["ManagementWarpRotateResult"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description No warp-masque outbound configured */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManagementErrorResponse"];
+                };
+            };
+            /** @description Restart failed or the re-probe window expired without a definitive verdict */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManagementErrorResponse"];
+                };
+            };
+            /** @description Warp service restart not wired */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

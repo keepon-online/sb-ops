@@ -41,6 +41,8 @@ const (
 	CodeWarpInstallBusy        Code = 4009 // WARP 客户端安装正在进行中
 	CodeWarpClientNotInstalled Code = 4010 // WARP 客户端未安装（重新配置前置校验）
 	CodeWarpReconfigureFailed  Code = 4011 // WARP 客户端配置序列执行失败
+	CodeWarpRestartUnavailable Code = 4012 // WARP 服务重启不可用（未装配或内核内未部署出站）
+	CodeWarpRestartFailed      Code = 4013 // WARP 服务重启失败（重启或复测未通过）
 
 	// 5xxx sing-box 运行时
 	CodeRuntimeUnavailable Code = 5001 // 运行时尚未配置（原 SINGBOX_RUNTIME_UNAVAILABLE）

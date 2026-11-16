@@ -1612,6 +1612,28 @@ paths:
         '403': {$ref: '#/components/responses/Forbidden'}
         '404': {description: No warp-masque outbound configured, content: {application/json: {schema: {$ref: '#/components/schemas/ManagementErrorResponse'}}}}
         '502': {description: Reconnect failed or the re-probe window expired without a definitive verdict, content: {application/json: {schema: {$ref: '#/components/schemas/ManagementErrorResponse'}}}}
+  /api/v1/system/warp/restart:
+    post:
+      tags: [System]
+      operationId: restartSystemWarpService
+      summary: Restart the warp-svc systemd service (recovery for the half-dead daemon), then re-probe until a verdict
+      description: >-
+        Recovery action for the known warp-svc half-dead / crash-loop states
+        (warp-cli IPC times out and the SOCKS listener dies while systemd still
+        reports the unit active): rotation via warp-cli cannot succeed there,
+        restarting the service is the only remedy (two production incidents,
+        2026-10-21 and 2026-11-16). Runs `systemctl restart warp-svc` as root,
+        then polls the health probe within a grace window. The request blocks
+        until the probe settles (typically under 20 seconds; stopping a wedged
+        process may take up to systemd's shutdown timeout).
+      security: [{BearerAuth: []}]
+      responses:
+        '200': {description: Fresh health verdict after the restart, content: {application/json: {schema: {allOf: [{$ref: '#/components/schemas/SuccessEnvelope'}, {properties: {data: {$ref: '#/components/schemas/ManagementWarpRotateResult'}}}]}}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {description: No warp-masque outbound configured, content: {application/json: {schema: {$ref: '#/components/schemas/ManagementErrorResponse'}}}}
+        '502': {description: Restart failed or the re-probe window expired without a definitive verdict, content: {application/json: {schema: {$ref: '#/components/schemas/ManagementErrorResponse'}}}}
+        '503': {description: Warp service restart not wired, content: {application/json: {schema: {$ref: '#/components/schemas/ManagementErrorResponse'}}}}
   /api/v1/system/warp/status:
     get:
       tags: [System]

@@ -132,6 +132,7 @@ const (
 	// WARP 解锁链路
 	resourceSystemWarp          = "warp"
 	actionSystemWarpRotate      = "system.warp.rotate"
+	actionSystemWarpRestart     = "system.warp.restart"
 	actionSystemWarpInstall     = "system.warp.install"
 	actionSystemWarpReconfigure = "system.warp.reconfigure"
 )

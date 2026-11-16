@@ -8,6 +8,7 @@ export type ManagementWarpRotateResult = components['schemas']['ManagementWarpRo
 export const controlPlaneApi = {
   overview: () => managementRequest<ManagementOverview>('/api/v1/overview'),
   warpRotate: () => managementRequest<ManagementWarpRotateResult>('/api/v1/system/warp/rotate', { method: 'POST' }),
+  warpRestartService: () => managementRequest<ManagementWarpRotateResult>('/api/v1/system/warp/restart', { method: 'POST' }),
   audit: (query: Record<string, string | number | undefined>) => {
     const params = new URLSearchParams();
     Object.entries(query).forEach(([key, value]) => { if (value !== undefined && value !== '') params.set(key, String(value)); });

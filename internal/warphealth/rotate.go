@@ -31,6 +31,14 @@ func Rotate(ctx context.Context, runWarpCli RunWarpCli, proxyAddr string, state 
 	if err := runWarpCli(ctx, "connect"); err != nil {
 		return Result{}, fmt.Errorf("重连 WARP 失败: %w", err)
 	}
+	return probeUntilTerminal(ctx, proxyAddr, state, rotateProbeAttempts, rotateProbeInterval, "换出口后链路复测未通过")
+}
+
+// probeUntilTerminal 在宽限窗口内滚动复测链路，拿到终态（proxy-down 之外的
+// 成功判定）即更新 state 并返回；宽限期内 proxy-down（SOCKS 监听未起）与
+// 歧义失败（隧道还在握手）视作未就绪继续等；宽限耗尽仍无终态时返回错误，
+// 最后一次确定性终态（若有）会先落 state 驱动告警。换出口与服务重启共用。
+func probeUntilTerminal(ctx context.Context, proxyAddr string, state *State, attempts int, interval time.Duration, errPrefix string) (Result, error) {
 	var lastErr error
 	var lastResult Result
 	for attempt := 1; ; attempt++ {
@@ -45,17 +53,17 @@ func Rotate(ctx context.Context, runWarpCli RunWarpCli, proxyAddr string, state 
 			lastErr = fmt.Errorf("%s：%s", result.Verdict, result.Reason)
 			lastResult = result
 		}
-		if attempt >= rotateProbeAttempts {
+		if attempt >= attempts {
 			break
 		}
 		select {
 		case <-ctx.Done():
 			return Result{}, ctx.Err()
-		case <-time.After(rotateProbeInterval):
+		case <-time.After(interval):
 		}
 	}
 	if lastResult.Verdict != "" {
 		state.Record(lastResult)
 	}
-	return Result{}, fmt.Errorf("换出口后链路复测未通过: %w", lastErr)
+	return Result{}, fmt.Errorf("%s: %w", errPrefix, lastErr)
 }
