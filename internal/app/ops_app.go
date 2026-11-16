@@ -681,10 +681,14 @@ const (
 	warpRotateTimeout  = 2 * time.Minute
 )
 
-// runWarpCli 执行一条 warp-cli 子命令（换出口用）。
+// runWarpCli 执行一条 warp-cli 子命令（换出口用）。cloudflare-warp
+// 2026.8.2115.0（2026-10-21 随半死事故处理装机）起未接受 TOS 的调用一律
+// 本地拒绝（"Please accept the WARP Terms of Service…"），故统一前置
+// --accept-tos（纳管 configure 序列在 manager.go 同此）。
 func runWarpCli(ctx context.Context, args ...string) error {
 	ctx, cancel := context.WithTimeout(ctx, warpCliStepTimeout)
 	defer cancel()
+	args = append([]string{"--accept-tos"}, args...)
 	output, err := exec.CommandContext(ctx, warpCliPath, args...).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("warp-cli %s 失败: %s", strings.Join(args, " "), strings.TrimSpace(string(output)))
