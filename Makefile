@@ -34,7 +34,7 @@ run:
 
 release: frontend
 	mkdir -p $(DIST)/release
-	GOOS=linux GOARCH=amd64 CGO_ENABLED=1 go build $(GOFLAGS) -ldflags "$(LDFLAGS) -X main.version=$(VERSION)" -o $(DIST)/release/sb-ops-linux-amd64 ./
+	GOOS=linux GOARCH=amd64 CGO_ENABLED=1 CGO_CFLAGS="-O2 -march=x86-64" go build $(GOFLAGS) -ldflags "$(LDFLAGS) -X main.version=$(VERSION)" -o $(DIST)/release/sb-ops-linux-amd64 ./
 	GOOS=linux GOARCH=arm64 CGO_ENABLED=1 CC=aarch64-linux-gnu-gcc go build $(GOFLAGS) -ldflags "$(LDFLAGS) -X main.version=$(VERSION)" -o $(DIST)/release/sb-ops-linux-arm64 ./
 	(cd $(DIST)/release && sha256sum sb-ops-linux-* > SHA256SUMS)
 

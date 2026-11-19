@@ -10,7 +10,10 @@ permissions:
 
 jobs:
   build-and-release:
-    runs-on: ubuntu-latest
+    # 钉 22.04：ubuntu-latest 滚到 25.04 后发行版 gcc 默认按 x86-64-v2/v3 编译
+    # CGO 部分，老 VPS CPU 加载即拒（CPU ISA level is lower than required，exit 127）。
+    # 与 Makefile 里 amd64 的 CGO_CFLAGS=-march=x86-64 双保险。
+    runs-on: ubuntu-22.04
     steps:
       - name: Checkout
         uses: actions/checkout@v7

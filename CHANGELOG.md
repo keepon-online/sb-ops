@@ -2,6 +2,12 @@
 
 本文件记录 sb-ops 的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/)。
 
+## [0.8.3] - 2026-11-19
+
+### 修复
+
+- **v0.8.1/v0.8.2 的 amd64 产物在老 CPU 上无法启动（exit 127）**：面板升级后服务反复崩溃、只能 VNC 回滚。根因不在代码——GitHub `ubuntu-latest` runner 于 11-16 至 11-19 间从 24.04 滚动到 25.04，新版发行版 gcc 默认把 CGO 部分（内嵌 SQLite）按 x86-64-v2/v3 微架构编译，老 KVM VPS 的 CPU 不满足指令集要求，动态加载器直接拒绝（`CPU ISA level is lower than required`）；v0.8.0 恰好构建于镜像切换前故幸免。glibc 无关（产物要求 ≤2.34，VPS 2.35；sha256 与官方一致）。双保险修复：release workflow runner 钉 `ubuntu-22.04`（与生产 VPS 同代 glibc 2.35），Makefile amd64 构建显式 `CGO_CFLAGS="-O2 -march=x86-64"` 强制基线指令集——任一防线失效都不再复发。
+
 ## [0.8.2] - 2026-11-19
 
 ### 新增
