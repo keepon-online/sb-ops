@@ -105,6 +105,9 @@ func (i Input) Validate() error {
 			if setting(value, "transport") != "ws" || setting(value, "wsPath") == "" {
 				return fmt.Errorf("协议 %s 必须使用 WebSocket 并配置路径", value.Name)
 			}
+			if boolSetting(value, "argoOnly", false) && !i.hasEnabledArgoTunnel(value.ID) {
+				return fmt.Errorf("协议 %s 开启「仅经 Argo 隧道暴露」但不存在绑定它的启用隧道", value.Name)
+			}
 			switch setting(value, "tlsMode") {
 			case "", "<nil>", "none":
 			case "certificate":
@@ -260,6 +263,20 @@ func (i Input) validateSingBoxConfig() error {
 		}
 	}
 	return nil
+}
+
+// hasEnabledArgoTunnel 报告是否存在绑定该协议的启用 Argo 隧道——argoOnly
+// 的承载前提（否则订阅无节点、入站又收口回环，协议完全不可达）。只校验
+// 配置意图：隧道运行态（域名分配、进程存活）由 argo manager 自己负责，
+// 勿把 runtime 状态泄漏进编译校验（否则「先建协议再建隧道」的中间态会被
+// 误拦成编译失败）。
+func (i Input) hasEnabledArgoTunnel(protocolID string) bool {
+	for _, tunnel := range i.ArgoTunnels {
+		if tunnel.Enabled && tunnel.ProtocolID == protocolID {
+			return true
+		}
+	}
+	return false
 }
 
 func validLogLevel(value string) bool {

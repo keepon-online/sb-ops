@@ -776,10 +776,13 @@ func TestCompileArgoOnlyHidesDirectSubscriptionNode(t *testing.T) {
 			}
 		}
 	}
-	// 入站必须仍在服务端配置里——cloudflared 的后端就指到它。
+	// 入站必须仍在服务端配置里——cloudflared 的后端就指到它，且收口回环
+	// （公网端口关闭，主动探测无从下手；cloudflared 回源与拨测本就打
+	// 127.0.0.1，不受影响）。
 	var serverConfig struct {
 		Inbounds []struct {
-			ListenPort int `json:"listen_port"`
+			Listen     string `json:"listen"`
+			ListenPort int    `json:"listen_port"`
 		} `json:"inbounds"`
 	}
 	if err := json.Unmarshal(result.ServerConfig, &serverConfig); err != nil {
@@ -789,10 +792,43 @@ func TestCompileArgoOnlyHidesDirectSubscriptionNode(t *testing.T) {
 	for _, inbound := range serverConfig.Inbounds {
 		if inbound.ListenPort == 2096 {
 			found = true
+			if inbound.Listen != "127.0.0.1" {
+				t.Fatalf("argo-only 入站应监听回环，实际 listen=%q", inbound.Listen)
+			}
 		}
 	}
 	if !found {
 		t.Fatalf("argo-only 入站未编译进服务端配置: %s", result.ServerConfig)
+	}
+}
+
+// TestInputValidateRejectsArgoOnlyWithoutTunnel argoOnly 而无绑定它的启用
+// 隧道 = 订阅无节点且入站收口回环，协议完全不可达——编译校验拒绝；隧道
+// 存在但停用同样拒绝（配置意图层面自洽，运行态归 argo manager）。
+func TestInputValidateRejectsArgoOnlyWithoutTunnel(t *testing.T) {
+	base := Input{
+		PublicAddress: "1.1.1.1",
+		Protocols: []serviceprotocol.Protocol{{
+			ID: "vm", Name: "VMess", Type: serviceprotocol.TypeVMess, Enabled: true, Listen: "::", ListenPort: 2096,
+			Settings: map[string]any{"transport": "ws", "wsPath": "/argo", "argoOnly": true},
+		}},
+	}
+	cases := map[string][]serviceargo.Tunnel{
+		"无隧道":    nil,
+		"隧道未启用":  {{ID: "t1", Enabled: false, Mode: serviceargo.ModeToken, ProtocolID: "vm"}},
+		"隧道绑定其它": {{ID: "t1", Enabled: true, Mode: serviceargo.ModeToken, ProtocolID: "other"}},
+	}
+	for name, tunnels := range cases {
+		input := base
+		input.ArgoTunnels = tunnels
+		if err := input.Validate(); err == nil || !strings.Contains(err.Error(), "仅经 Argo 隧道暴露") {
+			t.Fatalf("%s: err=%v", name, err)
+		}
+	}
+	input := base
+	input.ArgoTunnels = []serviceargo.Tunnel{{ID: "t1", Enabled: true, Mode: serviceargo.ModeToken, ProtocolID: "vm"}}
+	if err := input.Validate(); err != nil {
+		t.Fatalf("存在启用隧道时不应拒绝: %v", err)
 	}
 }
 

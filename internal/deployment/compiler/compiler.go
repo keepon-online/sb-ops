@@ -447,13 +447,22 @@ func isTCPTransport(protocol serviceprotocol.Protocol) bool {
 	}
 }
 
+// argoOnlyListen 是「仅经 Argo 隧道暴露」入站的收口监听地址：cloudflared
+// 回源（http://127.0.0.1:port）与协议拨测（probeServer）本就打回环，公网
+// 端口关闭后主动探测无从下手。
+const argoOnlyListen = "127.0.0.1"
+
 func vmessInbound(protocol serviceprotocol.Protocol, devices []serviceuser.ArtifactDevice, paths CertificatePaths) map[string]any {
 	entries := make([]any, 0, len(devices))
 	for _, device := range devices {
 		entries = append(entries, map[string]any{"name": device.DeviceID, "uuid": device.UUID, "alterId": 0})
 	}
+	listen := protocol.Listen
+	if boolSetting(protocol, "argoOnly", false) {
+		listen = argoOnlyListen
+	}
 	value := map[string]any{
-		"type": "vmess", "tag": protocol.InboundTag(), "listen": protocol.Listen, "listen_port": protocol.ListenPort,
+		"type": "vmess", "tag": protocol.InboundTag(), "listen": listen, "listen_port": protocol.ListenPort,
 		"users": entries,
 		"transport": map[string]any{
 			"type":                   "ws",
