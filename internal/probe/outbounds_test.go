@@ -120,6 +120,18 @@ func TestUDPProtocolsMirrorTLS(t *testing.T) {
 		t.Fatalf("hysteria2 tls 镜像错误: %v", tls)
 	}
 
+	// salamander 混淆镜像：配置 obfsPassword 时客户端出站必须同构携带，
+	// 否则拨测打不进真实入站（协议层直接拒绝）。
+	obfsOut := outboundFor(t, serviceprotocol.TypeHysteria2, map[string]any{"serverName": "203.0.113.10", "password": "x", "obfsPassword": "s3cret"})
+	obfs := obfsOut["obfs"].(map[string]any)
+	if obfs["type"] != "salamander" || obfs["password"] != "s3cret" {
+		t.Fatalf("hysteria2 obfs 镜像错误: %v", obfs)
+	}
+	plainOut := outboundFor(t, serviceprotocol.TypeHysteria2, map[string]any{"serverName": "203.0.113.10", "password": "x"})
+	if _, exists := plainOut["obfs"]; exists {
+		t.Fatalf("未配置混淆密码时不应镜像 obfs 段: %v", plainOut["obfs"])
+	}
+
 	tuic := outboundFor(t, serviceprotocol.TypeTUIC, map[string]any{"serverName": "203.0.113.10", "congestionControl": "bbr"})
 	if tuic["uuid"] != probeDevice.UUID || tuic["congestion_control"] != "bbr" || tuic["udp_relay_mode"] != "native" {
 		t.Fatalf("tuic 镜像错误: %v", tuic)

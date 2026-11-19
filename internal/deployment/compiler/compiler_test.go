@@ -503,6 +503,70 @@ func TestCompileUsesProtocolCertificatePaths(t *testing.T) {
 	}
 }
 
+// TestCompileRendersHysteria2Obfs 验证 hy2 混淆密码在服务端与订阅两侧的
+// 渲染：配置时服务端 inbound 带 obfs 段（sing-box 结构体形态）、订阅带扁平
+// obfs/obfs-password（mihomo 方言）；留空则两侧均不输出该字段。
+func TestCompileRendersHysteria2Obfs(t *testing.T) {
+	compile := func(settings map[string]any) Result {
+		t.Helper()
+		certificateID := "cert-1"
+		result, err := Compile(Input{
+			PublicAddress: "1.1.1.1",
+			TLSCertPath:   "/etc/sb/tls/fallback-cert.pem", TLSKeyPath: "/etc/sb/tls/fallback-key.pem",
+			CertificatePaths: map[string]CertificatePaths{certificateID: {CertificatePath: "/c.pem", KeyPath: "/k.pem"}},
+			Protocols: []serviceprotocol.Protocol{{
+				ID: "hy2", Name: "Hysteria2", Type: serviceprotocol.TypeHysteria2, Enabled: true, Listen: "::", ListenPort: 2446,
+				CertificateID: &certificateID, Settings: settings,
+			}},
+			Users:         []serviceuser.ArtifactUser{{ID: "user", Name: "test", Enabled: true}},
+			Devices:       []serviceuser.ArtifactDevice{testDevice("user", "p")},
+			UserProtocols: map[string]map[string]bool{"user": {"hy2": true}},
+		})
+		if err != nil {
+			t.Fatalf("compile: %v", err)
+		}
+		return result
+	}
+
+	withObfs := compile(map[string]any{"serverName": "panel.example.com", "obfsPassword": "s3cret"})
+	var server struct {
+		Inbounds []map[string]any `json:"inbounds"`
+	}
+	if err := json.Unmarshal(withObfs.ServerConfig, &server); err != nil {
+		t.Fatalf("parse server config: %v", err)
+	}
+	obfs := server.Inbounds[0]["obfs"].(map[string]any)
+	if obfs["type"] != "salamander" || obfs["password"] != "s3cret" {
+		t.Fatalf("server obfs = %#v", obfs)
+	}
+	var subscription map[string]any
+	if err := yaml.Unmarshal(subscriptionFor(withObfs, "user"), &subscription); err != nil {
+		t.Fatalf("parse subscription: %v", err)
+	}
+	proxy := subscription["proxies"].([]any)[0].(map[string]any)
+	if proxy["obfs"] != "salamander" || proxy["obfs-password"] != "s3cret" {
+		t.Fatalf("subscription obfs = %#v / %#v", proxy["obfs"], proxy["obfs-password"])
+	}
+
+	without := compile(map[string]any{"serverName": "panel.example.com"})
+	var serverPlain struct {
+		Inbounds []map[string]any `json:"inbounds"`
+	}
+	if err := json.Unmarshal(without.ServerConfig, &serverPlain); err != nil {
+		t.Fatalf("parse server config: %v", err)
+	}
+	if _, exists := serverPlain.Inbounds[0]["obfs"]; exists {
+		t.Fatalf("未配置混淆密码时不应输出 obfs 段: %#v", serverPlain.Inbounds[0]["obfs"])
+	}
+	var subscriptionPlain map[string]any
+	if err := yaml.Unmarshal(subscriptionFor(without, "user"), &subscriptionPlain); err != nil {
+		t.Fatalf("parse subscription: %v", err)
+	}
+	if _, exists := subscriptionPlain["proxies"].([]any)[0].(map[string]any)["obfs"]; exists {
+		t.Fatal("未配置混淆密码时订阅不应输出 obfs 字段")
+	}
+}
+
 func TestValidateRejectsTUICUDPPortCollision(t *testing.T) {
 	err := (Input{PublicAddress: "1.1.1.1", TLSCertPath: "cert.pem", TLSKeyPath: "key.pem", Protocols: []serviceprotocol.Protocol{
 		{ID: "hy2", Name: "Hysteria2", Type: serviceprotocol.TypeHysteria2, Enabled: true, ListenPort: 2446},

@@ -496,6 +496,11 @@ func hysteriaInbound(protocol serviceprotocol.Protocol, devices []serviceuser.Ar
 	if boolSetting(protocol, "ignoreClientBandwidth", false) {
 		inbound["ignore_client_bandwidth"] = true
 	}
+	if obfsPassword := setting(protocol, "obfsPassword"); obfsPassword != "" {
+		// salamander 混淆：把 QUIC 指纹变为密码驱动的随机流（裸 QUIC 可被
+		// DPI 识别，是「封该 IP 全 UDP」规则外唯一的主动识别面）。
+		inbound["obfs"] = map[string]any{"type": "salamander", "password": obfsPassword}
+	}
 	return inbound
 }
 

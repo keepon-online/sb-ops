@@ -51,6 +51,7 @@ var schemas = map[Type]Schema{
 			{Name: "portHopTo", Label: "跳跃结束端口", Kind: "number", Group: "advanced", Hint: "端口跳跃结束端口，与起始端口成对使用"},
 			{Name: "hopInterval", Label: "跳跃间隔 (秒)", Kind: "number", Group: "advanced", Hint: "客户端端口跳跃间隔，默认 30 秒"},
 			{Name: "password", Label: "默认密码", Kind: "password", Group: "security", Secret: true, Hint: "留空由服务端自动生成"},
+			{Name: "obfsPassword", Label: "混淆密码", Kind: "password", Group: "security", Secret: true, Hint: "留空关闭；配置后服务端与订阅均启用 salamander 混淆（obfs），把 QUIC 指纹变为随机流"},
 		},
 		Values: map[string]any{"upMbps": 100, "downMbps": 100, "hopInterval": 30},
 	},

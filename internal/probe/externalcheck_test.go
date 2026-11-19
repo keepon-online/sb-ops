@@ -26,7 +26,7 @@ func TestDumpClientConfigsForExternalCheck(t *testing.T) {
 		"vless-ws-cert": {"transport": "ws", "tlsMode": "certificate", "serverName": "203.0.113.10", "wsPath": "/ws"},
 		"vmess-ws":      {"transport": "ws", "wsPath": "/vm"},
 		"trojan-cert":   {"tlsMode": "certificate", "serverName": "203.0.113.10"},
-		"hy2":           {"serverName": "www.bing.com", "upMbps": 100, "downMbps": 100},
+		"hy2":           {"serverName": "www.bing.com", "upMbps": 100, "downMbps": 100, "obfsPassword": "obfs-secret"},
 		"tuic":          {"serverName": "www.bing.com", "congestionControl": "bbr"},
 		"anytls":        {"serverName": "www.bing.com"},
 	}

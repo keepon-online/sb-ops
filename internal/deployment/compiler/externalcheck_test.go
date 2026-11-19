@@ -17,7 +17,7 @@ func externalCheckInput() Input {
 	protocols := []serviceprotocol.Protocol{
 		{ID: "vless", Name: "VLESS", Type: serviceprotocol.TypeVLESS, Enabled: true, Listen: "::", ListenPort: 2443, Settings: map[string]any{"tlsMode": "reality", "serverName": "www.apple.com", "realityPrivateKey": "yik4VXbFQIL0HzBC2YaTHM0681f4f__GmIqCNY35Cd0", "realityPublicKey": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8", "shortId": "01234567"}},
 		{ID: "vmess", Name: "VMess WS", Type: serviceprotocol.TypeVMess, Enabled: true, Listen: "::", ListenPort: 2445, Settings: map[string]any{"transport": "ws", "wsPath": "/vm", "wsMaxEarlyData": 2048, "wsEarlyDataHeaderName": "Sec-WebSocket-Protocol"}},
-		{ID: "hy2", Name: "Hysteria2", Type: serviceprotocol.TypeHysteria2, Enabled: true, Listen: "::", ListenPort: 2446, Settings: map[string]any{"serverName": "www.bing.com", "upMbps": 100, "downMbps": 100}},
+		{ID: "hy2", Name: "Hysteria2", Type: serviceprotocol.TypeHysteria2, Enabled: true, Listen: "::", ListenPort: 2446, Settings: map[string]any{"serverName": "www.bing.com", "upMbps": 100, "downMbps": 100, "obfsPassword": "obfs-secret"}},
 		{ID: "tuic", Name: "TUIC", Type: serviceprotocol.TypeTUIC, Enabled: true, Listen: "::", ListenPort: 2447, Settings: map[string]any{"serverName": "www.bing.com", "congestionControl": "bbr"}},
 		{ID: "anytls", Name: "AnyTLS", Type: serviceprotocol.TypeAnyTLS, Enabled: true, Listen: "::", ListenPort: 2448, Settings: map[string]any{"serverName": "www.bing.com"}},
 		{ID: "ss", Name: "SS-2022", Type: serviceprotocol.TypeShadowsocks, Enabled: true, Listen: "::", ListenPort: 2444, Settings: map[string]any{"method": "2022-blake3-aes-256-gcm", "password": "d32qMUSzUz9yW8x6kVECeynNN3XsTKSjXwB4BUHaKcs="}},

@@ -96,6 +96,11 @@ func clashSubscription(input Input, protocols []serviceprotocol.Protocol, user s
 					proxy["hop-interval"] = hopInterval
 				}
 			}
+			if obfsPassword := setting(protocol, "obfsPassword"); obfsPassword != "" {
+				// 与服务端 salamander 混淆配套（mihomo 方言：扁平 obfs 字段）。
+				proxy["obfs"] = "salamander"
+				proxy["obfs-password"] = obfsPassword
+			}
 			proxies = append(proxies, proxy)
 		case serviceprotocol.TypeTUIC:
 			proxies = append(proxies, map[string]any{
