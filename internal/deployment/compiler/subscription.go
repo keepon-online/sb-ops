@@ -29,6 +29,11 @@ func clashSubscription(input Input, protocols []serviceprotocol.Protocol, user s
 		if !protocol.Enabled || !input.UserProtocols[user.ID][protocol.ID] {
 			continue
 		}
+		// 仅经 Argo 隧道暴露：直连节点不下发（入站仍编译进服务端配置，
+		// cloudflared 才有后端可转发），订阅只保留隧道循环输出的节点。
+		if boolSetting(protocol, "argoOnly", false) {
+			continue
+		}
 		name := protocol.Name
 		names = append(names, name)
 		switch protocol.Type {

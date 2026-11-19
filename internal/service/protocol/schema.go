@@ -35,6 +35,7 @@ var schemas = map[Type]Schema{
 			{Name: "wsEarlyDataHeaderName", Label: "Early Data 请求头", Kind: "text", Group: "transport", Required: true},
 			{Name: "tlsMode", Label: "TLS 模式", Kind: "select", Group: "tls", Required: true, Options: []string{"none", "certificate"}, Hint: "无 TLS 或证书模式"},
 			{Name: "serverName", Label: "服务器名称", Kind: "text", Group: "tls", Hint: "证书域名（仅证书模式）"},
+			{Name: "argoOnly", Label: "仅经 Argo 隧道暴露", Kind: "boolean", Group: "advanced", Hint: "订阅不再输出直连节点，入站保持监听供隧道转发；需启用绑定的 Argo 隧道，否则订阅中将没有该协议的任何节点"},
 		},
 		Values: map[string]any{"transport": "ws", "wsPath": "/", "wsMaxEarlyData": 0, "wsEarlyDataHeaderName": "Sec-WebSocket-Protocol", "tlsMode": "none"},
 	},

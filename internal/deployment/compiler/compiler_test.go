@@ -731,6 +731,71 @@ func TestCompileRendersArgoSubscriptionNodes(t *testing.T) {
 	}
 }
 
+func TestCompileArgoOnlyHidesDirectSubscriptionNode(t *testing.T) {
+	result, err := Compile(Input{
+		PublicAddress: "1.1.1.1",
+		PanelDomain:   "panel.example.com",
+		Protocols: []serviceprotocol.Protocol{{
+			ID: "vm", Name: "VMess", Type: serviceprotocol.TypeVMess, Enabled: true, Listen: "::", ListenPort: 2096,
+			Settings: map[string]any{"transport": "ws", "wsPath": "/argo", "argoOnly": true},
+		}},
+		Users:         []serviceuser.ArtifactUser{{ID: "user", Name: "test", Enabled: true}},
+		Devices:       []serviceuser.ArtifactDevice{testDevice("user", "credential-password")},
+		UserProtocols: map[string]map[string]bool{"user": {"vm": true}},
+		ArgoTunnels: []serviceargo.Tunnel{
+			{ID: "t1", Name: "主隧道", Enabled: true, Mode: serviceargo.ModeToken, ProtocolID: "vm", AssignedDomain: "tunnel.example.com"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	var subscription map[string]any
+	if err := yaml.Unmarshal(subscriptionFor(result, "user"), &subscription); err != nil {
+		t.Fatalf("parse subscription: %v", err)
+	}
+	proxies := subscription["proxies"].([]any)
+	if len(proxies) != 1 || proxies[0].(map[string]any)["name"] != "VMess Argo" {
+		t.Fatalf("argo-only proxies = %#v", proxies)
+	}
+	// 直连节点消失后，代理组不允许残留对它的悬空引用（mihomo -t 会拒载）。
+	proxyNames := map[string]bool{}
+	for _, item := range proxies {
+		proxyNames[item.(map[string]any)["name"].(string)] = true
+	}
+	groups := subscription["proxy-groups"].([]any)
+	groupNames := map[string]bool{}
+	for _, raw := range groups {
+		groupNames[raw.(map[string]any)["name"].(string)] = true
+	}
+	for _, raw := range groups {
+		group := raw.(map[string]any)
+		for _, member := range group["proxies"].([]any) {
+			name, _ := member.(string)
+			if !proxyNames[name] && !groupNames[name] && name != "DIRECT" && name != "REJECT" {
+				t.Fatalf("group %s 引用了不存在的节点 %q", group["name"], name)
+			}
+		}
+	}
+	// 入站必须仍在服务端配置里——cloudflared 的后端就指到它。
+	var serverConfig struct {
+		Inbounds []struct {
+			ListenPort int `json:"listen_port"`
+		} `json:"inbounds"`
+	}
+	if err := json.Unmarshal(result.ServerConfig, &serverConfig); err != nil {
+		t.Fatalf("parse server config: %v", err)
+	}
+	found := false
+	for _, inbound := range serverConfig.Inbounds {
+		if inbound.ListenPort == 2096 {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("argo-only 入站未编译进服务端配置: %s", result.ServerConfig)
+	}
+}
+
 func TestInputValidateRejectsDanglingRuleSetDetour(t *testing.T) {
 	input := Input{PublicAddress: "panel.example.com", RuleSets: []servicesingbox.RuleSet{{Tag: "openai", Format: "binary", URL: "https://example.com/openai.srs", DownloadDetour: "warp"}}}
 	if err := input.Validate(); err == nil || !strings.Contains(err.Error(), "下载出站") {
