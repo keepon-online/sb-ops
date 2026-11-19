@@ -244,8 +244,11 @@ func TestApplySeversTrackedClientConnections(t *testing.T) {
 		t.Fatalf("Status() = %#v, want running", status)
 	}
 
-	// 旧实例的客户端连接必须已被关闭：读到 EOF/RST，而不是 3 秒后仍超时在读。
-	_ = client.SetReadDeadline(time.Now().Add(3 * time.Second))
+	// 旧实例的客户端连接必须已被关闭：读到 EOF/RST，而不是超时窗口耗尽仍在
+	// 读。观察窗 10s——GitHub 慢 runner 上 close→start 换实例与关断传播可能
+	// 超过紧凑窗口（2026-11-16/19 两度 flaky 咬红 master CI 的 backend job），
+	// EOF 在窗口内任意时刻到达都算通过，放宽不弱化断言语义。
+	_ = client.SetReadDeadline(time.Now().Add(10 * time.Second))
 	if _, err := client.Read(chunk); err == nil {
 		t.Fatal("换实例后旧客户端连接仍可读：未被切断")
 	} else if errors.Is(err, os.ErrDeadlineExceeded) {
