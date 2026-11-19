@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+### 新增
+
+- **hysteria2 salamander 混淆（obfs）**：直连协议里 UDP 路径免疫 TCP 层封锁（两轮封锁实证存活），但裸 QUIC 指纹可被 DPI 主动识别——hy2 是「封该 IP 全 UDP」规则之外唯一的主动识别面。协议表单 security 组新增「混淆密码」（`obfsPassword`，secret 脱敏，留空=关闭）：配置后服务端入站与订阅同构启用 salamander（sing-box 结构体 `obfs` 段 / mihomo 扁平 `obfs: salamander` + `obfs-password`），把 QUIC 指纹变为密码驱动的随机流；协议端到端拨测同构镜像（否则拨测打不进真实入站）。字段经 sing-box v1.14.3 `check` 核验（`Hysteria2Obfs` 结构体）、dump fixture 两侧补齐覆盖。
+
 ### 变更
 
 - **argoOnly 入站收口回环（对抗封锁补全）**：v0.8.1 的「仅经 Argo 隧道暴露」只隐藏了订阅节点，直连入站仍公网监听——封锁期公网端口上只剩可被主动探测识别的明文 ws 指纹。现 argoOnly 入站服务端编译时 listen 强制 `127.0.0.1`，公网端口完全关闭（cloudflared 回源 `http://127.0.0.1:port` 与协议端到端拨测本就打回环，均不受影响）。`Input.Validate` 兜底「argoOnly 但无绑定启用隧道」拒绝编译（否则订阅无节点、公网无端口，协议完全不可达）——v0.8.1 注记的「保存时校验后续迭代」以编译期校验落地：只看配置意图不锁「先建协议再建隧道」的创建顺序，隧道运行态仍归 argo manager。
