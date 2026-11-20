@@ -232,7 +232,7 @@ func TestCompileClashSubscriptionIncludesCommonRules(t *testing.T) {
 		group := value.(map[string]any)
 		byName[group["name"].(string)] = group
 	}
-	if group := byName[clashProxyGroup]; group["type"] != "select" || !reflect.DeepEqual(group["proxies"], []any{"DIRECT", "REJECT", clashAutoGroup, clashFallbackGroup, "SS"}) {
+	if group := byName[clashProxyGroup]; group["type"] != "select" || !reflect.DeepEqual(group["proxies"], []any{clashFallbackGroup, clashAutoGroup, "SS", "DIRECT", "REJECT"}) {
 		t.Fatalf("node selector = %#v", group)
 	}
 	if group := byName[clashAutoGroup]; group["type"] != "url-test" || !reflect.DeepEqual(group["proxies"], []any{"SS"}) || group["url"] != "https://www.gstatic.com/generate_204" || group["interval"] != 60 || group["tolerance"] != 80 || group["lazy"] != true {
@@ -350,7 +350,9 @@ func TestClashRulesUseAssignedPolicy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compile policy rules: %v", err)
 	}
-	want := []string{"DOMAIN,panel.example.com,DIRECT", "IP-CIDR,203.0.113.7/32,DIRECT,no-resolve", "RULE-SET,openai," + clashAIGroup, "RULE-SET,claude," + clashAIGroup, "RULE-SET,china,DIRECT", "RULE-SET,private," + clashPrivateGroup + ",no-resolve", "IP-CIDR,10.0.0.0/8,DIRECT,no-resolve", "MATCH," + clashProxyGroup}
+	// 策略默认动作=代理时 MATCH 指向漏网之鱼（其首项即节点选择，默认行为
+	// 等价，客户端可单独控制漏网流量）。
+	want := []string{"DOMAIN,panel.example.com,DIRECT", "IP-CIDR,203.0.113.7/32,DIRECT,no-resolve", "RULE-SET,openai," + clashAIGroup, "RULE-SET,claude," + clashAIGroup, "RULE-SET,china,DIRECT", "RULE-SET,private," + clashPrivateGroup + ",no-resolve", "IP-CIDR,10.0.0.0/8,DIRECT,no-resolve", "MATCH," + clashFinalGroup}
 	if !reflect.DeepEqual(rules, want) {
 		t.Fatalf("rules = %#v, want %#v", rules, want)
 	}
@@ -919,6 +921,11 @@ func TestSubscriptionUDPGroupMembers(t *testing.T) {
 	}
 	if streaming := byName[clashStreamingGroup]; !reflect.DeepEqual(streaming["proxies"].([]any)[0], "hysteria2") {
 		t.Fatalf("流媒体组应首插 hysteria2: %#v", streaming["proxies"])
+	}
+	// 故障转移按穿透优先级排序：hy2 → 其余 UDP（tuic）→ 普通直连 → Argo 兜底。
+	fallback := byName[clashFallbackGroup]
+	if !reflect.DeepEqual(fallback["proxies"], []any{"hysteria2", "tuic", "vless-reality", "vmess-ws Argo"}) {
+		t.Fatalf("fallback 优先级排序 = %#v", fallback["proxies"])
 	}
 }
 

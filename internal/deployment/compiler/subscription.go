@@ -169,7 +169,7 @@ func clashSubscription(input Input, protocols []serviceprotocol.Protocol, user s
 		"geo-auto-update":           true,
 		"geo-update-interval":       24,
 		"proxies":                   proxies,
-		"proxy-groups":              clashProxyGroups(names, udpNames, hy2Names),
+		"proxy-groups":              clashProxyGroups(names, udpNames, hy2Names, argoNames),
 		"rule-providers":            clashRuleProviders(),
 		"rules":                     rules,
 	}
@@ -288,11 +288,28 @@ func clashDNS() map[string]any {
 	}
 }
 
-func clashProxyGroups(names, udpNames, hy2Names []string) []any {
-	selectorTargets := append([]string{"DIRECT", "REJECT", clashAutoGroup, clashFallbackGroup}, names...)
+func clashProxyGroups(names, udpNames, hy2Names, argoNames []string) []any {
+	// 主选择组默认选中第一项：故障转移在前（首选 hy2 的优先级序列），
+	// DIRECT/REJECT 垫底——若 DIRECT 在前，select 默认直连会让所有指向
+	// 本组的规则全部绕过代理（有 UDP 节点时曾被 UDP 组插首掩盖）。
+	selectorTargets := make([]string, 0, len(names)+6)
+	selectorTargets = append(selectorTargets, clashFallbackGroup, clashAutoGroup)
+	if len(udpNames) > 0 {
+		selectorTargets = append(selectorTargets, clashUDPGroup)
+	}
+	selectorTargets = append(selectorTargets, names...)
+	selectorTargets = append(selectorTargets, "DIRECT", "REJECT")
 	autoTargets := append([]string(nil), names...)
 	if len(autoTargets) == 0 {
 		autoTargets = []string{"DIRECT"}
+	}
+	// 故障转移按穿透优先级排序：hy2（UDP 免疫 TCP 封锁）→ 其余 UDP 原生
+	// （tuic）→ 普通直连 → Argo 兜底（CF 边缘，IP 全封时最后的活路）。
+	// fallback 语义是「按序取首个测活通过者」——封锁期直连节点测活失败
+	// 自动跳过，排序即灾备降级路径。
+	fallbackTargets := sortForFallback(names, udpNames, hy2Names, argoNames)
+	if len(fallbackTargets) == 0 {
+		fallbackTargets = []string{"DIRECT"}
 	}
 	categoryTargets := append([]string{clashProxyGroup, "DIRECT", "REJECT", clashAutoGroup, clashFallbackGroup}, names...)
 	// 大流量分类组（视频/流媒体）首插 hysteria2：QUIC+BBR 在跨境长肥管道上
@@ -301,13 +318,10 @@ func clashProxyGroups(names, udpNames, hy2Names []string) []any {
 	if len(hy2Names) > 0 {
 		heavyTargets = append(slices.Clone(hy2Names), categoryTargets...)
 	}
-	if len(udpNames) > 0 {
-		selectorTargets = append([]string{clashUDPGroup}, selectorTargets...)
-	}
 	groups := []any{
 		map[string]any{"name": clashProxyGroup, "type": "select", "proxies": selectorTargets},
 		map[string]any{"name": clashAutoGroup, "type": "url-test", "proxies": autoTargets, "url": "https://www.gstatic.com/generate_204", "interval": 60, "tolerance": 80, "lazy": true},
-		map[string]any{"name": clashFallbackGroup, "type": "fallback", "proxies": autoTargets, "url": "https://www.gstatic.com/generate_204", "interval": 60, "timeout": 3000, "lazy": true},
+		map[string]any{"name": clashFallbackGroup, "type": "fallback", "proxies": fallbackTargets, "url": "https://www.gstatic.com/generate_204", "interval": 60, "timeout": 3000, "lazy": true},
 		map[string]any{"name": clashAdsGroup, "type": "select", "proxies": append([]string{"REJECT", "DIRECT", clashProxyGroup, clashAutoGroup, clashFallbackGroup}, names...)},
 		map[string]any{"name": clashAIGroup, "type": "select", "proxies": categoryTargets},
 		map[string]any{"name": clashBilibiliGroup, "type": "select", "proxies": append([]string{"DIRECT", clashProxyGroup, clashAutoGroup, clashFallbackGroup}, names...)},
@@ -324,9 +338,9 @@ func clashProxyGroups(names, udpNames, hy2Names []string) []any {
 		map[string]any{"name": clashEducationGroup, "type": "select", "proxies": categoryTargets},
 		map[string]any{"name": clashServiceGroup, "type": "select", "proxies": categoryTargets},
 		map[string]any{"name": clashFinalGroup, "type": "select", "proxies": categoryTargets},
-		// 全部裸节点平铺（select）：默认选中第一项会绕过组策略，仅作手动
-		// 测试/临时钉死某个节点用；无节点时不输出（空 select 组非法）。
 	}
+	// 全部裸节点平铺（select）：默认选中第一项会绕过组策略，仅作手动
+	// 测试/临时钉死某个节点用；无节点时不输出（空 select 组非法）。
 	if len(names) > 0 {
 		groups = append(groups, map[string]any{"name": clashAllNodesGroup, "type": "select", "proxies": append([]string(nil), names...)})
 	}
@@ -340,6 +354,44 @@ func clashProxyGroups(names, udpNames, hy2Names []string) []any {
 		})
 	}
 	return groups
+}
+
+// sortForFallback 按穿透优先级为故障转移组排序：hysteria2（UDP 免疫 TCP
+// 封锁）→ 其余 UDP 原生（tuic）→ 普通直连 → Argo 隧道节点兜底（CF 边缘）。
+// Argo 节点以调用方收集的隧道节点名单判断（argoProxyNodes 的命名约定），
+// 不做名字后缀猜测。
+func sortForFallback(names, udpNames, hy2Names, argoNames []string) []string {
+	hy2Set := make(map[string]bool, len(hy2Names))
+	for _, name := range hy2Names {
+		hy2Set[name] = true
+	}
+	udpSet := make(map[string]bool, len(udpNames))
+	for _, name := range udpNames {
+		udpSet[name] = true
+	}
+	argoSet := make(map[string]bool, len(argoNames))
+	for _, name := range argoNames {
+		argoSet[name] = true
+	}
+	var hy2, otherUDP, direct, argo []string
+	for _, name := range names {
+		switch {
+		case hy2Set[name]:
+			hy2 = append(hy2, name)
+		case udpSet[name]:
+			otherUDP = append(otherUDP, name)
+		case argoSet[name]:
+			argo = append(argo, name)
+		default:
+			direct = append(direct, name)
+		}
+	}
+	sorted := make([]string, 0, len(names))
+	sorted = append(sorted, hy2...)
+	sorted = append(sorted, otherUDP...)
+	sorted = append(sorted, direct...)
+	sorted = append(sorted, argo...)
+	return sorted
 }
 
 func clashRuleProviders() map[string]any {
@@ -382,6 +434,12 @@ func clashRules(input Input, user serviceuser.ArtifactUser) ([]string, error) {
 	if len(rules) == 0 {
 		rules = defaultClashRules()
 		return append(selfDirectRules(input.PublicAddress, input.PanelDomain, input.SubscriptionURLBase), rules...), nil
+	}
+	// 策略默认动作=代理时 MATCH 指向漏网之鱼而非节点选择：漏网之鱼组首项
+	// 本就是节点选择（默认行为等价），且客户端可单独控制漏网流量的走向，
+	// 不会让该组沦为无引用的死组。
+	if defaultAction == clashProxyGroup {
+		defaultAction = clashFinalGroup
 	}
 	return append(append(selfDirectRules(input.PublicAddress, input.PanelDomain, input.SubscriptionURLBase), rules...), "MATCH,"+defaultAction), nil
 }
