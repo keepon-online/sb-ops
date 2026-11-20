@@ -258,9 +258,16 @@ func clashDNS() map[string]any {
 	// Rev 2.5.4+ 的 DNS 覆写开关自动重置导致 TUN 全断，见上游 #7986/#8122）。
 	bootstrapResolvers := []string{"223.5.5.5", "119.29.29.29"}
 	chinaResolvers := []string{"https://120.53.53.53/dns-query", "https://223.5.5.5/dns-query"}
-	// 非中国域名用国内可达的公共 DoH（DNSPod/AliDNS），避免 cloudflare/google
-	// 这类在境内被墙的解析器导致所有非 CN 域名解析失败。
-	foreignResolvers := []string{"https://doh.pub/dns-query", "https://dns.alidns.com/dns-query"}
+	// 非中国域名经代理组走 IP 型 DoH（#组名 = mihomo 方言，DNS 请求经该组出站）：
+	// ①IP 直连形式不依赖域名引导（不与 bootstrap 形成鸡蛋问题）；②从 VPS 侧
+	// 出站不经过 GFW 入口方向，域名型 DoH 被墙的问题不存在；③海外域名拿到
+	// 未污染的解析结果。已知取舍：代理组全死时海外真实解析随之失败——
+	// fake-ip 下影响有限（IP 规则均带 no-resolve，本地真实解析场景本就少），
+	// 节点域名解析走 proxy-server-nameserver 明文通道、不受此影响。
+	foreignResolvers := []string{
+		"https://1.1.1.1/dns-query#" + clashProxyGroup,
+		"https://8.8.8.8/dns-query#" + clashProxyGroup,
+	}
 	return map[string]any{
 		"enable": true, "enhanced-mode": "fake-ip", "ipv6": true,
 		"default-nameserver": bootstrapResolvers,

@@ -6,6 +6,7 @@
 
 ### 新增
 
+- **订阅海外 DNS 解析走代理组的 IP 型 DoH**：`geosite:geolocation-!cn` 的上游从国内 DoH（DNSPod/AliDNS，极稳取舍）改为 `https://1.1.1.1/dns-query#🚀 节点选择` 与 `https://8.8.8.8/dns-query#🚀 节点选择`——IP 直连形式不依赖域名引导；DoH 请求经代理组从 VPS 侧出站、不经过 GFW 入口方向；海外域名拿到未污染解析（服务 IP 规则与真实解析场景）。已知取舍：代理组全死时海外真实解析随之失败（fake-ip 下影响有限，IP 规则均带 no-resolve；节点域名解析走 `proxy-server-nameserver` 明文通道不受影响）。`respect-rules` 原有配置不变。
 - **订阅组结构与内核参数增强（自足化吸收客户端覆写）**：把此前需要 Clash 客户端覆写脚本维护的配置收进服务端订阅产物——①顶层内核参数 `unified-delay` / `tcp-concurrent` / `global-client-fingerprint: chrome`（vless-reality 节点已显式携带 fingerprint，此处兜底其余 TLS 节点）；②新增「📡 UDP 通道」url-test 组，**只收 UDP 原生直连节点（hysteria2/tuic，按协议类型动态筛选）**——Argo 节点不转发 UDP（udp:false）且 url-test 判活走 TCP 探测，混入会在其测活正常时选中它导致 UDP 流量全灭；③「📹 油管视频」「🎬 流媒体」大流量组首插 hysteria2（QUIC+BBR 跨境吞吐优势，select 默认第一项即走 hy2）；④「📦 全部节点」平铺组（手动测试/临时钉死）；⑤自动/故障转移组 interval 180→60s、tolerance 50→80ms（封锁期节点生死翻转频繁，更灵敏的切换窗口）。DNS 段不受影响——v0.8.0 已自足，客户端覆写脚本里的逗号组合 policy key 属已修复的倒退形态，勿采用。
 - **订阅三处组结构缺陷修复（外部评审捕获）**：①「🚀 节点选择」原把 `DIRECT`/`REJECT` 排在选项首位——select 组默认选中第一项，未分配 UDP 协议的用户会**默认直连、全部代理规则失效**（此前被 UDP 组插首掩盖）；现故障转移/自动选择在前、DIRECT/REJECT 垫底。②「🛡️ 故障转移」成员原按数据库返回序——现按穿透优先级排序 **hy2 → 其余 UDP（tuic）→ 普通直连 → Argo 兜底**（fallback 取首个测活通过者，排序即灾备降级路径：UDP 封锁切 tuic、TCP 封锁直连自动跳过、IP 全封落到 CF 边缘），Argo 节点以隧道名单集合判断、不做名字后缀猜测。③自定义分流策略默认动作=代理时 `MATCH` 原直接指向节点选择，「🐟 漏网之鱼」沦为无引用死组——现 MATCH 指向漏网之鱼（首项即节点选择，默认行为等价，客户端可单独控制漏网流量）。
 
