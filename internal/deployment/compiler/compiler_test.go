@@ -224,8 +224,8 @@ func TestCompileClashSubscriptionIncludesCommonRules(t *testing.T) {
 		}
 	}
 	groups := subscription["proxy-groups"].([]any)
-	if len(groups) != 19 {
-		t.Fatalf("proxy groups = %#v, want 19 groups", groups)
+	if len(groups) != 20 {
+		t.Fatalf("proxy groups = %#v, want 20 groups", groups)
 	}
 	byName := map[string]map[string]any{}
 	for _, value := range groups {
@@ -235,11 +235,18 @@ func TestCompileClashSubscriptionIncludesCommonRules(t *testing.T) {
 	if group := byName[clashProxyGroup]; group["type"] != "select" || !reflect.DeepEqual(group["proxies"], []any{"DIRECT", "REJECT", clashAutoGroup, clashFallbackGroup, "SS"}) {
 		t.Fatalf("node selector = %#v", group)
 	}
-	if group := byName[clashAutoGroup]; group["type"] != "url-test" || !reflect.DeepEqual(group["proxies"], []any{"SS"}) || group["url"] != "https://www.gstatic.com/generate_204" || group["interval"] != 180 || group["tolerance"] != 50 || group["lazy"] != true {
+	if group := byName[clashAutoGroup]; group["type"] != "url-test" || !reflect.DeepEqual(group["proxies"], []any{"SS"}) || group["url"] != "https://www.gstatic.com/generate_204" || group["interval"] != 60 || group["tolerance"] != 80 || group["lazy"] != true {
 		t.Fatalf("automatic selector = %#v", group)
 	}
-	if group := byName[clashFallbackGroup]; group["type"] != "fallback" || !reflect.DeepEqual(group["proxies"], []any{"SS"}) || group["url"] != "https://www.gstatic.com/generate_204" || group["interval"] != 180 || group["timeout"] != 3000 || group["lazy"] != true {
+	if group := byName[clashFallbackGroup]; group["type"] != "fallback" || !reflect.DeepEqual(group["proxies"], []any{"SS"}) || group["url"] != "https://www.gstatic.com/generate_204" || group["interval"] != 60 || group["timeout"] != 3000 || group["lazy"] != true {
 		t.Fatalf("fallback selector = %#v", group)
+	}
+	// 非 UDP 协议（SS）不产出 UDP 通道组；全部节点组平铺裸节点。
+	if _, exists := byName[clashUDPGroup]; exists {
+		t.Fatalf("无 UDP 原生节点时不应输出 %s 组", clashUDPGroup)
+	}
+	if group := byName[clashAllNodesGroup]; group["type"] != "select" || !reflect.DeepEqual(group["proxies"], []any{"SS"}) {
+		t.Fatalf("all-nodes selector = %#v", group)
 	}
 	for _, name := range []string{clashAdsGroup, clashAIGroup, clashBilibiliGroup, clashYouTubeGroup, clashGoogleGroup, clashPrivateGroup, clashChinaGroup, clashTelegramGroup, clashGitHubGroup, clashMicrosoftGroup, clashAppleGroup, clashSocialGroup, clashStreamingGroup, clashEducationGroup, clashServiceGroup, clashFinalGroup} {
 		group := byName[name]
@@ -863,6 +870,55 @@ func TestCompileArgoOnlyHidesDirectSubscriptionNode(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("argo-only 入站未编译进服务端配置: %s", result.ServerConfig)
+	}
+}
+
+// TestSubscriptionUDPGroupMembers 与大流量组首插：UDP 通道组只收 UDP 原生
+// 直连节点（hysteria2/tuic），Argo 节点（udp:false，且 url-test 判活走 TCP
+// 会误选）与 TCP 协议一律不入；油管/流媒体组首插 hysteria2 作默认。
+func TestSubscriptionUDPGroupMembers(t *testing.T) {
+	certificateID := "cert-1"
+	result, err := Compile(Input{
+		PublicAddress: "1.1.1.1",
+		TLSCertPath:   "/etc/sb/tls/fallback-cert.pem", TLSKeyPath: "/etc/sb/tls/fallback-key.pem",
+		CertificatePaths: map[string]CertificatePaths{certificateID: {CertificatePath: "/c.pem", KeyPath: "/k.pem"}},
+		Protocols: []serviceprotocol.Protocol{
+			{ID: "hy2", Name: "hysteria2", Type: serviceprotocol.TypeHysteria2, Enabled: true, Listen: "::", ListenPort: 2446, CertificateID: &certificateID, Settings: map[string]any{"serverName": "panel.example.com"}},
+			{ID: "tuic", Name: "tuic", Type: serviceprotocol.TypeTUIC, Enabled: true, Listen: "::", ListenPort: 2447, CertificateID: &certificateID, Settings: map[string]any{"serverName": "panel.example.com", "congestionControl": "bbr"}},
+			{ID: "vm", Name: "vmess-ws", Type: serviceprotocol.TypeVMess, Enabled: true, Listen: "::", ListenPort: 2445, Settings: map[string]any{"transport": "ws", "wsPath": "/vm", "argoOnly": true}},
+			{ID: "vless", Name: "vless-reality", Type: serviceprotocol.TypeVLESS, Enabled: true, Listen: "::", ListenPort: 2443, Settings: map[string]any{"transport": "tcp", "tlsMode": "reality", "serverName": "www.apple.com", "realityPrivateKey": "yik4VXbFQIL0HzBC2YaTHM0681f4f__GmIqCNY35Cd0", "realityPublicKey": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8", "shortId": "01234567"}},
+		},
+		Users:         []serviceuser.ArtifactUser{{ID: "user", Name: "test", Enabled: true}},
+		Devices:       []serviceuser.ArtifactDevice{testDevice("user", "p")},
+		UserProtocols: map[string]map[string]bool{"user": {"hy2": true, "tuic": true, "vm": true, "vless": true}},
+		ArgoTunnels: []serviceargo.Tunnel{
+			{ID: "t1", Name: "主隧道", Enabled: true, Mode: serviceargo.ModeToken, ProtocolID: "vm", AssignedDomain: "tunnel.example.com"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	var subscription map[string]any
+	if err := yaml.Unmarshal(subscriptionFor(result, "user"), &subscription); err != nil {
+		t.Fatalf("parse subscription: %v", err)
+	}
+	byName := map[string]map[string]any{}
+	for _, value := range subscription["proxy-groups"].([]any) {
+		group := value.(map[string]any)
+		byName[group["name"].(string)] = group
+	}
+	udpGroup, ok := byName[clashUDPGroup]
+	if !ok {
+		t.Fatalf("缺少 %s 组", clashUDPGroup)
+	}
+	if !reflect.DeepEqual(udpGroup["proxies"], []any{"hysteria2", "tuic"}) {
+		t.Fatalf("UDP 组成员 = %#v（Argo/reality/vmess 不得混入）", udpGroup["proxies"])
+	}
+	if youtube := byName[clashYouTubeGroup]; !reflect.DeepEqual(youtube["proxies"].([]any)[0], "hysteria2") {
+		t.Fatalf("油管组应首插 hysteria2: %#v", youtube["proxies"])
+	}
+	if streaming := byName[clashStreamingGroup]; !reflect.DeepEqual(streaming["proxies"].([]any)[0], "hysteria2") {
+		t.Fatalf("流媒体组应首插 hysteria2: %#v", streaming["proxies"])
 	}
 }
 

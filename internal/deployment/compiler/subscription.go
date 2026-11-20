@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -25,6 +26,8 @@ func realityOpts(protocol serviceprotocol.Protocol) map[string]any {
 func clashSubscription(input Input, protocols []serviceprotocol.Protocol, user serviceuser.ArtifactUser, device serviceuser.ArtifactDevice) ([]byte, error) {
 	proxies := make([]any, 0, len(protocols))
 	names := make([]string, 0, len(protocols))
+	udpNames := make([]string, 0, 2) // UDP 原生直连节点（hysteria2/tuic）
+	hy2Names := make([]string, 0, 1) // hysteria2：大流量分类组的首选
 	for _, protocol := range protocols {
 		if !protocol.Enabled || !input.UserProtocols[user.ID][protocol.ID] {
 			continue
@@ -36,6 +39,16 @@ func clashSubscription(input Input, protocols []serviceprotocol.Protocol, user s
 		}
 		name := protocol.Name
 		names = append(names, name)
+		// UDP 原生直连节点单独成组：Argo/隧道节点不转发 UDP（udp:false），
+		// 且 fallback/url-test 的判活探测走 TCP——把不转发 UDP 的节点混进
+		// UDP 组会在它「TCP 测活正常」时切过去、UDP 流量全灭。
+		switch protocol.Type {
+		case serviceprotocol.TypeHysteria2:
+			udpNames = append(udpNames, name)
+			hy2Names = append(hy2Names, name)
+		case serviceprotocol.TypeTUIC:
+			udpNames = append(udpNames, name)
+		}
 		switch protocol.Type {
 		case serviceprotocol.TypeVLESS:
 			proxy := map[string]any{
@@ -140,19 +153,25 @@ func clashSubscription(input Input, protocols []serviceprotocol.Protocol, user s
 	proxies = append(proxies, argoProxies...)
 	names = append(names, argoNames...)
 	document := map[string]any{
-		"port":                7890,
-		"socks-port":          7891,
-		"allow-lan":           false,
-		"mode":                "rule",
-		"log-level":           "info",
-		"dns":                 clashDNS(),
-		"geodata-mode":        true,
-		"geo-auto-update":     true,
-		"geo-update-interval": 24,
-		"proxies":             proxies,
-		"proxy-groups":        clashProxyGroups(names),
-		"rule-providers":      clashRuleProviders(),
-		"rules":               rules,
+		"port":       7890,
+		"socks-port": 7891,
+		"allow-lan":  false,
+		"mode":       "rule",
+		"log-level":  "info",
+		// 内核增强：统一延迟口径（去握手差异）、TCP 并发拨号（多地址竞速）、
+		// 全局 uTLS chrome 指纹（vless-reality 节点已显式携带 fingerprint，
+		// 此处兜底 trojan 等其余 TLS 节点的握手特征）。
+		"unified-delay":             true,
+		"tcp-concurrent":            true,
+		"global-client-fingerprint": "chrome",
+		"dns":                       clashDNS(),
+		"geodata-mode":              true,
+		"geo-auto-update":           true,
+		"geo-update-interval":       24,
+		"proxies":                   proxies,
+		"proxy-groups":              clashProxyGroups(names, udpNames, hy2Names),
+		"rule-providers":            clashRuleProviders(),
+		"rules":                     rules,
 	}
 	raw, err := yaml.Marshal(document)
 	if err != nil {
@@ -228,6 +247,8 @@ const (
 	clashEducationGroup = "📚 教育资源"
 	clashServiceGroup   = "🔀 代理服务"
 	clashFinalGroup     = "🐟 漏网之鱼"
+	clashUDPGroup       = "📡 UDP 通道"
+	clashAllNodesGroup  = "📦 全部节点"
 )
 
 func clashDNS() map[string]any {
@@ -267,21 +288,30 @@ func clashDNS() map[string]any {
 	}
 }
 
-func clashProxyGroups(names []string) []any {
+func clashProxyGroups(names, udpNames, hy2Names []string) []any {
 	selectorTargets := append([]string{"DIRECT", "REJECT", clashAutoGroup, clashFallbackGroup}, names...)
 	autoTargets := append([]string(nil), names...)
 	if len(autoTargets) == 0 {
 		autoTargets = []string{"DIRECT"}
 	}
 	categoryTargets := append([]string{clashProxyGroup, "DIRECT", "REJECT", clashAutoGroup, clashFallbackGroup}, names...)
+	// 大流量分类组（视频/流媒体）首插 hysteria2：QUIC+BBR 在跨境长肥管道上
+	// 吞吐优势明显，select 默认选中第一项即默认走 hy2，断流可手动切回组选项。
+	heavyTargets := categoryTargets
+	if len(hy2Names) > 0 {
+		heavyTargets = append(slices.Clone(hy2Names), categoryTargets...)
+	}
+	if len(udpNames) > 0 {
+		selectorTargets = append([]string{clashUDPGroup}, selectorTargets...)
+	}
 	groups := []any{
 		map[string]any{"name": clashProxyGroup, "type": "select", "proxies": selectorTargets},
-		map[string]any{"name": clashAutoGroup, "type": "url-test", "proxies": autoTargets, "url": "https://www.gstatic.com/generate_204", "interval": 180, "tolerance": 50, "lazy": true},
-		map[string]any{"name": clashFallbackGroup, "type": "fallback", "proxies": autoTargets, "url": "https://www.gstatic.com/generate_204", "interval": 180, "timeout": 3000, "lazy": true},
+		map[string]any{"name": clashAutoGroup, "type": "url-test", "proxies": autoTargets, "url": "https://www.gstatic.com/generate_204", "interval": 60, "tolerance": 80, "lazy": true},
+		map[string]any{"name": clashFallbackGroup, "type": "fallback", "proxies": autoTargets, "url": "https://www.gstatic.com/generate_204", "interval": 60, "timeout": 3000, "lazy": true},
 		map[string]any{"name": clashAdsGroup, "type": "select", "proxies": append([]string{"REJECT", "DIRECT", clashProxyGroup, clashAutoGroup, clashFallbackGroup}, names...)},
 		map[string]any{"name": clashAIGroup, "type": "select", "proxies": categoryTargets},
 		map[string]any{"name": clashBilibiliGroup, "type": "select", "proxies": append([]string{"DIRECT", clashProxyGroup, clashAutoGroup, clashFallbackGroup}, names...)},
-		map[string]any{"name": clashYouTubeGroup, "type": "select", "proxies": categoryTargets},
+		map[string]any{"name": clashYouTubeGroup, "type": "select", "proxies": heavyTargets},
 		map[string]any{"name": clashGoogleGroup, "type": "select", "proxies": categoryTargets},
 		map[string]any{"name": clashPrivateGroup, "type": "select", "proxies": []string{"DIRECT", clashProxyGroup}},
 		map[string]any{"name": clashChinaGroup, "type": "select", "proxies": []string{"DIRECT", clashProxyGroup}},
@@ -290,10 +320,24 @@ func clashProxyGroups(names []string) []any {
 		map[string]any{"name": clashMicrosoftGroup, "type": "select", "proxies": append([]string{"DIRECT", clashProxyGroup, clashAutoGroup, clashFallbackGroup}, names...)},
 		map[string]any{"name": clashAppleGroup, "type": "select", "proxies": append([]string{"DIRECT", clashProxyGroup, clashAutoGroup, clashFallbackGroup}, names...)},
 		map[string]any{"name": clashSocialGroup, "type": "select", "proxies": categoryTargets},
-		map[string]any{"name": clashStreamingGroup, "type": "select", "proxies": categoryTargets},
+		map[string]any{"name": clashStreamingGroup, "type": "select", "proxies": heavyTargets},
 		map[string]any{"name": clashEducationGroup, "type": "select", "proxies": categoryTargets},
 		map[string]any{"name": clashServiceGroup, "type": "select", "proxies": categoryTargets},
 		map[string]any{"name": clashFinalGroup, "type": "select", "proxies": categoryTargets},
+		// 全部裸节点平铺（select）：默认选中第一项会绕过组策略，仅作手动
+		// 测试/临时钉死某个节点用；无节点时不输出（空 select 组非法）。
+	}
+	if len(names) > 0 {
+		groups = append(groups, map[string]any{"name": clashAllNodesGroup, "type": "select", "proxies": append([]string(nil), names...)})
+	}
+	// UDP 原生通道组：仅 hysteria2/tuic 直连节点。url-test 判活走 TCP 探测，
+	// 混入不转发 UDP 的节点（Argo udp:false）会在其 TCP 测活正常时选中它、
+	// UDP 流量全灭——成员必须动态按协议类型筛选。
+	if len(udpNames) > 0 {
+		groups = append(groups, map[string]any{
+			"name": clashUDPGroup, "type": "url-test", "proxies": udpNames,
+			"url": "https://www.gstatic.com/generate_204", "interval": 60, "tolerance": 80, "lazy": true,
+		})
 	}
 	return groups
 }

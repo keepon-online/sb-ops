@@ -2,6 +2,12 @@
 
 本文件记录 sb-ops 的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/)。
 
+## [未发布]
+
+### 新增
+
+- **订阅组结构与内核参数增强（自足化吸收客户端覆写）**：把此前需要 Clash 客户端覆写脚本维护的配置收进服务端订阅产物——①顶层内核参数 `unified-delay` / `tcp-concurrent` / `global-client-fingerprint: chrome`（vless-reality 节点已显式携带 fingerprint，此处兜底其余 TLS 节点）；②新增「📡 UDP 通道」url-test 组，**只收 UDP 原生直连节点（hysteria2/tuic，按协议类型动态筛选）**——Argo 节点不转发 UDP（udp:false）且 url-test 判活走 TCP 探测，混入会在其测活正常时选中它导致 UDP 流量全灭；③「📹 油管视频」「🎬 流媒体」大流量组首插 hysteria2（QUIC+BBR 跨境吞吐优势，select 默认第一项即走 hy2）；④「📦 全部节点」平铺组（手动测试/临时钉死）；⑤自动/故障转移组 interval 180→60s、tolerance 50→80ms（封锁期节点生死翻转频繁，更灵敏的切换窗口）。DNS 段不受影响——v0.8.0 已自足，客户端覆写脚本里的逗号组合 policy key 属已修复的倒退形态，勿采用。
+
 ## [0.8.3] - 2026-11-19
 
 ### 修复
