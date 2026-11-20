@@ -4,8 +4,9 @@
 
 ## 已定方向（按优先级）
 
-1. **geoip/geosite 路由条件模型清理**：sing-box 1.12 已移除 geoip/geosite 数据库，路由条件模型、面板 API 与归一化逻辑仍保留这两个字段（前端早已不暴露，纯 API 遗留）；编译期已兜底拒绝带此类条件的规则（防内核启动直接失败），后续可整体删除模型字段与 `normalizeGeoValues` 等配套逻辑。
-2. **rule-set `download_detour` → `http_client` 迁移**：上游 1.14 弃用（仍可用、打警告）、1.16 移除；届时编译器与引用校验（四类引用清单）需加 `http_client` 类别。
+1. **`TestApplySeversTrackedClientConnections` CI flaky 三连（11-16/19/20），窗口放宽治标不治本**：断言「换实例后旧客户端连接必须被关闭」，观察窗 3s→10s 两次放宽后 11-20 仍以 10.04s 耗尽挂掉（重跑即绿、本地 `-count=5` 从不过）——GitHub 慢 runner 上 `CloseAllConnections` 的关断传播可能存在真实竞态（慢路径漏关），不再是纯窗口问题。热重启切连接是线上断流事故修出来的关键机制（AGENTS.md 领域约定），值得专门一轮：本地构造慢速/多连接场景复现，或对关断路径加带内日志后跑 CI 定位。
+2. **geoip/geosite 路由条件模型清理**：sing-box 1.12 已移除 geoip/geosite 数据库，路由条件模型、面板 API 与归一化逻辑仍保留这两个字段（前端早已不暴露，纯 API 遗留）；编译期已兜底拒绝带此类条件的规则（防内核启动直接失败），后续可整体删除模型字段与 `normalizeGeoValues` 等配套逻辑。
+3. **rule-set `download_detour` → `http_client` 迁移**：上游 1.14 弃用（仍可用、打警告）、1.16 移除；届时编译器与引用校验（四类引用清单）需加 `http_client` 类别。
 
 ## 已完成（近期）
 
